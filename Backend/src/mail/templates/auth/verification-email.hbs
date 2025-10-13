@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Verificación de Correo Electrónico</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            background-color: #f8f9fa;
+            margin-bottom: 30px;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            margin: 20px 0;
+            background-color: #4CAF50;
+            color: white !important;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #777;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Bienvenido a {{appName}}</h1>
+    </div>
+    
+    <p>Hola {{name}},</p>
+    
+    <p>Gracias por registrarte en {{appName}}. Para completar tu registro, por favor verifica tu dirección de correo electrónico haciendo clic en el siguiente botón:</p>
+    
+    <div style="text-align: center;">
+        <a href="{{verificationUrl}}" class="button">Verificar mi correo</a>
+    </div>
+    
+    <p>Si el botón no funciona, copia y pega el siguiente enlace en tu navegador:</p>
+    <p><a href="{{verificationUrl}}" style="word-break: break-all;">{{verificationUrl}}</a></p>
+    
+    <p>Este enlace de verificación expirará en 24 horas.</p>
+    
+    <p>Si no creaste una cuenta en {{appName}}, por favor ignora este correo.</p>
+    
+    <div class="footer">
+        <p>© {{currentYear}} {{appName}}. Todos los derechos reservados.</p>
+        <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
+    </div>
+</body>
+</html>

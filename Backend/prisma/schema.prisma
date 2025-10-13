@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  revoked   Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id                        String         @id @default(uuid())
+  email                     String         @unique
+  password                  String
+  name                      String
+  birthdate                 DateTime?
+  language                  String?        @default("indeterminado")
+  timezone                  String?        @default("UTC")
+  phone                     String?        @default("sin_telefono")
+  username                  String         @unique @default("default_username")
+  status                    UserStatus     @default(ACTIVE)
+  role                      Role           @default(USER)
+  lastLoginAt               DateTime?
+  lastLoginIp               String?
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @default(now()) @updatedAt
+  verified                  Boolean        @default(false)
+  verifyToken               String?
+  verifyTokenExpires        DateTime?
+  avatarUrl                 String?
+  passwordChangedAt         DateTime?
+  passwordResetToken        String?
+  passwordResetTokenExpires DateTime?
+  refreshTokens             RefreshToken[]
+
+  // Relaciones inversas
+  products                  Product[]      // Productos creados por el usuario
+  sales                     Sale[]         // Ventas realizadas por el usuario
+  services                  Service[]      // Servicios creados por el usuario
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Float
+  stock       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  // Relación inversa
+  sales       Sale[]   // Ventas relacionadas con este producto
+}
+
+model Sale {
+  id          String     @id @default(uuid())
+  productId   String
+  userId      String
+  quantity    Int        @default(1)
+  totalAmount Float
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  status      SaleStatus @default(COMPLETED)
+
+  product     Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+enum SaleStatus {
+  COMPLETED
+  ANNULLED
+}
+
+model Service {
+  id              String          @id @default(uuid())
+  type            ServiceType     @default(REPAIR)
+  status          ServiceStatus   @default(IN_PROGRESS)
+  description     String
+  deliveryNotes   String?         @db.Text
+  price           Float
+  paid            Boolean         @default(false)
+  photoUrls       String[]        @default([])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+}
+
+enum ServiceStatus {
+  IN_PROGRESS   // En proceso
+  COMPLETED     // Completado
+  DELIVERED     // Entregado
+  PAID          // Pagado
+}
+
+enum ServiceType {
+  REPAIR
+  WARRANTY
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DELETED
+}
