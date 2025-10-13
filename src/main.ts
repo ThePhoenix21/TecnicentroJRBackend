@@ -1,11 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { createDatabase } from './create-database';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  await createDatabase();
   const app = await NestFactory.create(AppModule);
   
   // Configuración de CORS para desarrollo
