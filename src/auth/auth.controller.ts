@@ -31,7 +31,7 @@ import { CreateUserResponseDto } from './dto/create-user-response.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { TokensDto } from './dto/tokens.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { AuthChangePasswordDto } from './dto/auth-change-password.dto';
 import { UsersService } from 'src/users/users.service';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -369,11 +369,12 @@ export class AuthController {
     },
   })
   @ApiBody({
-    type: ChangePasswordDto,
+    type: AuthChangePasswordDto,
     description: 'Datos para el cambio de contraseña',
     examples: {
       example: {
         value: {
+          email: 'usuario@ejemplo.com',
           currentPassword: 'contraseñaActual123',
           newPassword: 'nuevaContraseñaSegura123',
         },
@@ -381,7 +382,7 @@ export class AuthController {
     },
   })
   async changePassword(
-    @Body() { currentPassword, newPassword }: ChangePasswordDto,
+    @Body() { email, currentPassword, newPassword }: AuthChangePasswordDto,
     @Req() req: any,
   ) {
     const userId = req.user.id;

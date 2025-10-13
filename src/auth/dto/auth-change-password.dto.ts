@@ -1,7 +1,7 @@
 import { IsString, MinLength, IsEmail } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class ChangePasswordDto {
+export class AuthChangePasswordDto {
   @ApiProperty({
     example: 'usuario@ejemplo.com',
     description: 'Correo electrónico del usuario',
