@@ -16,9 +16,10 @@ export class MailService {
 
     if (this.useResend) {
       // Configuración para Resend
-      const resend = new Resend(process.env.RESEND_API_KEY!);
+      const resend = new Resend(process.env.RESEND_API_KEY!);      
       this.transporter = {
         sendMail: async (mailOptions: any) => {
+          console.log("MailOptions: ",mailOptions);
           return await resend.emails.send({
             from: mailOptions.from || process.env.RESEND_FROM!,
             to: mailOptions.to,
