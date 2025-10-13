@@ -1,0 +1,2288 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "description": "Crea una nueva cuenta de usuario",
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Datos del nuevo usuario",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequestDto"
+              },
+              "examples": {
+                "example": {
+                  "value": {
+                    "email": "usuario@ejemplo.com",
+                    "password": "contraseñaSegura123",
+                    "name": "Nombre del Usuario",
+                    "username": "nombreusuario",
+                    "phone": "+1234567890",
+                    "birthdate": "1990-01-01",
+                    "language": "es",
+                    "timezone": "America/Mexico_City"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Usuario registrado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateUserResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos"
+          },
+          "409": {
+            "description": "El correo electrónico o nombre de usuario ya está en uso"
+          }
+        },
+        "summary": "Registrar nuevo usuario",
+        "tags": [
+          "Autenticación"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "description": "Obtiene un nuevo token de acceso usando un token de actualización",
+        "operationId": "AuthController_refreshToken",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Token refrescado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de actualización inválido o expirado"
+          }
+        },
+        "summary": "Refrescar token",
+        "tags": [
+          "Autenticación"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "description": "Autentica un usuario y devuelve tokens de acceso y actualización",
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Inicio de sesión exitoso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciales inválidas o cuenta no verificada"
+          }
+        },
+        "summary": "Iniciar sesión",
+        "tags": [
+          "Autenticación"
+        ]
+      }
+    },
+    "/auth/login/username": {
+      "post": {
+        "description": "Autentica un usuario regular (ROLE_USER) usando nombre de usuario y contraseña",
+        "operationId": "AuthController_loginWithUsername",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "example": "usuario123"
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password",
+                    "example": "contraseñaSegura123"
+                  }
+                },
+                "required": [
+                  "username",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inicio de sesión exitoso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciales inválidas o cuenta no verificada"
+          }
+        },
+        "summary": "Iniciar sesión con nombre de usuario",
+        "tags": [
+          "Autenticación"
+        ]
+      }
+    },
+    "/auth/verify": {
+      "get": {
+        "description": "Verifica la dirección de correo electrónico del usuario usando un token de verificación",
+        "operationId": "AuthController_verifyEmail",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "query",
+            "description": "Token de verificación enviado por correo electrónico",
+            "schema": {
+              "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correo electrónico verificado exitosamente",
+            "content": {
+              "text/html": {
+                "example": "<html><body><h1>Correo verificado exitosamente</h1></body></html>"
+              }
+            }
+          },
+          "400": {
+            "description": "Token de verificación inválido o expirado",
+            "content": {
+              "text/html": {
+                "example": "<html><body><h1>Error: Token inválido o expirado</h1></body></html>"
+              }
+            }
+          }
+        },
+        "summary": "Verificar correo electrónico",
+        "tags": [
+          "Autenticación"
+        ]
+      }
+    },
+    "/auth/change-password": {
+      "patch": {
+        "description": "Permite a un usuario autenticado cambiar su contraseña actual",
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Datos para el cambio de contraseña",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthChangePasswordDto"
+              },
+              "examples": {
+                "example": {
+                  "value": {
+                    "email": "usuario@ejemplo.com",
+                    "currentPassword": "contraseñaActual123",
+                    "newPassword": "nuevaContraseñaSegura123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contraseña cambiada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Contraseña actualizada exitosamente"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos o la nueva contraseña no cumple con los requisitos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "La nueva contraseña debe ser diferente a la actual"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado - Token inválido o expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "No autorizado"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credenciales actuales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Credenciales actuales incorrectas"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cambiar contraseña",
+        "tags": [
+          "Autenticación"
+        ]
+      }
+    },
+    "/auth/request-password-reset": {
+      "post": {
+        "description": "Envía un correo electrónico con un enlace para restablecer la contraseña",
+        "operationId": "AuthController_requestPasswordReset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Correo electrónico del usuario que desea restablecer su contraseña",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestPasswordResetDto"
+              },
+              "examples": {
+                "example": {
+                  "value": {
+                    "email": "usuario@ejemplo.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Si el correo existe, se enviarán instrucciones para restablecer la contraseña"
+          }
+        },
+        "summary": "Solicitar restablecimiento de contraseña",
+        "tags": [
+          "Autenticación"
+        ]
+      }
+    },
+    "/auth/reset-password": {
+      "patch": {
+        "description": "Restablece la contraseña de un usuario usando un token de restablecimiento",
+        "operationId": "AuthController_resetPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Token de restablecimiento y nueva contraseña",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              },
+              "examples": {
+                "example": {
+                  "value": {
+                    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "newPassword": "nuevaContraseñaSegura123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contraseña restablecida exitosamente"
+          },
+          "400": {
+            "description": "Token inválido o expirado"
+          }
+        },
+        "summary": "Restablecer contraseña",
+        "tags": [
+          "Autenticación"
+        ]
+      }
+    },
+    "/users/upload-avatar": {
+      "post": {
+        "description": "Sube una imagen como avatar. Los administradores pueden subir para cualquier usuario especificando userId, los usuarios regulares solo pueden subir su propio avatar.",
+        "operationId": "UsersController_uploadAvatar",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Archivo de imagen (JPG, JPEG, PNG) hasta 5MB"
+                  },
+                  "userId": {
+                    "type": "string",
+                    "description": "ID del usuario al que se le asignará el avatar (solo para administradores)"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Avatar actualizado exitosamente"
+          },
+          "400": {
+            "description": "Archivo no válido o usuario no encontrado"
+          },
+          "403": {
+            "description": "No autorizado para actualizar este perfil"
+          }
+        },
+        "summary": "Subir avatar de usuario",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/me/avatar": {
+      "post": {
+        "description": "Sube una imagen como avatar del usuario autenticado",
+        "operationId": "UsersController_uploadMyAvatar",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Archivo de imagen (JPG, JPEG, PNG) hasta 5MB"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Avatar actualizado exitosamente"
+          },
+          "400": {
+            "description": "Archivo no válido"
+          }
+        },
+        "summary": "Subir mi avatar",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/create": {
+      "post": {
+        "description": "Crea un nuevo usuario con los datos proporcionados. El username se generará automáticamente si no se especifica. Requiere rol de ADMIN",
+        "operationId": "UsersController_createUser",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSimpleUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Usuario creado exitosamente"
+          },
+          "400": {
+            "description": "Datos de entrada inválidos"
+          },
+          "409": {
+            "description": "El correo electrónico o teléfono ya está en uso"
+          }
+        },
+        "summary": "Crear nuevo usuario",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users": {
+      "get": {
+        "description": "Obtiene una lista de todos los usuarios registrados. Requiere rol de ADMIN",
+        "operationId": "UsersController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Lista de usuarios obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CreateUserResponseDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No autorizado"
+          }
+        },
+        "summary": "Obtener todos los usuarios",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/change-password": {
+      "put": {
+        "description": "Permite a un usuario con rol USER cambiar su contraseña. Se requiere la contraseña actual para realizar el cambio.",
+        "operationId": "UsersController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Datos requeridos para el cambio de contraseña",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              },
+              "examples": {
+                "example": {
+                  "value": {
+                    "currentPassword": "contraseñaActual123",
+                    "newPassword": "nuevaContraseñaSegura123",
+                    "confirmNewPassword": "nuevaContraseñaSegura123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contraseña actualizada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Contraseña actualizada exitosamente"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Las contraseñas no coinciden"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciales inválidas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "La contraseña actual es incorrecta"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Cambiar contraseña de usuario",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{id}": {
+      "delete": {
+        "description": "Elimina un usuario del sistema. Requiere rol de ADMIN",
+        "operationId": "UsersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID del usuario a eliminar",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usuario eliminado exitosamente"
+          },
+          "404": {
+            "description": "Usuario no encontrado"
+          }
+        },
+        "summary": "Eliminar usuario",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/products/create": {
+      "post": {
+        "description": "Crea un nuevo producto en el sistema. Requiere autenticación JWT.",
+        "operationId": "ProductController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Datos del producto a crear",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductDto"
+              },
+              "examples": {
+                "ejemplo1": {
+                  "summary": "Producto básico",
+                  "value": {
+                    "name": "Laptop HP ProBook",
+                    "description": "Laptop de 14 pulgadas con 8GB RAM y 256GB SSD",
+                    "price": 1200.99,
+                    "stock": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Producto creado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Crear un nuevo producto",
+        "tags": [
+          "Productos"
+        ]
+      }
+    },
+    "/products/all": {
+      "get": {
+        "description": "Retorna una lista paginada de todos los productos disponibles en el sistema. Accesible para usuarios autenticados con rol ADMIN o USER.",
+        "operationId": "ProductController_findAll",
+        "parameters": [
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Término de búsqueda para filtrar productos por nombre o descripción",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Cantidad de registros por página (por defecto: 10, máximo: 100)",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Número de página (por defecto: 1)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de productos obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductListResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN o USER."
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener todos los productos",
+        "tags": [
+          "Productos"
+        ]
+      }
+    },
+    "/products/user/{userId}": {
+      "get": {
+        "description": "Retorna los productos creados por un usuario específico. Solo accesible para administradores.",
+        "operationId": "ProductController_findUserProducts",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "description": "ID del usuario cuyos productos se desean consultar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Cantidad de registros por página (por defecto: 10, máximo: 100)",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Número de página (por defecto: 1)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de productos del usuario obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductListResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN."
+          },
+          "404": {
+            "description": "No se encontró el usuario con el ID especificado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          },
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener productos creados por ID de usuario",
+        "tags": [
+          "Productos"
+        ]
+      }
+    },
+    "/products/{id}": {
+      "get": {
+        "description": "Retorna los detalles de un producto específico por su ID. Accesible para usuarios autenticados con rol ADMIN o USER.",
+        "operationId": "ProductController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del producto a consultar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Producto encontrado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN o USER."
+          },
+          "404": {
+            "description": "No se encontró el producto con el ID especificado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          },
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener producto por ID",
+        "tags": [
+          "Productos"
+        ]
+      },
+      "patch": {
+        "description": "Actualiza los datos de un producto existente. Solo el propietario puede actualizar el producto.",
+        "operationId": "ProductController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del producto a actualizar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Datos del producto a actualizar",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProductDto"
+              },
+              "examples": {
+                "ejemplo1": {
+                  "summary": "Actualizar precio y stock",
+                  "value": {
+                    "price": 1299.99,
+                    "stock": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Producto actualizado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tienes permiso para actualizar este producto"
+          },
+          "404": {
+            "description": "No se encontró el producto con el ID especificado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Actualizar un producto",
+        "tags": [
+          "Productos"
+        ]
+      },
+      "delete": {
+        "description": "Elimina un producto del sistema. Solo el propietario puede eliminar el producto.",
+        "operationId": "ProductController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del producto a eliminar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Producto eliminado exitosamente"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tienes permiso para eliminar este producto"
+          },
+          "404": {
+            "description": "No se encontró el producto con el ID especificado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Eliminar un producto",
+        "tags": [
+          "Productos"
+        ]
+      }
+    },
+    "/services": {
+      "post": {
+        "description": "Crea un nuevo servicio en el sistema. Accesible para ADMIN y USER. Se pueden adjuntar hasta 5 fotos.",
+        "operationId": "ServiceController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "REPAIR",
+                      "WARRANTY"
+                    ]
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "price": {
+                    "type": "number"
+                  },
+                  "paid": {
+                    "type": "boolean"
+                  },
+                  "deliveryNotes": {
+                    "type": "string"
+                  },
+                  "photos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "description",
+                  "price"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Servicio creado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para realizar esta acción. Se requiere rol de ADMIN o USER."
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Crear un nuevo servicio",
+        "tags": [
+          "Servicios"
+        ]
+      },
+      "get": {
+        "description": "Retorna una lista paginada de todos los servicios. Solo accesible para ADMIN.",
+        "operationId": "ServiceController_findAll",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Cantidad de registros por página (por defecto: 10, máximo: 100)",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Número de página (por defecto: 1)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de servicios obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceListResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN."
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener todos los servicios",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
+    "/services/{id}": {
+      "get": {
+        "description": "Retorna los detalles de un servicio específico por su ID. Accesible para ADMIN y USER.",
+        "operationId": "ServiceController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del servicio a consultar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Servicio encontrado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN o USER."
+          },
+          "404": {
+            "description": "No se encontró el servicio con el ID especificado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener servicio por ID",
+        "tags": [
+          "Servicios"
+        ]
+      },
+      "patch": {
+        "description": "Actualiza los datos de un servicio existente. Solo el propietario o un ADMIN pueden actualizar el servicio.",
+        "operationId": "ServiceController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del servicio a actualizar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateServiceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Servicio actualizado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tienes permiso para actualizar este servicio"
+          },
+          "404": {
+            "description": "No se encontró el servicio con el ID especificado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Actualizar un servicio",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
+    "/services/user/{userId}": {
+      "get": {
+        "description": "Retorna los servicios creados por un usuario específico. Solo accesible para ADMIN.",
+        "operationId": "ServiceController_findUserServices",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "description": "ID del usuario cuyos servicios se desean consultar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Cantidad de registros por página (por defecto: 10, máximo: 100)",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Número de página (por defecto: 1)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de servicios del usuario obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceListResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN."
+          },
+          "404": {
+            "description": "No se encontró el usuario con el ID especificado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener servicios por ID de usuario",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
+    "/sales/create": {
+      "post": {
+        "description": "Crea una nueva venta en el sistema. Requiere autenticación JWT y rol de USUARIO o ADMIN.",
+        "operationId": "createSale",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Datos de la venta a crear. El monto total se calculará automáticamente basado en el precio del producto y la cantidad.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSaleDto"
+              },
+              "examples": {
+                "ejemplo1": {
+                  "summary": "Venta básica",
+                  "value": {
+                    "productId": "123e4567-e89b-12d3-a456-426614174000",
+                    "quantity": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Venta creada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sale"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos o stock insuficiente"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para realizar esta acción. Se requiere rol de USUARIO o ADMIN."
+          },
+          "404": {
+            "description": "Producto no encontrado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Crear una nueva venta",
+        "tags": [
+          "Ventas"
+        ]
+      }
+    },
+    "/sales/list": {
+      "get": {
+        "description": "Retorna una lista paginada de todas las ventas en el sistema. Solo accesible por administradores.",
+        "operationId": "getAllSales",
+        "parameters": [
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Término de búsqueda para filtrar ventas por nombre de producto o cliente",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Cantidad de registros por página (por defecto: 10, máximo: 100)",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Número de página (por defecto: 1)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de ventas obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para realizar esta acción. Se requiere rol de ADMIN."
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener todas las ventas",
+        "tags": [
+          "Ventas"
+        ]
+      }
+    },
+    "/sales/user-sales/{userId}": {
+      "get": {
+        "description": "Retorna las ventas realizadas por un usuario específico. Solo accesible para administradores.",
+        "operationId": "getUserSales",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "description": "ID del usuario cuyas ventas se desean consultar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Cantidad de registros por página (por defecto: 10, máximo: 100)",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Número de página (por defecto: 1)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de ventas del usuario obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN."
+          },
+          "404": {
+            "description": "No se encontró el usuario con el ID especificado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener ventas por ID de usuario",
+        "tags": [
+          "Ventas"
+        ]
+      }
+    },
+    "/sales/get/{id}": {
+      "get": {
+        "description": "Retorna los detalles de una venta específica por su ID. Solo accesible por administradores.",
+        "operationId": "getSaleById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único de la venta",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Venta encontrada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sale"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN."
+          },
+          "404": {
+            "description": "No se encontró la venta con el ID especificado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener venta por ID",
+        "tags": [
+          "Ventas"
+        ]
+      }
+    },
+    "/sales/annul/{id}": {
+      "patch": {
+        "description": "Anula una venta existente. Solo accesible por administradores con credenciales válidas.",
+        "operationId": "SaleController_annulSale",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID de la venta a anular",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Credenciales de administrador y motivo de la anulación",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnulSaleDto"
+              },
+              "examples": {
+                "ejemplo1": {
+                  "summary": "Anulación de venta",
+                  "value": {
+                    "username": "admin",
+                    "password": "contraseñaAdmin123",
+                    "reason": "Cliente solicitó la cancelación"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Venta anulada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sale"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "La venta ya ha sido anulada anteriormente"
+          },
+          "401": {
+            "description": "Se requiere autenticación mediante JWT"
+          },
+          "403": {
+            "description": "Credenciales de administrador inválidas"
+          },
+          "404": {
+            "description": "Venta no encontrada"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Anular una venta",
+        "tags": [
+          "Ventas"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "API Documentation",
+    "description": "Documentación de la API de la aplicación",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "JWT-auth": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "name": "JWT",
+        "description": "Ingrese el token JWT",
+        "in": "header"
+      }
+    },
+    "schemas": {
+      "CreateUserRequestDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "usuario@ejemplo.com",
+            "description": "Correo electrónico del usuario"
+          },
+          "password": {
+            "type": "string",
+            "example": "passwordSeguro123",
+            "description": "Contraseña del usuario (mínimo 6 caracteres)",
+            "minLength": 6
+          },
+          "name": {
+            "type": "string",
+            "example": "Juan Pérez",
+            "description": "Nombre completo del usuario"
+          },
+          "username": {
+            "type": "string",
+            "example": "juanperez",
+            "description": "Nombre de usuario único"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+1234567890",
+            "description": "Número de teléfono del usuario (opcional)"
+          },
+          "birthdate": {
+            "format": "date-time",
+            "type": "string",
+            "example": "1990-01-01",
+            "description": "Fecha de nacimiento del usuario (opcional)"
+          },
+          "language": {
+            "type": "string",
+            "example": "es",
+            "description": "Idioma preferido del usuario (opcional)"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "America/Mexico_City",
+            "description": "Zona horaria del usuario (opcional)"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "name",
+          "username"
+        ]
+      },
+      "CreateUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "123e4567-e89b-12d3-a456-426614174000",
+            "description": "Identificador único del usuario"
+          },
+          "email": {
+            "type": "string",
+            "example": "juanperez@gmail.com",
+            "description": "Correo electrónico del usuario"
+          },
+          "name": {
+            "type": "string",
+            "example": "Juan Pérez",
+            "description": "Nombre del usuario"
+          },
+          "username": {
+            "type": "string",
+            "example": "juanperez",
+            "description": "Nombre de usuario único"
+          },
+          "phone": {
+            "type": "object",
+            "example": "+346123456789",
+            "description": "Teléfono del usuario"
+          },
+          "verified": {
+            "type": "boolean",
+            "example": true,
+            "description": "Indica si el usuario ha sido verificado"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "1990-01-01T00:00:00.000Z",
+            "description": "Fecha de creación del usuario"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name",
+          "username",
+          "verified",
+          "createdAt"
+        ]
+      },
+      "TokensDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "JWT access token"
+          },
+          "refreshToken": {
+            "type": "string",
+            "description": "JWT refresh token"
+          },
+          "expiresIn": {
+            "type": "number",
+            "description": "Expiration time of the access token in seconds"
+          }
+        },
+        "required": [
+          "accessToken",
+          "refreshToken",
+          "expiresIn"
+        ]
+      },
+      "AuthChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "usuario@ejemplo.com",
+            "description": "Correo electrónico del usuario"
+          },
+          "currentPassword": {
+            "type": "string",
+            "example": "contraseñaActual123",
+            "description": "Contraseña actual del usuario"
+          },
+          "newPassword": {
+            "type": "string",
+            "example": "nuevaContraseñaSegura123",
+            "description": "Nueva contraseña del usuario (mínimo 8 caracteres)",
+            "minLength": 8
+          }
+        },
+        "required": [
+          "email",
+          "currentPassword",
+          "newPassword"
+        ]
+      },
+      "RequestPasswordResetDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "usuario@ejemplo.com",
+            "description": "Correo electrónico del usuario que desea restablecer su contraseña"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "description": "Token de restablecimiento de contraseña"
+          },
+          "newPassword": {
+            "type": "string",
+            "example": "nuevaContraseñaSegura123",
+            "description": "Nueva contraseña del usuario (mínimo 8 caracteres)",
+            "minLength": 8
+          }
+        },
+        "required": [
+          "token",
+          "newPassword"
+        ]
+      },
+      "CreateSimpleUserDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Juan Pérez",
+            "description": "Nombre completo del usuario"
+          },
+          "username": {
+            "type": "string",
+            "example": "juanperez",
+            "description": "Nombre de usuario único (opcional, se generará automáticamente si no se especifica)"
+          },
+          "email": {
+            "type": "string",
+            "example": "usuario@ejemplo.com",
+            "description": "Correo electrónico del usuario (opcional)"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+1234567890",
+            "description": "Número de teléfono del usuario (opcional)"
+          },
+          "password": {
+            "type": "string",
+            "example": "passwordSeguro123",
+            "description": "Contraseña del usuario (mínimo 6 caracteres)",
+            "minLength": 6
+          }
+        },
+        "required": [
+          "name",
+          "password"
+        ]
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateProductDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreatedByDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID del usuario"
+          },
+          "name": {
+            "type": "object",
+            "description": "Nombre del usuario",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "description": "Email del usuario"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email"
+        ]
+      },
+      "ProductResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID único del producto"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del producto"
+          },
+          "description": {
+            "type": "object",
+            "description": "Descripción del producto",
+            "nullable": true
+          },
+          "price": {
+            "type": "number",
+            "description": "Precio del producto"
+          },
+          "stock": {
+            "type": "number",
+            "description": "Cantidad en inventario",
+            "default": 0
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fecha de creación"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fecha de última actualización"
+          },
+          "createdById": {
+            "type": "string",
+            "description": "ID del usuario que creó el producto"
+          },
+          "createdBy": {
+            "description": "Información del usuario que creó el producto",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreatedByDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "price",
+          "stock",
+          "createdAt",
+          "updatedAt",
+          "createdById"
+        ]
+      },
+      "ProductListResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "description": "Lista de productos",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductResponseDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Total de registros"
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "UpdateProductDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID del usuario",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del usuario",
+            "example": "Juan Pérez"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email del usuario",
+            "example": "juan.perez@example.com"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email"
+        ]
+      },
+      "ServiceResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID único del servicio",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "type": {
+            "type": "string",
+            "description": "Tipo de servicio",
+            "enum": [
+              "REPAIR",
+              "WARRANTY"
+            ],
+            "example": "REPAIR"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descripción detallada del servicio",
+            "example": "Reparación de pantalla rota"
+          },
+          "price": {
+            "type": "number",
+            "description": "Precio del servicio",
+            "example": 150.5
+          },
+          "paid": {
+            "type": "boolean",
+            "description": "Indica si el servicio ha sido pagado",
+            "default": false
+          },
+          "photoUrls": {
+            "description": "URLs de las fotos adjuntas al servicio",
+            "example": [
+              "https://example.com/photo1.jpg",
+              "https://example.com/photo2.jpg"
+            ],
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdById": {
+            "type": "string",
+            "description": "ID del usuario que creó el servicio",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "createdBy": {
+            "description": "Información del usuario que creó el servicio",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserResponseDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fecha de creación del servicio",
+            "example": "2023-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fecha de última actualización del servicio",
+            "example": "2023-01-01T00:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "description",
+          "price",
+          "paid",
+          "createdById",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ServiceListResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "description": "Lista de servicios",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceResponseDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Número total de servicios",
+            "example": 42
+          },
+          "page": {
+            "type": "number",
+            "description": "Número de página actual",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Número de elementos por página",
+            "example": 10
+          },
+          "totalPages": {
+            "type": "number",
+            "description": "Número total de páginas",
+            "example": 5
+          }
+        },
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ]
+      },
+      "UpdateServiceDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Tipo de servicio",
+            "enum": [
+              "REPAIR",
+              "WARRANTY"
+            ],
+            "example": "REPAIR"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descripción detallada del servicio",
+            "example": "Reparación de pantalla rota"
+          },
+          "price": {
+            "type": "number",
+            "description": "Precio del servicio",
+            "example": 150.5
+          },
+          "paid": {
+            "type": "boolean",
+            "description": "Indica si el servicio ha sido pagado",
+            "default": false
+          },
+          "photoUrls": {
+            "description": "URLs de las fotos adjuntas al servicio",
+            "example": [
+              "https://example.com/photo1.jpg"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado del servicio",
+            "enum": [
+              "IN_PROGRESS",
+              "COMPLETED",
+              "DELIVERED",
+              "PAID"
+            ],
+            "example": "IN_PROGRESS"
+          }
+        }
+      },
+      "CreateSaleDto": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "description": "ID del producto que se está vendiendo",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Cantidad de productos vendidos",
+            "minimum": 1,
+            "default": 1,
+            "example": 2
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado de la venta",
+            "enum": [
+              "COMPLETED",
+              "ANNULLED"
+            ],
+            "default": "COMPLETED"
+          }
+        },
+        "required": [
+          "productId",
+          "quantity"
+        ]
+      },
+      "Sale": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID único de la venta",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "productId": {
+            "type": "string",
+            "description": "ID del producto vendido",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "userId": {
+            "type": "string",
+            "description": "ID del usuario que realizó la venta",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Cantidad de productos vendidos",
+            "example": 2
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Monto total de la venta",
+            "example": 199.99
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fecha de creación de la venta",
+            "example": "2023-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fecha de última actualización de la venta",
+            "example": "2023-01-01T00:00:00.000Z"
+          },
+          "status": {
+            "type": "string",
+            "description": "Estado de la venta",
+            "enum": [
+              "COMPLETED",
+              "ANNULLED"
+            ],
+            "example": "COMPLETED"
+          }
+        },
+        "required": [
+          "id",
+          "productId",
+          "userId",
+          "quantity",
+          "totalAmount",
+          "createdAt",
+          "updatedAt",
+          "status"
+        ]
+      },
+      "AnnulSaleDto": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
+}

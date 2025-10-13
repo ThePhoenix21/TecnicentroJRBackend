@@ -1,55 +1,78 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
+import { writeFileSync } from 'fs';
+
+const logger = new Logger('Bootstrap');
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  
-  // Configuración de CORS para desarrollo
-  app.enableCors({
-    origin: process.env.NODE_ENV === 'development' ? '*' : process.env.FRONTEND_URL,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    allowedHeaders: 'Content-Type, Accept, Authorization',
-  });
+  try {
+    const app = await NestFactory.create(AppModule);
+    const port = process.env.PORT || 3000;
+    
+    // Configuración de CORS
+    app.enableCors({
+      origin: process.env.NODE_ENV === 'development' ? '*' : process.env.FRONTEND_URL,
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+      allowedHeaders: 'Content-Type, Accept, Authorization',
+      credentials: true,
+    });
 
-  // Configuración de Swagger
-  const config = new DocumentBuilder()
-    .setTitle('API Documentation')
-    .setDescription('Documentación de la API de la aplicación')
-    .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Ingrese el token JWT',
-        in: 'header',
+    // Configuración de validación global
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: {
+          enableImplicitConversion: true,
+        },
+      }),
+    );
+
+    // Configuración de Swagger
+    const config = new DocumentBuilder()
+      .setTitle('API Documentation')
+      .setDescription('Documentación de la API de la aplicación')
+      .setVersion('1.0')
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          name: 'JWT',
+          description: 'Ingrese el token JWT',
+          in: 'header',
+        },
+        'JWT-auth',
+      )
+      .build();
+
+    const document = SwaggerModule.createDocument(app, config);
+    
+    // Genera el archivo swagger.json
+    if (process.env.NODE_ENV === 'development') {
+      writeFileSync('./swagger.json', JSON.stringify(document, null, 2));
+    }
+
+    // Configuración de Swagger UI
+    SwaggerModule.setup('api', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+        tagsSorter: 'alpha',
+        operationsSorter: 'method',
       },
-      'JWT-auth', // Este nombre debe coincidir con el que usemos en los controladores
-    )
-    .build();
+    });
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-      tagsSorter: 'alpha',
-      operationsSorter: 'method',
-    },
-  });
-
-  // Validación global de DTOs
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-  }));
-
-  await app.listen(process.env.PORT ?? 3000);
-  
-  console.log(`\n🚀 Aplicación ejecutándose en: ${await app.getUrl()}`);
-  console.log(`📚 Documentación de la API: ${await app.getUrl()}/api`);
+    await app.listen(port);
+    
+    logger.log(`🚀 Aplicación ejecutándose en: ${await app.getUrl()}`);
+    logger.log(`📚 Documentación de la API: ${await app.getUrl()}/api`);
+  } catch (error) {
+    logger.error('Error al iniciar la aplicación:', error);
+    process.exit(1);
+  }
 }
+
 bootstrap();
