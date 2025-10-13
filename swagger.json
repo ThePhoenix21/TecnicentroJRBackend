@@ -686,6 +686,30 @@
         ]
       }
     },
+    "/contact": {
+      "post": {
+        "operationId": "MailController_sendContactEmail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mail"
+        ]
+      }
+    },
     "/products/create": {
       "post": {
         "description": "Crea un nuevo producto en el sistema. Requiere autenticación JWT.",
@@ -1881,6 +1905,10 @@
         ]
       },
       "ChangePasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ContactDto": {
         "type": "object",
         "properties": {}
       },

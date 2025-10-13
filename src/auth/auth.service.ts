@@ -236,7 +236,7 @@ export class AuthService {
         birthdate: birthdate || null,
         language,
         timezone,
-        verified: false,
+        verified: true,
         verifyToken,
         verifyTokenExpires,
         role: Role.ADMIN,
@@ -245,8 +245,10 @@ export class AuthService {
 
       const newUser = await this.prisma.user.create({ data: userData });
 
+      /*
       // Enviar correo de verificación
       await this.mailService.sendVerificationEmail(newUser.email, verifyToken, newUser.name);
+      */
 
       // Programar limpieza si no se verifica
       this.scheduleUserCleanup(newUser.id);
