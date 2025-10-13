@@ -8,40 +8,55 @@ export class MailService {
   private transporter: any;
   private readonly defaultFrom: string;
   private readonly logger = new Logger(MailService.name);
-  private readonly useResend: boolean;
+  private readonly mailService: string;
 
   constructor(private readonly templateService: TemplateService) {
-    // Decide si usamos Resend o Nodemailer
-    this.useResend = !!process.env.RESEND_API_KEY;
-
-    if (this.useResend) {
-      // Configuración para Resend
-      const resend = new Resend(process.env.RESEND_API_KEY!);      
-      this.transporter = {
-        sendMail: async (mailOptions: any) => {
-          console.log("MailOptions: ",mailOptions);
-          return await resend.emails.send({
-            from: mailOptions.from || process.env.RESEND_FROM!,
-            to: mailOptions.to,
-            subject: mailOptions.subject,
-            html: mailOptions.html,
-          });
-        },
-      };
-      this.defaultFrom = process.env.RESEND_FROM || 'onboarding@resend.dev';
-    } else {
-      // Configuración para Nodemailer (desarrollo)
-      this.transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-        port: parseInt(process.env.EMAIL_PORT || '465', 10),
-        secure: process.env.EMAIL_SECURE !== 'false', // true for 465
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      });
-      this.defaultFrom = `"${process.env.EMAIL_FROM_NAME || 'Nuestra Aplicación'}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`;
+    if (!process.env.MAIL_SERVICE) {
+      throw new Error('La variable de entorno MAIL_SERVICE no está configurada. Debe ser "resend" o "gmail"');
     }
+    
+    this.mailService = process.env.MAIL_SERVICE.toLowerCase();
+    this.logger.log(`Configurando servicio de correo con proveedor: ${this.mailService}`);
+
+    switch (this.mailService) {
+      case 'resend':
+        if (!process.env.RESEND_API_KEY) {
+          throw new Error('RESEND_API_KEY no está configurado en las variables de entorno');
+        }
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        this.transporter = {
+          sendMail: async (mailOptions: any) => {
+            this.logger.debug(`Enviando correo a través de Resend a: ${mailOptions.to}`);
+            return await resend.emails.send({
+              from: mailOptions.from || process.env.RESEND_FROM!,
+              to: mailOptions.to,
+              subject: mailOptions.subject,
+              html: mailOptions.html,
+            });
+          },
+        };
+        this.defaultFrom = process.env.RESEND_FROM || 'onboarding@resend.dev';
+        break;
+
+      case 'gmail':
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+          throw new Error('EMAIL_USER y EMAIL_PASS son requeridos para el servicio Gmail');
+        }
+        this.transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          },
+        });
+        this.defaultFrom = `"${process.env.EMAIL_FROM_NAME || 'Nuestra Aplicación'}" <${process.env.EMAIL_USER}>`;
+        break;
+
+      default:
+        throw new Error(`Proveedor de correo no soportado: ${this.mailService}`);
+    }
+
+    this.logger.log(`Servicio de correo configurado con remitente: ${this.defaultFrom}`);
   }
 
   async sendVerificationEmail(to: string, token: string | null, name: string = 'Usuario') {
