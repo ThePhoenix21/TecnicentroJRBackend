@@ -100,7 +100,7 @@ export class SaleController {
     @Request() req: any,
     @Body() createSaleDto: CreateSaleDto,
   ): Promise<SaleResponse> {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const sale = await this.saleService.create(createSaleDto, userId);
     return { data: sale };
   }

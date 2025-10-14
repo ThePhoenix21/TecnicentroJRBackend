@@ -98,7 +98,7 @@ export class ServiceController {
     @Body() createServiceDto: CreateServiceDto,
     @UploadedFiles() files: { photos?: Express.Multer.File[] }
   ): Promise<{ data: ServiceResponseDto }> {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const photoUrls: string[] = [];
     const logger = new Logger(ServiceController.name);
 

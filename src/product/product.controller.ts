@@ -93,7 +93,7 @@ export class ProductController {
     @Request() req: any,
     @Body() createProductDto: CreateProductDto
   ): Promise<{ data: ProductResponseDto }> {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const product = await this.productService.create(createProductDto, userId);
     const productWithUser = await this.productService.findOne(product.id);
     
@@ -407,7 +407,7 @@ export class ProductController {
     @Param('id', ParseUUIDPipe) id: string, 
     @Body() updateProductDto: UpdateProductDto
   ): Promise<{ data: ProductResponseDto }> {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     await this.productService.update(id, updateProductDto, userId);
     const updatedProduct = await this.productService.findOne(id);
     
@@ -477,7 +477,7 @@ export class ProductController {
     @Request() req: any,
     @Param('id', ParseUUIDPipe) id: string
   ): Promise<void> {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     await this.productService.remove(id, userId);
   }
 }
