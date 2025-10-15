@@ -35,7 +35,6 @@ import { AuthChangePasswordDto } from './dto/auth-change-password.dto';
 import { UsersService } from 'src/users/users.service';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { Role } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 
 @ApiTags('Autenticación')
@@ -434,7 +433,7 @@ export class AuthController {
     }
   }
 
-  @Post('request-password-reset')
+  /*@Post('request-password-reset')
   @ApiOperation({
     summary: 'Solicitar restablecimiento de contraseña',
     description:
@@ -462,9 +461,9 @@ export class AuthController {
       message:
         'Si el correo existe, recibirás un enlace para resetear tu contraseña, intentalo de nuevo si no recibes nada.',
     };
-  }
+  }*/
 
-  @Patch('reset-password')
+  /*@Patch('reset-password')
   @ApiOperation({
     summary: 'Restablecer contraseña',
     description:
@@ -499,7 +498,5 @@ export class AuthController {
           'No se pudo restablecer la contraseña. El token puede ser inválido o haber expirado.',
       };
     }
-  }
+  }*/
 }
-
-

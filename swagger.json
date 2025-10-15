@@ -342,78 +342,6 @@
         ]
       }
     },
-    "/auth/request-password-reset": {
-      "post": {
-        "description": "Envía un correo electrónico con un enlace para restablecer la contraseña",
-        "operationId": "AuthController_requestPasswordReset",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "description": "Correo electrónico del usuario que desea restablecer su contraseña",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RequestPasswordResetDto"
-              },
-              "examples": {
-                "example": {
-                  "value": {
-                    "email": "usuario@ejemplo.com"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Si el correo existe, se enviarán instrucciones para restablecer la contraseña"
-          }
-        },
-        "summary": "Solicitar restablecimiento de contraseña",
-        "tags": [
-          "Autenticación"
-        ]
-      }
-    },
-    "/auth/reset-password": {
-      "patch": {
-        "description": "Restablece la contraseña de un usuario usando un token de restablecimiento",
-        "operationId": "AuthController_resetPassword",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "description": "Token de restablecimiento y nueva contraseña",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResetPasswordDto"
-              },
-              "examples": {
-                "example": {
-                  "value": {
-                    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                    "newPassword": "nuevaContraseñaSegura123"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Contraseña restablecida exitosamente"
-          },
-          "400": {
-            "description": "Token inválido o expirado"
-          }
-        },
-        "summary": "Restablecer contraseña",
-        "tags": [
-          "Autenticación"
-        ]
-      }
-    },
     "/users/upload-avatar": {
       "post": {
         "description": "Sube una imagen como avatar. Los administradores pueden subir para cualquier usuario especificando userId, los usuarios regulares solo pueden subir su propio avatar.",
@@ -878,39 +806,6 @@
         "required": [
           "email",
           "currentPassword",
-          "newPassword"
-        ]
-      },
-      "RequestPasswordResetDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "example": "usuario@ejemplo.com",
-            "description": "Correo electrónico del usuario que desea restablecer su contraseña"
-          }
-        },
-        "required": [
-          "email"
-        ]
-      },
-      "ResetPasswordDto": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-            "description": "Token de restablecimiento de contraseña"
-          },
-          "newPassword": {
-            "type": "string",
-            "example": "nuevaContraseñaSegura123",
-            "description": "Nueva contraseña del usuario (mínimo 8 caracteres)",
-            "minLength": 8
-          }
-        },
-        "required": [
-          "token",
           "newPassword"
         ]
       },
