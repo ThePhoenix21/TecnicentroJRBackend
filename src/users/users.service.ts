@@ -54,8 +54,9 @@ export class UsersService {
         language?: string;
         timezone?: string;
         role?: Role;
+        verified?: boolean;
     }) {
-        const { email, password, name, username, phone, birthdate, language, timezone, role } = userData;
+        const { email, password, name, username, phone, birthdate, language, timezone, role, verified = true } = userData;
         
         const existing = await this.prisma.user.findFirst({
             where: {
@@ -110,6 +111,7 @@ export class UsersService {
                 role: finalRole,
                 verifyToken,
                 verifyTokenExpires,
+                verified,
                 lastLoginAt: new Date(),
             },
             select: {

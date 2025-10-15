@@ -26,11 +26,12 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiConsumes } fr
 import { UsersService } from './users.service';
 import { CreateSimpleUserDto } from '../auth/dto/create-simple-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Role, User } from '@prisma/client';
+import { User } from '@prisma/client';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcrypt';
 import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Role } from 'src/auth/enums/role.enum';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserResponseDto } from 'src/auth/dto/create-user-response.dto';
 import { generateUsername } from 'src/common/utility/usernameGenerator';

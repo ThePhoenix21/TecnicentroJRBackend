@@ -10,11 +10,15 @@ datasource db {
 model RefreshToken {
   id        String   @id @default(uuid())
   token     String   @unique
-  userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   revoked   Boolean  @default(false)
+
+  //clave foranea
+  userId    String
+
+  //Relaciones
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -37,18 +41,18 @@ model User {
   verified                  Boolean        @default(false)
   verifyToken               String?
   verifyTokenExpires        DateTime?
-  avatarUrl                 String?
+  avatarUrl                  String?
   passwordChangedAt         DateTime?
   passwordResetToken        String?
-  passwordResetTokenExpires DateTime?
-  refreshTokens             RefreshToken[]
+  passwordResetTokenExpires DateTime?  
 
   // Relaciones inversas
-  products                  Product[]      // Productos creados por el usuario
-  sales                     Sale[]         // Ventas realizadas por el usuario
-  services                  Service[]      // Servicios creados por el usuario
+  products                  Product[]
+  orders                    Order[]
+  clients                   Client[]
+  refreshTokens             RefreshToken[]
 }
-
+ 
 model Product {
   id          String   @id @default(uuid())
   name        String
@@ -57,46 +61,91 @@ model Product {
   stock       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: SetNull)
-
+ 
+  // Clave foránea
+  userId         String  
+  
   // Relación inversa
-  sales       Sale[]   // Ventas relacionadas con este producto
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderProducts OrderProduct[]
 }
 
-model Sale {
-  id          String     @id @default(uuid())
+model OrderProduct {
+  id          String   @id @default(uuid())
+  quantity    Int      @default(1)
+  price       Float  
+
+  //clave foranea
   productId   String
-  userId      String
-  quantity    Int        @default(1)
-  totalAmount Float
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  status      SaleStatus @default(COMPLETED)
+  orderId     String
 
-  product     Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
-  user        User       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  //Relaciones
+  product    Product  @relation(fields: [productId], references: [id])
+  order      Order    @relation(fields: [orderId], references: [id])
 }
 
-enum SaleStatus {
-  COMPLETED
-  ANNULLED
+model Client {
+  id          String      @id @default(uuid())
+  name        String
+  email       String?     @unique
+  phone       String?
+  address     String?
+  ruc         String?     @unique
+  dni         String?     @unique
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Clave foránea
+  userId      String
+  
+  // Relaciones
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders      Order[]
+}
+
+model Order {
+  id          String          @id @default(uuid())
+  totalAmount Float
+  status      SaleStatus      @default(COMPLETED)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  
+
+  //clave foranea
+  userId      String
+  clientId    String
+  
+  // Relaciones
+  user        User            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)  
+  orderProducts    OrderProduct[]
+  services    Service[]
+  
+  @@map("orders")
 }
 
 model Service {
   id              String          @id @default(uuid())
   type            ServiceType     @default(REPAIR)
   status          ServiceStatus   @default(IN_PROGRESS)
+  name            String
   description     String
-  deliveryNotes   String?         @db.Text
-  price           Float
-  paid            Boolean         @default(false)
   photoUrls       String[]        @default([])
+  price           Float
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
-  userId          String
-  user            User            @relation(fields: [userId], references: [id])
+  
+  //clave foranea
+  orderId         String
+  
+  // Relaciones
+  order            Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+  PENDING
 }
 
 enum ServiceStatus {

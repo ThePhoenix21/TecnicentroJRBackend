@@ -1,4 +1,15 @@
-import { IsString, MinLength, IsNotEmpty, IsOptional } from 'class-validator';
+import { 
+  IsString, 
+  MinLength, 
+  IsNotEmpty, 
+  IsOptional, 
+  IsEmail, 
+  IsDateString, 
+  IsEnum, 
+  IsBoolean,
+  IsNumber
+} from 'class-validator';
+import { Role, UserStatus } from '@prisma/client';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -6,7 +17,7 @@ export class UpdateUserDto {
   name?: string;
 
   @IsOptional()
-  @IsString()
+  @IsEmail()
   email?: string;
 
   @IsOptional()
@@ -18,11 +29,40 @@ export class UpdateUserDto {
   @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
   newPassword?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'La contraseña actual es requerida' })
-  currentPassword: string;
+  currentPassword?: string;
 
   @IsOptional()
   @IsString()
+  @MinLength(3, { message: 'El nombre de usuario debe tener al menos 3 caracteres' })
   username?: string;
+
+  @IsOptional()
+  @IsDateString()
+  birthdate?: Date;
+
+  @IsOptional()
+  @IsString()
+  language?: string;
+
+  @IsOptional()
+  @IsString()
+  timezone?: string;
+
+  @IsOptional()
+  @IsEnum(UserStatus)
+  status?: UserStatus;
+
+  @IsOptional()
+  @IsEnum(Role)
+  role?: Role;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  verified?: boolean;
 }

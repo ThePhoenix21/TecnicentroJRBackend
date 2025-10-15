@@ -1,483 +1,261 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
-  Param, 
-  Delete, 
-  UseGuards, 
-  Request, 
-  HttpStatus, 
-  HttpCode,
-  ParseUUIDPipe,
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
   Query,
-  BadRequestException,
-  NotFoundException
+  ParseUUIDPipe,
+  ForbiddenException,
+  HttpStatus,
+  HttpCode,
+  Request,
 } from '@nestjs/common';
-import { 
-  ApiBearerAuth, 
-  ApiOperation, 
-  ApiResponse, 
-  ApiTags, 
-  ApiUnauthorizedResponse,
-  ApiBody,
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
   ApiQuery,
-  ApiParam
+  ApiBody,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiForbiddenResponse,
+  ApiUnauthorizedResponse,
+  ApiNotFoundResponse,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { PaginationDto } from '../common/dto/pagination.dto';
-import { 
-  ProductResponseDto, 
-  ProductListResponseDto,
-  CreatedByDto 
-} from './dto/product-response.dto';
-import { RolesGuard } from 'src/auth/guards/roles.guard';
-import { Roles } from 'src/auth/decorators/roles.decorator';
-import { Role } from '@prisma/client';
+import { Product } from './entities/product.entity';
 
 @ApiTags('Productos')
+@ApiBearerAuth()
 @Controller('products')
-@ApiBearerAuth('JWT')
-@ApiUnauthorizedResponse({ description: 'Se requiere autenticación mediante JWT' })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
-  /**
-   * Crea un nuevo producto en el sistema
-   * @param req - Objeto de solicitud que contiene el token JWT
-   * @param createProductDto - Datos del producto a crear
-   * @returns El producto creado
-   */
-  @Post('create')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ 
-    summary: 'Crear un nuevo producto',
-    description: 'Crea un nuevo producto en el sistema. Requiere autenticación JWT.'
+  @Post()
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ summary: 'Crear un nuevo producto' })
+  @ApiCreatedResponse({ 
+    description: 'El producto ha sido creado exitosamente.',
+    type: Product,
   })
-  @ApiBody({ 
-    type: CreateProductDto,
-    description: 'Datos del producto a crear',
-    examples: {
-      ejemplo1: {
-        summary: 'Producto básico',
-        value: {
-          name: 'Laptop HP ProBook',
-          description: 'Laptop de 14 pulgadas con 8GB RAM y 256GB SSD',
-          price: 1200.99,
-          stock: 15
-        }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: HttpStatus.CREATED, 
-    description: 'Producto creado exitosamente',
-    type: ProductResponseDto
-  })
-  @ApiResponse({ 
-    status: HttpStatus.BAD_REQUEST, 
-    description: 'Datos de entrada inválidos'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.UNAUTHORIZED, 
-    description: 'No autorizado. Se requiere autenticación'
-  })
-  async create(
-    @Request() req: any,
-    @Body() createProductDto: CreateProductDto
-  ): Promise<{ data: ProductResponseDto }> {
-    const userId = req.user.userId;
-    const product = await this.productService.create(createProductDto, userId);
-    const productWithUser = await this.productService.findOne(product.id);
-    
-    if (!productWithUser) {
-      throw new NotFoundException('No se pudo recuperar el producto creado');
-    }
-
-    const productDto: ProductResponseDto = {
-      id: productWithUser.id,
-      name: productWithUser.name,
-      description: productWithUser.description,
-      price: productWithUser.price,
-      stock: productWithUser.stock,
-      createdAt: productWithUser.createdAt,
-      updatedAt: productWithUser.updatedAt,
-      createdById: productWithUser.createdById,
-      createdBy: productWithUser.createdBy ? {
-        id: productWithUser.createdBy.id,
-        name: productWithUser.createdBy.name || null,
-        email: productWithUser.createdBy.email
-      } : undefined
-    };
-
-    return { data: productDto };
+  @ApiBadRequestResponse({ description: 'Datos de entrada inválidos.' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado. Se requiere autenticación.' })
+  @ApiForbiddenResponse({ description: 'No tiene permisos para realizar esta acción.' })
+  @ApiBody({ type: CreateProductDto })
+  async create(@Request() req, @Body() createProductDto: CreateProductDto) {
+    return this.productService.create(createProductDto, req.user.userId);
   }
 
-  /**
-   * Obtiene todos los productos con soporte para paginación y búsqueda
-   * @param paginationDto - Parámetros de paginación y búsqueda
-   * @returns Lista paginada de productos y total de registros
-   */
-  @Get('all')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get()
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
     summary: 'Obtener todos los productos',
-    description: 'Retorna una lista paginada de todos los productos disponibles en el sistema. Accesible para usuarios autenticados con rol ADMIN o USER.'
+    description: 'Los usuarios solo ven sus productos, los administradores ven todos.'
   })
-  @ApiQuery({ 
-    name: 'page', 
-    required: false, 
-    type: Number, 
-    description: 'Número de página (por defecto: 1)' 
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Número de página',
+    example: 1,
   })
-  @ApiResponse({ 
-    status: HttpStatus.UNAUTHORIZED, 
-    description: 'No autorizado. Se requiere autenticación'
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Límite de resultados por página',
+    example: 10,
   })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN o USER.'
+  @ApiQuery({
+    name: 'userId',
+    required: false,
+    type: String,
+    description: 'Filtrar por ID de usuario (solo administradores)',
+    example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @ApiQuery({ 
-    name: 'limit', 
-    required: false, 
-    type: Number, 
-    description: 'Cantidad de registros por página (por defecto: 10, máximo: 100)' 
+  @ApiOkResponse({
+    description: 'Lista de productos obtenida exitosamente.',
+    type: [Product],
   })
-  @ApiQuery({ 
-    name: 'search', 
-    required: false, 
-    type: String, 
-    description: 'Término de búsqueda para filtrar productos por nombre o descripción' 
-  })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
-    description: 'Lista de productos obtenida exitosamente',
-    type: ProductListResponseDto
-  })
+  @ApiUnauthorizedResponse({ description: 'No autorizado. Se requiere autenticación.' })
+  @ApiForbiddenResponse({ description: 'No tiene permisos para ver estos recursos.' })
   async findAll(
-    @Query() paginationDto: PaginationDto
-  ): Promise<ProductListResponseDto> {
-    const [products, total] = await Promise.all([
-      this.productService.findAll(paginationDto),
-      this.productService.count()
-    ]);
+    @Request() req,
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+    @Query('userId') userId?: string,
+  ) {
+    // Solo los administradores pueden filtrar por userId
+    if (userId && req.user.role !== Role.ADMIN) {
+      throw new ForbiddenException('No tiene permisos para filtrar por usuario');
+    }
     
-    // Mapear los productos al tipo ProductResponseDto
-    const productDtos: ProductResponseDto[] = products.map(product => {
-      const productData = product as any; // Usamos 'any' temporalmente para acceder a las propiedades
-      const dto: ProductResponseDto = {
-        id: productData.id,
-        name: productData.name,
-        description: productData.description,
-        price: productData.price,
-        stock: productData.stock,
-        createdAt: productData.createdAt,
-        updatedAt: productData.updatedAt,
-        createdById: productData.createdById
-      };
-
-      // Solo agregar createdBy si existe
-      if (productData.createdBy) {
-        dto.createdBy = {
-          id: productData.createdBy.id,
-          name: productData.createdBy.name || null,
-          email: productData.createdBy.email
-        };
-      }
-
-      return dto;
+    return this.productService.findAll({
+      page: Number(page),
+      limit: Number(limit),
+      userId: req.user.role === Role.ADMIN ? userId || undefined : req.user.userId,
     });
-    
-    return { data: productDtos, total };
   }
 
-  /**
-   * Obtiene los productos creados por un usuario específico
-   * @param userId - ID del usuario cuyos productos se desean consultar
-   * @param paginationDto - Parámetros de paginación y búsqueda
-   * @returns Lista paginada de productos del usuario y total de registros
-   */
   @Get('user/:userId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ 
-    summary: 'Obtener productos creados por ID de usuario',
-    description: 'Retorna los productos creados por un usuario específico. Solo accesible para administradores.'
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({
+    summary: 'Obtener productos por usuario',
+    description: 'Obtiene los productos de un usuario específico. Los usuarios solo pueden ver sus propios productos.'
   })
-  @ApiBearerAuth('JWT')
   @ApiParam({
     name: 'userId',
-    description: 'ID del usuario cuyos productos se desean consultar',
+    required: true,
+    description: 'ID del usuario',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @ApiResponse({ 
-    status: HttpStatus.FORBIDDEN, 
-    description: 'No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN.'
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Número de página',
+    example: 1,
   })
-  @ApiQuery({ 
-    name: 'page', 
-    required: false, 
-    type: Number, 
-    description: 'Número de página (por defecto: 1)' 
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Límite de resultados por página',
+    example: 10,
   })
-  @ApiQuery({ 
-    name: 'limit', 
-    required: false, 
-    type: Number, 
-    description: 'Cantidad de registros por página (por defecto: 10, máximo: 100)' 
+  @ApiOkResponse({
+    description: 'Lista de productos del usuario obtenida exitosamente.',
+    type: [Product],
   })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
-    description: 'Lista de productos del usuario obtenida exitosamente',
-    type: ProductListResponseDto
-  })
-  @ApiResponse({ 
-    status: HttpStatus.UNAUTHORIZED, 
-    description: 'No autorizado. Se requiere autenticación'
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'No se encontró el usuario con el ID especificado',
-  })
-  async findUserProducts(
-    @Param('userId', ParseUUIDPipe) userId: string,
-    @Query() paginationDto: PaginationDto
-  ): Promise<ProductListResponseDto> {
-    const [products, total] = await Promise.all([
-      this.productService.findByUserId(userId, paginationDto),
-      this.productService.count({ createdById: userId })
-    ]);
-    
-    // Mapear los productos al tipo ProductResponseDto
-    const productDtos: ProductResponseDto[] = products.map(product => {
-      const productData = product as any;
-      const dto: ProductResponseDto = {
-        id: productData.id,
-        name: productData.name,
-        description: productData.description,
-        price: productData.price,
-        stock: productData.stock,
-        createdAt: productData.createdAt,
-        updatedAt: productData.updatedAt,
-        createdById: productData.createdById
-      };
+  @ApiUnauthorizedResponse({ description: 'No autorizado. Se requiere autenticación.' })
+  @ApiForbiddenResponse({ description: 'No tiene permisos para ver estos recursos.' })
+  @ApiNotFoundResponse({ description: 'Usuario no encontrado.' })
+  async findByUser(
+    @Request() req,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+  ) {
+    // Solo los administradores pueden ver productos de otros usuarios
+    if (req.user.role !== Role.ADMIN && req.user.userId !== userId) {
+      throw new ForbiddenException('Solo puede ver sus propios productos');
+    }
 
-      // Solo agregar createdBy si existe
-      if (productData.createdBy) {
-        dto.createdBy = {
-          id: productData.createdBy.id,
-          name: productData.createdBy.name || null,
-          email: productData.createdBy.email
-        };
-      }
-
-      return dto;
+    return this.productService.findByUser(userId, {
+      page: Number(page),
+      limit: Number(limit),
     });
-    
-    return { data: productDtos, total };
   }
 
-  /**
-   * Obtiene un producto por su ID
-   * @param id - ID único del producto
-   * @returns El producto solicitado
-   */
   @Get(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
-    summary: 'Obtener producto por ID',
-    description: 'Retorna los detalles de un producto específico por su ID. Accesible para usuarios autenticados con rol ADMIN o USER.'
+    summary: 'Obtener un producto por ID',
+    description: 'Obtiene un producto por su ID. Los usuarios solo pueden ver sus propios productos.'
   })
-  @ApiBearerAuth('JWT')
   @ApiParam({
     name: 'id',
-    description: 'ID único del producto a consultar',
+    required: true,
+    description: 'ID del producto',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'No autorizado. Se requiere autenticación',
+  @ApiOkResponse({
+    description: 'Producto encontrado exitosamente.',
+    type: Product,
   })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos para acceder a este recurso. Se requiere rol de ADMIN o USER.',
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'No se encontró el producto con el ID especificado',
-  })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
-    description: 'Producto encontrado exitosamente',
-    type: ProductResponseDto
-  })
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string
-  ): Promise<{ data: ProductResponseDto }> {
+  @ApiNotFoundResponse({ description: 'Producto no encontrado.' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado. Se requiere autenticación.' })
+  @ApiForbiddenResponse({ description: 'No tiene permisos para ver este recurso.' })
+  async findOne(@Request() req, @Param('id', new ParseUUIDPipe()) id: string) {
     const product = await this.productService.findOne(id);
-    if (!product) {
-      throw new NotFoundException('Producto no encontrado');
+    
+    // Solo el propietario o un administrador pueden ver el producto
+    if (req.user.role !== Role.ADMIN && product.userId !== req.user.userId) {
+      throw new ForbiddenException('No tiene permisos para ver este producto');
     }
     
-    const productData = product as any; // Usamos 'any' temporalmente para acceder a las propiedades
-    const productDto: ProductResponseDto = {
-      id: productData.id,
-      name: productData.name,
-      description: productData.description,
-      price: productData.price,
-      stock: productData.stock,
-      createdAt: productData.createdAt,
-      updatedAt: productData.updatedAt,
-      createdById: productData.createdById
-    };
-
-    // Solo agregar createdBy si existe
-    if (productData.createdBy) {
-      productDto.createdBy = {
-        id: productData.createdBy.id,
-        name: productData.createdBy.name || null,
-        email: productData.createdBy.email
-      };
-    }
-    
-    return { data: productDto };
+    return product;
   }
 
-  /**
-   * Actualiza un producto existente
-   * @param id - ID del producto a actualizar
-   * @param updateProductDto - Datos a actualizar del producto
-   * @param req - Objeto de solicitud que contiene el token JWT
-   * @returns El producto actualizado
-   */
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Actualizar un producto',
-    description: 'Actualiza los datos de un producto existente. Solo el propietario puede actualizar el producto.'
+    description: 'Actualiza un producto existente. Los usuarios solo pueden actualizar sus propios productos.'
   })
   @ApiParam({
     name: 'id',
-    description: 'ID único del producto a actualizar',
-    example: '123e4567-e89b-12d3-a456-426614174000'
+    required: true,
+    description: 'ID del producto a actualizar',
+    example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @ApiBody({ 
-    type: UpdateProductDto,
-    description: 'Datos del producto a actualizar',
-    examples: {
-      ejemplo1: {
-        summary: 'Actualizar precio y stock',
-        value: {
-          price: 1299.99,
-          stock: 20
-        }
-      }
-    }
+  @ApiBody({ type: UpdateProductDto })
+  @ApiOkResponse({
+    description: 'El producto ha sido actualizado exitosamente.',
+    type: Product,
   })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
-    description: 'Producto actualizado exitosamente',
-    type: ProductResponseDto
-  })
-  @ApiResponse({ 
-    status: HttpStatus.NOT_FOUND, 
-    description: 'No se encontró el producto con el ID especificado'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.FORBIDDEN, 
-    description: 'No tienes permiso para actualizar este producto'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.UNAUTHORIZED, 
-    description: 'No autorizado. Se requiere autenticación'
-  })
+  @ApiNotFoundResponse({ description: 'Producto no encontrado.' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado. Se requiere autenticación.' })
+  @ApiForbiddenResponse({ description: 'No tiene permisos para actualizar este producto.' })
+  @ApiBadRequestResponse({ description: 'Datos de entrada inválidos.' })
   async update(
-    @Request() req: any,
-    @Param('id', ParseUUIDPipe) id: string, 
-    @Body() updateProductDto: UpdateProductDto
-  ): Promise<{ data: ProductResponseDto }> {
-    const userId = req.user.userId;
-    await this.productService.update(id, updateProductDto, userId);
-    const updatedProduct = await this.productService.findOne(id);
+    @Request() req,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() updateProductDto: UpdateProductDto,
+  ) {
+    const product = await this.productService.findOne(id);
     
-    if (!updatedProduct) {
-      throw new NotFoundException(`No se pudo recuperar el producto actualizado con ID "${id}"`);
+    // Solo el propietario o un administrador pueden actualizar el producto
+    if (req.user.role !== Role.ADMIN && product.userId !== req.user.userId) {
+      throw new ForbiddenException('Solo puede actualizar sus propios productos');
     }
     
-    const productData = updatedProduct as any; // Usamos 'any' temporalmente para acceder a las propiedades
-    const productDto: ProductResponseDto = {
-      id: productData.id,
-      name: productData.name,
-      description: productData.description,
-      price: productData.price,
-      stock: productData.stock,
-      createdAt: productData.createdAt,
-      updatedAt: productData.updatedAt,
-      createdById: productData.createdById
-    };
-
-    // Solo agregar createdBy si existe
-    if (productData.createdBy) {
-      productDto.createdBy = {
-        id: productData.createdBy.id,
-        name: productData.createdBy.name || null,
-        email: productData.createdBy.email
-      };
-    }
-    
-    return { data: productDto };
+    return this.productService.update(id, updateProductDto);
   }
 
-  /**
-   * Elimina un producto
-   * @param id - ID del producto a eliminar
-   * @param req - Objeto de solicitud que contiene el token JWT
-   */
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ 
     summary: 'Eliminar un producto',
-    description: 'Elimina un producto del sistema. Solo el propietario puede eliminar el producto.'
+    description: 'Elimina un producto existente. Los usuarios solo pueden eliminar sus propios productos.'
   })
   @ApiParam({
     name: 'id',
-    description: 'ID único del producto a eliminar',
-    example: '123e4567-e89b-12d3-a456-426614174000'
+    required: true,
+    description: 'ID del producto a eliminar',
+    example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @ApiResponse({ 
-    status: HttpStatus.NO_CONTENT, 
-    description: 'Producto eliminado exitosamente' 
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'El producto ha sido eliminado exitosamente.',
   })
-  @ApiResponse({ 
-    status: HttpStatus.NOT_FOUND, 
-    description: 'No se encontró el producto con el ID especificado'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.FORBIDDEN, 
-    description: 'No tienes permiso para eliminar este producto'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.UNAUTHORIZED, 
-    description: 'No autorizado. Se requiere autenticación'
-  })
-  async remove(
-    @Request() req: any,
-    @Param('id', ParseUUIDPipe) id: string
-  ): Promise<void> {
-    const userId = req.user.userId;
-    await this.productService.remove(id, userId);
+  @ApiNotFoundResponse({ description: 'Producto no encontrado.' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado. Se requiere autenticación.' })
+  @ApiForbiddenResponse({ description: 'No tiene permisos para eliminar este producto.' })
+  async remove(@Request() req, @Param('id', new ParseUUIDPipe()) id: string) {
+    const product = await this.productService.findOne(id);
+    
+    // Solo el propietario o un administrador pueden eliminar el producto
+    if (req.user.role !== Role.ADMIN && product.userId !== req.user.userId) {
+      throw new ForbiddenException('Solo puede eliminar sus propios productos');
+    }
+    
+    return this.productService.remove(id);
   }
 }
