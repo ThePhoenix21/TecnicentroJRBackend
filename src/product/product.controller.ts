@@ -52,72 +52,12 @@ export class ProductController {
     description: 'El producto ha sido creado exitosamente.',
     type: Product,
   })
-<<<<<<< HEAD
   @ApiBadRequestResponse({ description: 'Datos de entrada inválidos.' })
   @ApiUnauthorizedResponse({ description: 'No autorizado. Se requiere autenticación.' })
   @ApiForbiddenResponse({ description: 'No tiene permisos para realizar esta acción.' })
   @ApiBody({ type: CreateProductDto })
   async create(@Request() req, @Body() createProductDto: CreateProductDto) {
     return this.productService.create(createProductDto, req.user.userId);
-=======
-  @ApiBody({ 
-    type: CreateProductDto,
-    description: 'Datos del producto a crear',
-    examples: {
-      ejemplo1: {
-        summary: 'Producto básico',
-        value: {
-          name: 'Laptop HP ProBook',
-          description: 'Laptop de 14 pulgadas con 8GB RAM y 256GB SSD',
-          price: 1200.99,
-          stock: 15
-        }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: HttpStatus.CREATED, 
-    description: 'Producto creado exitosamente',
-    type: ProductResponseDto
-  })
-  @ApiResponse({ 
-    status: HttpStatus.BAD_REQUEST, 
-    description: 'Datos de entrada inválidos'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.UNAUTHORIZED, 
-    description: 'No autorizado. Se requiere autenticación'
-  })
-  async create(
-    @Request() req: any,
-    @Body() createProductDto: CreateProductDto
-  ): Promise<{ data: ProductResponseDto }> {
-    const userId = req.user.id;
-    const product = await this.productService.create(createProductDto, userId);
-    const productWithUser = await this.productService.findOne(product.id);
-    
-    if (!productWithUser) {
-      throw new NotFoundException('No se pudo recuperar el producto creado');
-    }
-
-    const productDto: ProductResponseDto = {
-      id: productWithUser.id,
-      name: productWithUser.name,
-      description: productWithUser.description,
-      price: productWithUser.price,
-      stock: productWithUser.stock,
-      createdAt: productWithUser.createdAt,
-      updatedAt: productWithUser.updatedAt,
-      createdById: productWithUser.createdById,
-      createdBy: productWithUser.createdBy ? {
-        id: productWithUser.createdBy.id,
-        name: productWithUser.createdBy.name || null,
-        email: productWithUser.createdBy.email
-      } : undefined
-    };
-
-    return { data: productDto };
->>>>>>> 8e75ff631eda90bd5b313fc1263f145442fa7ec8
   }
 
   @Get()
@@ -274,21 +214,11 @@ export class ProductController {
   @ApiForbiddenResponse({ description: 'No tiene permisos para actualizar este producto.' })
   @ApiBadRequestResponse({ description: 'Datos de entrada inválidos.' })
   async update(
-<<<<<<< HEAD
     @Request() req,
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() updateProductDto: UpdateProductDto,
   ) {
     const product = await this.productService.findOne(id);
-=======
-    @Request() req: any,
-    @Param('id', ParseUUIDPipe) id: string, 
-    @Body() updateProductDto: UpdateProductDto
-  ): Promise<{ data: ProductResponseDto }> {
-    const userId = req.user.id;
-    await this.productService.update(id, updateProductDto, userId);
-    const updatedProduct = await this.productService.findOne(id);
->>>>>>> 8e75ff631eda90bd5b313fc1263f145442fa7ec8
     
     // Solo el propietario o un administrador pueden actualizar el producto
     if (req.user.role !== Role.ADMIN && product.userId !== req.user.userId) {
@@ -315,7 +245,6 @@ export class ProductController {
     status: HttpStatus.NO_CONTENT,
     description: 'El producto ha sido eliminado exitosamente.',
   })
-<<<<<<< HEAD
   @ApiNotFoundResponse({ description: 'Producto no encontrado.' })
   @ApiUnauthorizedResponse({ description: 'No autorizado. Se requiere autenticación.' })
   @ApiForbiddenResponse({ description: 'No tiene permisos para eliminar este producto.' })
@@ -328,25 +257,5 @@ export class ProductController {
     }
     
     return this.productService.remove(id);
-=======
-  @ApiResponse({ 
-    status: HttpStatus.NOT_FOUND, 
-    description: 'No se encontró el producto con el ID especificado'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.FORBIDDEN, 
-    description: 'No tienes permiso para eliminar este producto'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.UNAUTHORIZED, 
-    description: 'No autorizado. Se requiere autenticación'
-  })
-  async remove(
-    @Request() req: any,
-    @Param('id', ParseUUIDPipe) id: string
-  ): Promise<void> {
-    const userId = req.user.id;
-    await this.productService.remove(id, userId);
->>>>>>> 8e75ff631eda90bd5b313fc1263f145442fa7ec8
   }
 }

@@ -221,10 +221,10 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     // Crear token de verificación
-    /*const verifyToken = randomBytes(32).toString('hex');
+    const verifyToken = randomBytes(32).toString('hex');
     const verifyTokenExpires = new Date();
     verifyTokenExpires.setHours(verifyTokenExpires.getHours() + 24); // Expira en 24 horas
-    */
+
     try {
       // Crear usuario
       const userData: Prisma.UserCreateInput = {
@@ -237,6 +237,8 @@ export class AuthService {
         language,
         timezone,
         verified: true,
+        verifyToken,
+        verifyTokenExpires,
         role: Role.ADMIN,
         status: 'ACTIVE' as const,
       };
