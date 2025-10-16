@@ -66,16 +66,28 @@ export class ProductController {
     return this.productService.create(userId, createProductDto);
   }
 
-  @Get('findAll')
+  @Get('my-products')
   @Roles(Role.ADMIN, Role.USER)
-  @ApiOperation({ summary: 'Obtener todos los productos del usuario' })
+  @ApiOperation({ summary: 'Obtener los productos del usuario autenticado' })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Lista de productos obtenida exitosamente',
+    description: 'Lista de productos del usuario obtenida exitosamente',
     type: [Product],
   })
-  async findAll(@Req() req: any): Promise<Product[]> {
-    return this.productService.findAll(req.user.id);
+  async findMyProducts(@Req() req: any): Promise<Product[]> {
+    return this.productService.findAll(req.user.userId);
+  }
+
+  @Get('all')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ summary: 'Obtener todos los productos disponibles' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Lista de todos los productos obtenida exitosamente',
+    type: [Product],
+  })
+  async findAllProducts(): Promise<Product[]> {
+    return this.productService.findAllProducts();
   }
 
   @Get('findOne/:id')
@@ -95,7 +107,7 @@ export class ProductController {
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<Product> {
-    return this.productService.findOne(req.user.id, id);
+    return this.productService.findOne(req.user.userId, id);
   }
 
   @Patch('update/:id')
@@ -117,7 +129,7 @@ export class ProductController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateProductDto: UpdateProductDto,
   ): Promise<Product> {
-    return this.productService.update(req.user.id, id, updateProductDto);
+    return this.productService.update(req.user.userId, id, updateProductDto);
   }
 
   @Delete('remove/:id')
@@ -137,6 +149,6 @@ export class ProductController {
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    return this.productService.remove(req.user.id, id);
+    return this.productService.remove(req.user.userId, id);
   }
 }

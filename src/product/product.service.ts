@@ -49,9 +49,41 @@ export class ProductService {
   }
 
   async findAll(userId: string): Promise<Product[]> {
+    if (!userId) {
+      throw new Error('Se requiere un ID de usuario válido para listar productos');
+    }
+    
     return this.prisma.product.findMany({
-      where: { userId },
+      where: { 
+        userId: userId 
+      },
+      orderBy: { 
+        createdAt: 'desc' 
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+  }
+
+  async findAllProducts(): Promise<Product[]> {
+    return this.prisma.product.findMany({
       orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     });
   }
 

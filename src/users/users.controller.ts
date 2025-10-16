@@ -347,6 +347,7 @@ export class UsersController {
       },
     },
   })
+  @UseGuards(JwtAuthGuard)
   @ApiResponse({
     status: 200,
     description: 'Contraseña actualizada exitosamente',
@@ -381,11 +382,12 @@ export class UsersController {
       }
     }
   })
+  @Put('change-password')
   async changePassword(
     @Body() changePasswordDto: ChangePasswordDto,
     @Request() req: any
   ) {
-    const userId = req.user.id;
+    const userId = req.user.userId;    
     this.logger.log(`Iniciando cambio de contraseña para el usuario ID: ${userId}`);
 
     try {

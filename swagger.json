@@ -1165,13 +1165,13 @@
         ]
       }
     },
-    "/products/findAll": {
+    "/products/my-products": {
       "get": {
-        "operationId": "ProductController_findAll",
+        "operationId": "ProductController_findMyProducts",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Lista de productos obtenida exitosamente",
+            "description": "Lista de productos del usuario obtenida exitosamente",
             "content": {
               "application/json": {
                 "schema": {
@@ -1195,7 +1195,43 @@
             "JWT": []
           }
         ],
-        "summary": "Obtener todos los productos del usuario",
+        "summary": "Obtener los productos del usuario autenticado",
+        "tags": [
+          "Productos"
+        ]
+      }
+    },
+    "/products/all": {
+      "get": {
+        "operationId": "ProductController_findAllProducts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Lista de todos los productos obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Product"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado"
+          },
+          "403": {
+            "description": "No tiene permisos"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener todos los productos disponibles",
         "tags": [
           "Productos"
         ]
