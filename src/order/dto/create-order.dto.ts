@@ -17,7 +17,7 @@ import {
   ValidatorConstraintInterface
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ServiceType } from '@prisma/client';
+import { ServiceType, SaleStatus } from '@prisma/client';
 
 @ValidatorConstraint({ name: 'clientInfoOrId', async: false })
 class ClientInfoOrIdConstraint implements ValidatorConstraintInterface {
@@ -147,17 +147,23 @@ export class CreateOrderDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => OrderProductDto)
-  products: OrderProductDto[];
+  @IsOptional()
+  products: OrderProductDto[] = [];
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ServiceDto)
-  services: ServiceDto[];
+  @IsOptional()
+  services: ServiceDto[] = [];
 
   @IsString()
   @IsUUID()
   @IsOptional() // Hacemos que userId sea opcional en el DTO, se asignará desde el token
   userId?: string;
+
+  @IsEnum(SaleStatus)
+  @IsOptional()
+  status?: SaleStatus;
 
   @ClientInfoOrId({
     message: 'Se requiere el ID del cliente o la información del cliente',

@@ -226,25 +226,32 @@ export class UsersController {
     @Request() req: any
   ) {
     try {
-      if (!req.user || !req.user.id) {
-        throw new UnauthorizedException('Usuario no autenticado');
+      this.logger.debug('Datos del usuario autenticado:', JSON.stringify(req.user));
+      
+      // Obtener el ID del usuario de diferentes formas posibles del token JWT
+      const userId = req.user?.id || req.user?.sub || req.user?.userId;
+      
+      if (!userId) {
+        this.logger.error('No se pudo obtener el ID del usuario del token JWT');
+        throw new UnauthorizedException('No se pudo autenticar al usuario');
       }
 
-      // Crear un objeto de solicitud modificado que incluye el ID del usuario
+      // Asegurarse de que el rol esté definido
+      const userRole = req.user?.role || Role.USER;
+
+      // Crear un objeto de solicitud modificado que incluya la información necesaria
       const modifiedReq = {
         ...req,
-        body: {
-          ...req.body,
-          userId: req.user.id // Asegurarse de que el userId esté en el body
-        },
         user: {
           ...req.user,
-          sub: req.user.id,
-          role: req.user.role
+          id: userId,
+          sub: userId,  // Asegurar que 'sub' esté definido
+          role: userRole
         }
       };
       
-      return await this.uploadAvatar(file, req.user.id, modifiedReq);
+      // Llamar a uploadAvatar con el ID del usuario autenticado
+      return await this.uploadAvatar(file, userId, modifiedReq);
     } catch (error) {
       this.logger.error('Error en uploadMyAvatar:', error);
       throw error;

@@ -386,8 +386,14 @@ export class AuthController {
     @Body() { email, currentPassword, newPassword }: AuthChangePasswordDto,
     @Req() req: any,
   ) {
-    const userId = req.user.id;
+    // Obtener el ID del usuario del token JWT
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
     this.logger.log(`Iniciando cambio de contraseña para el usuario ID: ${userId}`);
+
+    if (!userId) {
+      this.logger.error('No se pudo obtener el ID del usuario del token JWT');
+      throw new UnauthorizedException('No se pudo autenticar al usuario');
+    }
 
     try {
       // Obtener el usuario actual

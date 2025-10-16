@@ -20,16 +20,32 @@ export class OrderService {
           throw new BadRequestException('Se requiere el ID de usuario para crear un cliente');
         }
         
-        const client = await prisma.client.create({
-          data: {
-            ...clientInfo,
-            userId: userId,
+        // Verificar si ya existe un cliente con el mismo DNI o RUC
+        const existingClient = await prisma.client.findFirst({
+          where: {
+            OR: [
+              { dni: clientInfo.dni },
+              { ruc: clientInfo.ruc }
+            ].filter(condition => Object.values(condition)[0] !== undefined), // Solo incluir condiciones definidas
+            userId: userId
           },
-          select: {
-            id: true
-          }
+          select: { id: true }
         });
-        clientIdToUse = client.id;
+
+        if (existingClient) {
+          // Usar el cliente existente
+          clientIdToUse = existingClient.id;
+        } else {
+          // Crear un nuevo cliente solo si no existe
+          const newClient = await prisma.client.create({
+            data: {
+              ...clientInfo,
+              userId: userId,
+            },
+            select: { id: true }
+          });
+          clientIdToUse = newClient.id;
+        }
       } else if (!clientId) {
         throw new BadRequestException('Se requiere el ID del cliente o la información del cliente');
       }
@@ -94,10 +110,16 @@ export class OrderService {
       
       totalAmount += servicesData.reduce((sum, service) => sum + service.price, 0);
 
-      // 4. Crear la orden
+      // 4. Determinar el estado de la orden
+      // Si hay servicios, el estado es PENDING, de lo contrario es COMPLETED
+      const orderStatus = createOrderDto.services && createOrderDto.services.length > 0 
+        ? SaleStatus.PENDING 
+        : SaleStatus.COMPLETED;
+
+      // 5. Crear la orden
       const orderData: Prisma.OrderCreateInput = {
         totalAmount,
-        status: SaleStatus.PENDING,
+        status: orderStatus,
         user: {
           connect: { id: userId }
         },

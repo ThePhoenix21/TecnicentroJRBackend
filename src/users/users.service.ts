@@ -130,8 +130,7 @@ export class UsersService {
     }
 
     private generateToken(): string {
-        return Math.random().toString(36).substring(2, 15) + 
-               Math.random().toString(36).substring(2, 15);
+        return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     }
 
     async updatePasswordResetToken(userId: string, token: string, expires: Date) {
@@ -200,10 +199,10 @@ export class UsersService {
         }
 
         // 4. Validar fortaleza de la nueva contraseña
-        const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]).{6,}$/;
+        const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?*]).{6,}$/;
         if (!passwordRegex.test(newPassword)) {
             throw new BadRequestException(
-                'La nueva contraseña debe tener al menos 6 caracteres, una mayúscula, un número y un carácter especial',
+                'La nueva contraseña debe tener al menos 6 caracteres, una mayúscula, un número y un carácter especial (puede ser: !@#$%^&*()_+-=[]{};\':"\\|,.<>/?*)',
             );
         }
 
