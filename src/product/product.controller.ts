@@ -1,0 +1,142 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Req,
+  HttpStatus,
+  HttpCode,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiParam,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
+import { ProductService } from './product.service';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { Product } from './entities/product.entity';
+
+@ApiTags('Productos')
+@ApiBearerAuth('JWT')
+@Controller('products')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'No autorizado' })
+@ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No tiene permisos' })
+export class ProductController {
+  constructor(private readonly productService: ProductService) {}
+
+  @Post('create')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ summary: 'Crear un nuevo producto' })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'El producto ha sido creado exitosamente',
+    type: Product,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Datos de entrada inválidos',
+  })
+  async create(
+    @Req() req: any,
+    @Body() createProductDto: CreateProductDto,
+  ): Promise<Product> {
+    console.log('Usuario en la solicitud:', req.user);
+    const userId = req.user?.userId || req.user?.id;
+    
+    if (!userId) {
+      console.error('No se pudo obtener el ID del usuario. Objeto user completo:', req.user);
+      throw new Error('No se pudo obtener el ID del usuario del token JWT');
+    }
+    
+    console.log('ID de usuario que se usará:', userId);
+    return this.productService.create(userId, createProductDto);
+  }
+
+  @Get('findAll')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ summary: 'Obtener todos los productos del usuario' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Lista de productos obtenida exitosamente',
+    type: [Product],
+  })
+  async findAll(@Req() req: any): Promise<Product[]> {
+    return this.productService.findAll(req.user.id);
+  }
+
+  @Get('findOne/:id')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ summary: 'Obtener un producto por ID' })
+  @ApiParam({ name: 'id', description: 'ID del producto', format: 'uuid' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Producto encontrado',
+    type: Product,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Producto no encontrado',
+  })
+  async findOne(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Product> {
+    return this.productService.findOne(req.user.id, id);
+  }
+
+  @Patch('update/:id')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ summary: 'Actualizar un producto' })
+  @ApiParam({ name: 'id', description: 'ID del producto a actualizar', format: 'uuid' })
+  @ApiBody({ type: UpdateProductDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Producto actualizado exitosamente',
+    type: Product,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Producto no encontrado',
+  })
+  async update(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateProductDto: UpdateProductDto,
+  ): Promise<Product> {
+    return this.productService.update(req.user.id, id, updateProductDto);
+  }
+
+  @Delete('remove/:id')
+  @Roles(Role.ADMIN, Role.USER)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar un producto' })
+  @ApiParam({ name: 'id', description: 'ID del producto a eliminar', format: 'uuid' })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'Producto eliminado exitosamente',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Producto no encontrado',
+  })
+  async remove(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    return this.productService.remove(req.user.id, id);
+  }
+}

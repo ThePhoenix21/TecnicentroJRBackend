@@ -50,6 +50,7 @@ model User {
   products                  Product[]
   orders                    Order[]  
   refreshTokens             RefreshToken[]
+  clients                   Client[]
 }
  
 model Product {
@@ -95,8 +96,11 @@ model Client {
   updatedAt   DateTime    @updatedAt
   
   // Clave foránea
+  userId      String
   
   // Relaciones
+  user        User            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orders      Order[]
 }
 
 model Order {
@@ -105,21 +109,16 @@ model Order {
   status      SaleStatus      @default(COMPLETED)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
-  name        String?
-  dni         String?
-  phone       String?
-  address     String?
-  ruc         String?
 
   //clave foranea
-  userId      String  
+  userId      String
+  clientId    String
   
   // Relaciones
   user        User            @relation(fields: [userId], references: [id], onDelete: SetNull)  
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: SetNull)
   orderProducts    OrderProduct[]
-  services    Service[]
-  
-  @@map("orders")
+  services    Service[]  
 }
 
 model Service {

@@ -710,55 +710,291 @@
         ]
       }
     },
+    "/clientes": {
+      "post": {
+        "description": "Crea un nuevo registro de cliente en el sistema",
+        "operationId": "ClientController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateClientDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "El cliente ha sido creado exitosamente"
+          },
+          "400": {
+            "description": "Datos de entrada inválidos"
+          },
+          "409": {
+            "description": "El cliente ya existe (email, RUC o DNI duplicado)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear un nuevo cliente",
+        "tags": [
+          "clientes"
+        ]
+      },
+      "get": {
+        "description": "Obtiene una lista paginada de todos los clientes. Solo para ADMIN",
+        "operationId": "ClientController_findAll",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Límite de resultados por página (por defecto: 10)",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Número de página (por defecto: 1)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de clientes obtenida exitosamente"
+          },
+          "403": {
+            "description": "No autorizado"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Obtener todos los clientes",
+        "tags": [
+          "clientes"
+        ]
+      }
+    },
+    "/clientes/{id}": {
+      "get": {
+        "description": "Obtiene los detalles de un cliente específico. Los usuarios solo pueden ver su propio perfil",
+        "operationId": "ClientController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del cliente (UUID)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cliente encontrado"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "404": {
+            "description": "Cliente no encontrado"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Obtener un cliente por ID",
+        "tags": [
+          "clientes"
+        ]
+      },
+      "patch": {
+        "description": "Actualiza los datos de un cliente existente. Los usuarios solo pueden actualizar su propio perfil",
+        "operationId": "ClientController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del cliente (UUID)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClientDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cliente actualizado exitosamente"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "404": {
+            "description": "Cliente no encontrado"
+          },
+          "409": {
+            "description": "Conflicto con datos únicos (email, RUC o DNI duplicado)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Actualizar un cliente",
+        "tags": [
+          "clientes"
+        ]
+      },
+      "delete": {
+        "description": "Elimina un cliente del sistema. Solo para ADMIN",
+        "operationId": "ClientController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del cliente (UUID)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cliente eliminado exitosamente"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "404": {
+            "description": "Cliente no encontrado"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Eliminar un cliente",
+        "tags": [
+          "clientes"
+        ]
+      }
+    },
+    "/clientes/search": {
+      "get": {
+        "description": "Busca clientes por nombre, email o teléfono. Solo para ADMIN",
+        "operationId": "ClientController_search",
+        "parameters": [
+          {
+            "name": "query",
+            "required": true,
+            "in": "query",
+            "description": "Término de búsqueda",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultados de la búsqueda"
+          },
+          "403": {
+            "description": "No autorizado"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Buscar clientes",
+        "tags": [
+          "clientes"
+        ]
+      }
+    },
     "/orders/create": {
       "post": {
-        "description": "Crea una nueva orden en el sistema. Se requiere autenticación y rol de ADMIN o USER.\n    \n    La orden debe incluir:\n    - Nombre del cliente (obligatorio)\n    - ID del usuario (opcional, si no se proporciona se usa el ID del usuario autenticado)\n    - Monto total de la orden (obligatorio)\n    \n    La orden puede incluir opcionalmente:\n    - DNI del cliente\n    - Teléfono del cliente\n    - Dirección del cliente\n    - RUC del cliente\n    - Lista de productos\n    - Lista de servicios\n    \n    El estado de la orden se establece automáticamente como 'PENDING' si no se especifica.",
+        "description": "Crea una nueva orden con productos y servicios. Se puede crear un nuevo cliente o usar uno existente.",
         "operationId": "OrderController_create",
         "parameters": [],
         "requestBody": {
           "required": true,
-          "description": "Datos de la orden a crear. El nombre del cliente es obligatorio.",
+          "description": "Datos de la orden a crear",
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateOrderDto"
               },
               "examples": {
-                "Orden básica": {
-                  "summary": "Orden con solo los campos obligatorios",
+                "Orden con cliente nuevo": {
                   "value": {
-                    "name": "Juan Pérez",
-                    "totalAmount": 299.99,
-                    "userId": "550e8400-e29b-41d4-a716-446655440000"
-                  }
-                },
-                "Orden completa": {
-                  "summary": "Orden con todos los campos opcionales",
-                  "value": {
-                    "name": "María García",
-                    "dni": "87654321",
-                    "phone": "+51987654321",
-                    "address": "Calle Los Pinos 456",
-                    "ruc": "20123456789",
-                    "totalAmount": 899.97,
-                    "status": "PENDING",
-                    "userId": "550e8400-e29b-41d4-a716-446655440000",
+                    "clientInfo": {
+                      "name": "Juan Pérez",
+                      "email": "juan@example.com",
+                      "phone": "123456789",
+                      "address": "Calle Falsa 123",
+                      "dni": "12345678"
+                    },
                     "products": [
                       {
                         "productId": "550e8400-e29b-41d4-a716-446655440000",
-                        "quantity": 2,
-                        "price": 199.99
+                        "quantity": 2
                       }
                     ],
                     "services": [
                       {
+                        "name": "Reparación de pantalla",
+                        "description": "Cambio de pantalla rota",
+                        "price": 150,
                         "type": "REPAIR",
-                        "name": "Cambio de pantalla",
-                        "description": "Cambio de pantalla rota por una nueva",
-                        "price": 199.99,
-                        "quantity": 1
+                        "photoUrls": [
+                          "url1.jpg",
+                          "url2.jpg"
+                        ]
                       }
                     ]
+                  }
+                },
+                "Orden con cliente existente": {
+                  "value": {
+                    "clientId": "123e4567-e89b-12d3-a456-426614174000",
+                    "products": [
+                      {
+                        "productId": "550e8400-e29b-41d4-a716-446655440000",
+                        "quantity": 1
+                      }
+                    ],
+                    "services": []
                   }
                 }
               }
@@ -771,82 +1007,22 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateOrderResponseDto"
+                  "$ref": "#/components/schemas/Order"
                 }
               }
             }
           },
           "400": {
-            "description": "Datos de entrada inválidos o faltantes",
-            "content": {
-              "application/json": {
-                "examples": {
-                  "Nombre requerido": {
-                    "value": {
-                      "statusCode": 400,
-                      "message": "El nombre del cliente es requerido",
-                      "error": "Bad Request"
-                    }
-                  },
-                  "Monto total requerido": {
-                    "value": {
-                      "statusCode": 400,
-                      "message": "El monto total es requerido",
-                      "error": "Bad Request"
-                    }
-                  },
-                  "Producto inválido": {
-                    "value": {
-                      "statusCode": 400,
-                      "message": "Uno o más productos no existen",
-                      "error": "Bad Request"
-                    }
-                  },
-                  "Servicio inválido": {
-                    "value": {
-                      "statusCode": 400,
-                      "message": "Error al procesar los servicios",
-                      "error": "Bad Request"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Datos de entrada inválidos o insuficiente stock"
           },
           "401": {
-            "description": "No autorizado - Se requiere token de autenticación",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 401,
-                    "message": "Unauthorized"
-                  }
-                }
-              }
-            }
+            "description": "Se requiere un token JWT válido para acceder a este recurso"
           },
           "403": {
-            "description": "Acceso denegado - No tiene los permisos necesarios",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 403,
-                    "message": "Forbidden resource",
-                    "error": "Forbidden"
-                  }
-                }
-              }
-            }
+            "description": "El usuario no tiene los permisos necesarios para realizar esta acción"
           },
-          "500": {
-            "description": "Error interno del servidor"
-          },
-          "503": {
-            "description": "Servicio no disponible"
+          "404": {
+            "description": "Alguno de los productos no existe o el cliente no fue encontrado"
           }
         },
         "security": [
@@ -856,13 +1032,12 @@
         ],
         "summary": "Crear una nueva orden",
         "tags": [
-          "orders"
+          "Órdenes"
         ]
       }
     },
-    "/orders/findAll": {
+    "/orders/all": {
       "get": {
-        "description": "Obtiene un listado de todas las órdenes del sistema. Se requiere autenticación y rol de ADMIN o USER.",
         "operationId": "OrderController_findAll",
         "parameters": [],
         "responses": {
@@ -873,46 +1048,17 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/CreateOrderResponseDto"
+                    "$ref": "#/components/schemas/Order"
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "No autorizado - Se requiere token de autenticación",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 401,
-                    "message": "Unauthorized"
-                  }
-                }
-              }
-            }
+            "description": "Se requiere un token JWT válido para acceder a este recurso"
           },
           "403": {
-            "description": "Acceso denegado - No tiene los permisos necesarios",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 403,
-                    "message": "Forbidden resource",
-                    "error": "Forbidden"
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error interno del servidor"
-          },
-          "503": {
-            "description": "Servicio no disponible"
+            "description": "El usuario no tiene los permisos necesarios para realizar esta acción"
           }
         },
         "security": [
@@ -920,88 +1066,46 @@
             "JWT": []
           }
         ],
-        "summary": "Obtener todas las órdenes",
+        "summary": "Obtener todas las órdenes del usuario",
         "tags": [
-          "orders"
+          "Órdenes"
         ]
       }
     },
-    "/orders/findOne/{id}": {
+    "/orders/get/{id}": {
       "get": {
-        "description": "Obtiene los detalles de una orden específica por su ID. Se requiere autenticación y rol de ADMIN o USER.",
         "operationId": "OrderController_findOne",
         "parameters": [
           {
             "name": "id",
             "required": true,
             "in": "path",
-            "description": "ID único de la orden (UUID)",
+            "description": "ID de la orden",
             "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "format": "uuid",
               "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Orden encontrada exitosamente",
+            "description": "Orden encontrada",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateOrderResponseDto"
+                  "$ref": "#/components/schemas/Order"
                 }
               }
             }
           },
           "401": {
-            "description": "No autorizado - Se requiere token de autenticación",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 401,
-                    "message": "Unauthorized"
-                  }
-                }
-              }
-            }
+            "description": "Se requiere un token JWT válido para acceder a este recurso"
           },
           "403": {
-            "description": "Acceso denegado - No tiene los permisos necesarios",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 403,
-                    "message": "Forbidden resource",
-                    "error": "Forbidden"
-                  }
-                }
-              }
-            }
+            "description": "El usuario no tiene los permisos necesarios para realizar esta acción"
           },
           "404": {
-            "description": "Orden no encontrada",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 404,
-                    "message": "Order not found",
-                    "error": "Not Found"
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error interno del servidor"
-          },
-          "503": {
-            "description": "Servicio no disponible"
+            "description": "Orden no encontrada"
           }
         },
         "security": [
@@ -1011,352 +1115,7 @@
         ],
         "summary": "Obtener una orden por ID",
         "tags": [
-          "orders"
-        ]
-      }
-    },
-    "/orders/update/{id}": {
-      "patch": {
-        "description": "Actualiza los datos de una orden existente. Se requiere autenticación y rol de ADMIN.",
-        "operationId": "OrderController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "ID único de la orden a actualizar (UUID)",
-            "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "Datos de la orden a actualizar",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateOrderDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Orden actualizada exitosamente",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UpdateOrderDto"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Datos de entrada inválidos",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 400,
-                    "message": "Datos de entrada inválidos",
-                    "error": "Bad Request"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No autorizado - Se requiere token de autenticación",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 401,
-                    "message": "Unauthorized"
-                  }
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Acceso denegado - Se requieren permisos de administrador",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 403,
-                    "message": "Forbidden resource",
-                    "error": "Forbidden"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Orden no encontrada",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 404,
-                    "message": "Order not found",
-                    "error": "Not Found"
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error interno del servidor"
-          },
-          "503": {
-            "description": "Servicio no disponible"
-          }
-        },
-        "security": [
-          {
-            "JWT": []
-          }
-        ],
-        "summary": "Actualizar una orden",
-        "tags": [
-          "orders"
-        ]
-      }
-    },
-    "/orders/remove/{id}": {
-      "delete": {
-        "description": "Elimina permanentemente una orden del sistema. Se requiere autenticación y rol de ADMIN.",
-        "operationId": "OrderController_remove",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "ID único de la orden a eliminar (UUID)",
-            "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Orden eliminada exitosamente",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "message": "Order deleted successfully",
-                    "id": "123e4567-e89b-12d3-a456-426614174000"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No autorizado - Se requiere token de autenticación",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 401,
-                    "message": "Unauthorized"
-                  }
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Acceso denegado - Se requieren permisos de administrador",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 403,
-                    "message": "Forbidden resource",
-                    "error": "Forbidden"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Orden no encontrada",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "example": {
-                    "statusCode": 404,
-                    "message": "Order not found",
-                    "error": "Not Found"
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error interno del servidor"
-          },
-          "503": {
-            "description": "Servicio no disponible"
-          }
-        },
-        "security": [
-          {
-            "JWT": []
-          }
-        ],
-        "summary": "Eliminar una orden",
-        "tags": [
-          "orders"
-        ]
-      }
-    },
-    "/services": {
-      "post": {
-        "operationId": "ServiceController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateServiceWithFilesDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "El servicio ha sido creado exitosamente."
-          },
-          "400": {
-            "description": "Solicitud incorrecta."
-          },
-          "401": {
-            "description": "No autorizado."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Crear un nuevo servicio",
-        "tags": [
-          "servicios"
-        ]
-      },
-      "get": {
-        "operationId": "ServiceController_findAll",
-        "parameters": [
-          {
-            "name": "orderId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Lista de servicios obtenida exitosamente."
-          },
-          "401": {
-            "description": "No autorizado."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Obtener todos los servicios",
-        "tags": [
-          "servicios"
-        ]
-      }
-    },
-    "/services/{id}": {
-      "get": {
-        "operationId": "ServiceController_findOne",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Servicio encontrado."
-          },
-          "401": {
-            "description": "No autorizado."
-          },
-          "404": {
-            "description": "Servicio no encontrado."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Obtener un servicio por ID",
-        "tags": [
-          "servicios"
-        ]
-      },
-      "delete": {
-        "operationId": "ServiceController_remove",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Servicio eliminado exitosamente."
-          },
-          "401": {
-            "description": "No autorizado."
-          },
-          "403": {
-            "description": "No tiene permisos para realizar esta acción."
-          },
-          "404": {
-            "description": "Servicio no encontrado."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Eliminar un servicio",
-        "tags": [
-          "servicios"
+          "Órdenes"
         ]
       }
     },
@@ -1376,7 +1135,7 @@
         },
         "responses": {
           "201": {
-            "description": "El producto ha sido creado exitosamente.",
+            "description": "El producto ha sido creado exitosamente",
             "content": {
               "application/json": {
                 "schema": {
@@ -1386,18 +1145,18 @@
             }
           },
           "400": {
-            "description": "Datos de entrada inválidos."
+            "description": "Datos de entrada inválidos"
           },
           "401": {
-            "description": "No autorizado. Token inválido o expirado. Por favor, inicie sesión nuevamente."
+            "description": "No autorizado"
           },
           "403": {
-            "description": "No tiene permisos para realizar esta acción. Se requiere rol de ADMIN o USER."
+            "description": "No tiene permisos"
           }
         },
         "security": [
           {
-            "bearer": []
+            "JWT": []
           }
         ],
         "summary": "Crear un nuevo producto",
@@ -1406,45 +1165,13 @@
         ]
       }
     },
-    "/products/all": {
+    "/products/findAll": {
       "get": {
-        "description": "Los usuarios solo ven sus productos, los administradores ven todos.",
         "operationId": "ProductController_findAll",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": false,
-            "in": "query",
-            "description": "Filtrar por ID de usuario (solo administradores)",
-            "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "description": "Límite de resultados por página",
-            "schema": {
-              "example": 10,
-              "type": "number"
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "description": "Número de página",
-            "schema": {
-              "example": 1,
-              "type": "number"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
-            "description": "Lista de productos obtenida exitosamente.",
+            "description": "Lista de productos obtenida exitosamente",
             "content": {
               "application/json": {
                 "schema": {
@@ -1457,97 +1184,25 @@
             }
           },
           "401": {
-            "description": "No autorizado. Se requiere autenticación."
+            "description": "No autorizado"
           },
           "403": {
-            "description": "No tiene permisos para ver estos recursos."
+            "description": "No tiene permisos"
           }
         },
         "security": [
           {
-            "bearer": []
+            "JWT": []
           }
         ],
-        "summary": "Obtener todos los productos",
+        "summary": "Obtener todos los productos del usuario",
         "tags": [
           "Productos"
         ]
       }
     },
-    "/products/user/{userId}": {
+    "/products/findOne/{id}": {
       "get": {
-        "description": "Obtiene los productos de un usuario específico. Los usuarios solo pueden ver sus propios productos.",
-        "operationId": "ProductController_findByUser",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "path",
-            "description": "ID del usuario",
-            "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "description": "Límite de resultados por página",
-            "schema": {
-              "example": 10,
-              "type": "number"
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "description": "Número de página",
-            "schema": {
-              "example": 1,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Lista de productos del usuario obtenida exitosamente.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Product"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No autorizado. Se requiere autenticación."
-          },
-          "403": {
-            "description": "No tiene permisos para ver estos recursos."
-          },
-          "404": {
-            "description": "Usuario no encontrado."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Obtener productos por usuario",
-        "tags": [
-          "Productos"
-        ]
-      }
-    },
-    "/products/{id}": {
-      "get": {
-        "description": "Obtiene un producto por su ID. Los usuarios solo pueden ver sus propios productos.",
         "operationId": "ProductController_findOne",
         "parameters": [
           {
@@ -1556,14 +1211,14 @@
             "in": "path",
             "description": "ID del producto",
             "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "format": "uuid",
               "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Producto encontrado exitosamente.",
+            "description": "Producto encontrado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1573,27 +1228,28 @@
             }
           },
           "401": {
-            "description": "No autorizado. Se requiere autenticación."
+            "description": "No autorizado"
           },
           "403": {
-            "description": "No tiene permisos para ver este recurso."
+            "description": "No tiene permisos"
           },
           "404": {
-            "description": "Producto no encontrado."
+            "description": "Producto no encontrado"
           }
         },
         "security": [
           {
-            "bearer": []
+            "JWT": []
           }
         ],
         "summary": "Obtener un producto por ID",
         "tags": [
           "Productos"
         ]
-      },
+      }
+    },
+    "/products/update/{id}": {
       "patch": {
-        "description": "Actualiza un producto existente. Los usuarios solo pueden actualizar sus propios productos.",
         "operationId": "ProductController_update",
         "parameters": [
           {
@@ -1602,7 +1258,7 @@
             "in": "path",
             "description": "ID del producto a actualizar",
             "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -1619,7 +1275,7 @@
         },
         "responses": {
           "200": {
-            "description": "El producto ha sido actualizado exitosamente.",
+            "description": "Producto actualizado exitosamente",
             "content": {
               "application/json": {
                 "schema": {
@@ -1628,31 +1284,29 @@
               }
             }
           },
-          "400": {
-            "description": "Datos de entrada inválidos."
-          },
           "401": {
-            "description": "No autorizado. Se requiere autenticación."
+            "description": "No autorizado"
           },
           "403": {
-            "description": "No tiene permisos para actualizar este producto."
+            "description": "No tiene permisos"
           },
           "404": {
-            "description": "Producto no encontrado."
+            "description": "Producto no encontrado"
           }
         },
         "security": [
           {
-            "bearer": []
+            "JWT": []
           }
         ],
         "summary": "Actualizar un producto",
         "tags": [
           "Productos"
         ]
-      },
+      }
+    },
+    "/products/remove/{id}": {
       "delete": {
-        "description": "Elimina un producto existente. Los usuarios solo pueden eliminar sus propios productos.",
         "operationId": "ProductController_remove",
         "parameters": [
           {
@@ -1661,6 +1315,339 @@
             "in": "path",
             "description": "ID del producto a eliminar",
             "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Producto eliminado exitosamente"
+          },
+          "401": {
+            "description": "No autorizado"
+          },
+          "403": {
+            "description": "No tiene permisos"
+          },
+          "404": {
+            "description": "Producto no encontrado"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Eliminar un producto",
+        "tags": [
+          "Productos"
+        ]
+      }
+    },
+    "/services/create": {
+      "post": {
+        "description": "Permite a un administrador registrar un nuevo servicio en el sistema con imágenes opcionales.",
+        "operationId": "ServiceController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "status",
+                  "name",
+                  "price",
+                  "orderId"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "REPAIR",
+                      "WARRANTY"
+                    ],
+                    "example": "REPAIR"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "IN_PROGRESS",
+                      "COMPLETED",
+                      "DELIVERED",
+                      "PAID"
+                    ],
+                    "example": "IN_PROGRESS"
+                  },
+                  "name": {
+                    "type": "string",
+                    "example": "Reparación de motor"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Revisión y reparación completa del motor"
+                  },
+                  "price": {
+                    "type": "number",
+                    "example": 250
+                  },
+                  "orderId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "123e4567-e89b-12d3-a456-426614174000"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "Archivos de imagen (máx. 5, 5MB cada uno)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "El servicio ha sido creado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Service"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos o faltantes"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para realizar esta acción"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Crear un nuevo servicio",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
+    "/services/findAll": {
+      "get": {
+        "description": "Obtiene una lista paginada de servicios. Puede filtrarse por estado y tipo.",
+        "operationId": "ServiceController_findAll",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar servicios por estado",
+            "schema": {
+              "enum": [
+                "IN_PROGRESS",
+                "COMPLETED",
+                "DELIVERED",
+                "PAID"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar servicios por tipo",
+            "schema": {
+              "enum": [
+                "REPAIR",
+                "WARRANTY"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de servicios obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Service"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener lista de servicios",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
+    "/services/findOne/{id}": {
+      "get": {
+        "description": "Obtiene los detalles completos de un servicio específico mediante su ID.",
+        "operationId": "ServiceController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del servicio (UUID)",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Servicio encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Service"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "404": {
+            "description": "No se encontró ningún servicio con el ID proporcionado"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener servicio por ID",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
+    "/services/update/{id}": {
+      "patch": {
+        "description": "Actualiza los datos de un servicio existente. Solo actualiza los campos proporcionados.",
+        "operationId": "ServiceController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del servicio a actualizar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Campos del servicio a actualizar",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateServiceDto"
+              },
+              "examples": {
+                "actualizarEstado": {
+                  "summary": "Actualizar estado",
+                  "value": {
+                    "status": "COMPLETED"
+                  }
+                },
+                "actualizarPrecio": {
+                  "summary": "Actualizar precio",
+                  "value": {
+                    "price": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Servicio actualizado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Service"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación"
+          },
+          "403": {
+            "description": "No tiene permisos para realizar esta acción"
+          },
+          "404": {
+            "description": "No se encontró el servicio especificado"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Actualizar un servicio",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
+    "/services/remove/{id}": {
+      "delete": {
+        "description": "Elimina permanentemente un servicio del sistema. Esta acción no se puede deshacer.",
+        "operationId": "ServiceController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del servicio a eliminar",
+            "schema": {
               "example": "123e4567-e89b-12d3-a456-426614174000",
               "type": "string"
             }
@@ -1668,26 +1655,32 @@
         ],
         "responses": {
           "204": {
-            "description": "El producto ha sido eliminado exitosamente."
+            "description": "Servicio eliminado exitosamente"
           },
           "401": {
-            "description": "No autorizado. Se requiere autenticación."
+            "description": "No autorizado. Se requiere autenticación"
           },
           "403": {
-            "description": "No tiene permisos para eliminar este producto."
+            "description": "No tiene permisos para realizar esta acción"
           },
           "404": {
-            "description": "Producto no encontrado."
+            "description": "No se encontró el servicio especificado"
+          },
+          "409": {
+            "description": "No se puede eliminar el servicio porque tiene registros asociados"
+          },
+          "500": {
+            "description": "Error interno del servidor"
           }
         },
         "security": [
           {
-            "bearer": []
+            "JWT": []
           }
         ],
-        "summary": "Eliminar un producto",
+        "summary": "Eliminar un servicio",
         "tags": [
-          "Productos"
+          "Servicios"
         ]
       }
     }
@@ -1938,312 +1931,97 @@
         "type": "object",
         "properties": {}
       },
-      "OrderProductDto": {
-        "type": "object",
-        "properties": {
-          "productId": {
-            "type": "string",
-            "example": "123e4567-e89b-12d3-a456-426614174000",
-            "description": "ID del producto"
-          },
-          "quantity": {
-            "type": "number",
-            "example": 2,
-            "description": "Cantidad del producto",
-            "minimum": 1
-          },
-          "price": {
-            "type": "number",
-            "example": 99.99,
-            "description": "Precio del producto al momento de la compra"
-          }
-        },
-        "required": [
-          "productId",
-          "quantity",
-          "price"
-        ]
-      },
-      "OrderServiceDto": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "REPAIR",
-              "WARRANTY"
-            ],
-            "example": "REPAIR",
-            "description": "Tipo de servicio"
-          },
-          "name": {
-            "type": "string",
-            "example": "Cambio de pantalla",
-            "description": "Nombre del servicio"
-          },
-          "description": {
-            "type": "string",
-            "example": "Reparación de pantalla rota",
-            "description": "Descripción detallada del servicio"
-          },
-          "price": {
-            "type": "number",
-            "example": 299.99,
-            "description": "Precio del servicio",
-            "minimum": 0
-          },
-          "photoUrls": {
-            "example": [
-              "https://example.com/photo1.jpg"
-            ],
-            "description": "URLs de las fotos del servicio",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "type",
-          "name",
-          "description",
-          "price"
-        ]
-      },
-      "CreateOrderDto": {
+      "CreateClientDto": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "example": "Juan Pérez",
-            "description": "Nombre del cliente"
+            "description": "Nombre completo del cliente",
+            "example": "Juan Pérez"
           },
-          "dni": {
+          "email": {
             "type": "string",
-            "example": "12345678",
-            "description": "DNI del cliente"
+            "description": "Correo electrónico del cliente",
+            "example": "juan.perez@example.com"
           },
           "phone": {
             "type": "string",
-            "example": "+51987654321",
-            "description": "Número de teléfono del cliente"
+            "description": "Número de teléfono del cliente",
+            "example": "+51987654321"
           },
           "address": {
             "type": "string",
-            "example": "Av. Principal 123, Lima, Perú",
-            "description": "Dirección del cliente"
+            "description": "Dirección del cliente",
+            "example": "Av. Los Olivos 123"
           },
           "ruc": {
             "type": "string",
-            "example": "20123456789",
-            "description": "RUC del cliente"
+            "description": "Número de RUC del cliente",
+            "example": "20123456781"
+          },
+          "dni": {
+            "type": "string",
+            "description": "Número de DNI del cliente",
+            "example": "76543210"
           },
           "userId": {
             "type": "string",
-            "example": "123e4567-e89b-12d3-a456-426614174000",
-            "description": "ID del usuario que crea la orden"
-          },
-          "totalAmount": {
-            "type": "number",
-            "example": 399.98,
-            "description": "Monto total de la orden"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "COMPLETED",
-              "CANCELLED",
-              "PENDING"
-            ],
-            "example": "PENDING",
-            "description": "Estado de la orden",
-            "default": "PENDING"
-          },
-          "products": {
-            "description": "Lista de productos en la orden",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrderProductDto"
-            }
-          },
-          "services": {
-            "description": "Lista de servicios en la orden",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrderServiceDto"
-            }
+            "description": "ID del usuario que crea el cliente",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
           }
         },
         "required": [
           "name",
-          "userId",
-          "totalAmount",
-          "status"
+          "userId"
         ]
       },
-      "CreateOrderResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "example": "123e4567-e89b-12d3-a456-426614174000",
-            "description": "ID de la orden creada"
-          },
-          "totalAmount": {
-            "type": "number",
-            "example": 499.98,
-            "description": "Monto total de la orden"
-          },
-          "status": {
-            "type": "string",
-            "example": "PENDING",
-            "description": "Estado actual de la orden"
-          },
-          "name": {
-            "type": "object",
-            "example": "Juan Pérez",
-            "description": "Nombre del cliente",
-            "nullable": true
-          },
-          "dni": {
-            "type": "string",
-            "example": "12345678",
-            "description": "DNI del cliente"
-          },
-          "phone": {
-            "type": "string",
-            "example": "+51987654321",
-            "description": "Teléfono del cliente"
-          },
-          "address": {
-            "type": "string",
-            "example": "Av. Principal 123, Lima",
-            "description": "Dirección del cliente"
-          },
-          "ruc": {
-            "type": "string",
-            "example": "20123456789",
-            "description": "RUC del cliente"
-          },
-          "userId": {
-            "type": "string",
-            "example": "123e4567-e89b-12d3-a456-426614174000",
-            "description": "ID del usuario que creó la orden"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string",
-            "example": "2023-10-15T15:30:00.000Z",
-            "description": "Fecha de creación de la orden"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string",
-            "example": "2023-10-15T15:30:00.000Z",
-            "description": "Fecha de última actualización de la orden"
-          }
-        },
-        "required": [
-          "id",
-          "totalAmount",
-          "status",
-          "name",
-          "dni",
-          "phone",
-          "address",
-          "ruc",
-          "userId",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
-      "UpdateOrderDto": {
+      "UpdateClientDto": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "example": "Juan Pérez",
-            "description": "Nombre del cliente"
+            "description": "Nombre completo del cliente",
+            "example": "Juan Pérez"
           },
-          "dni": {
+          "email": {
             "type": "string",
-            "example": "12345678",
-            "description": "DNI del cliente"
+            "description": "Correo electrónico del cliente",
+            "example": "juan.perez@example.com"
           },
           "phone": {
             "type": "string",
-            "example": "+51987654321",
-            "description": "Número de teléfono del cliente"
+            "description": "Número de teléfono del cliente",
+            "example": "+51987654321"
           },
           "address": {
             "type": "string",
-            "example": "Av. Principal 123, Lima, Perú",
-            "description": "Dirección del cliente"
+            "description": "Dirección del cliente",
+            "example": "Av. Los Olivos 123"
           },
           "ruc": {
             "type": "string",
-            "example": "20123456789",
-            "description": "RUC del cliente"
+            "description": "Número de RUC del cliente",
+            "example": "20123456781"
           },
-          "totalAmount": {
-            "type": "number",
-            "example": 399.98,
-            "description": "Monto total de la orden"
-          },
-          "status": {
+          "dni": {
             "type": "string",
-            "enum": [
-              "COMPLETED",
-              "CANCELLED",
-              "PENDING"
-            ],
-            "example": "COMPLETED",
-            "description": "Estado de la orden"
+            "description": "Número de DNI del cliente",
+            "example": "76543210"
           },
           "userId": {
             "type": "string",
-            "example": "123e4567-e89b-12d3-a456-426614174000",
-            "description": "ID del usuario que actualiza la orden"
+            "description": "ID del usuario que crea el cliente",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
           }
         }
       },
-      "CreateServiceWithFilesDto": {
+      "CreateOrderDto": {
         "type": "object",
-        "properties": {
-          "files": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "binary"
-            }
-          },
-          "type": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "price": {
-            "type": "number"
-          },
-          "quantity": {
-            "type": "number"
-          },
-          "orderId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "files",
-          "type",
-          "name",
-          "description",
-          "price",
-          "orderId"
-        ]
+        "properties": {}
+      },
+      "Order": {
+        "type": "object",
+        "properties": {}
       },
       "CreateProductDto": {
         "type": "object",
@@ -2251,27 +2029,27 @@
           "name": {
             "type": "string",
             "description": "Nombre del producto",
-            "example": "Martillo de carpintero",
+            "example": "Aceite de motor 10W40",
             "maxLength": 100
           },
           "description": {
             "type": "string",
-            "description": "Descripción del producto",
-            "example": "Martillo de carpintero profesional con mango de fibra de vidrio",
+            "description": "Descripción detallada del producto",
+            "example": "Aceite sintético para motor de alto rendimiento",
             "maxLength": 500
           },
           "price": {
             "type": "number",
             "description": "Precio del producto",
             "example": 29.99,
-            "minimum": 0.01
+            "minimum": 0
           },
           "stock": {
             "type": "number",
-            "description": "Cantidad en stock",
+            "description": "Cantidad en inventario",
             "example": 50,
-            "minimum": 0,
-            "default": 0
+            "default": 0,
+            "minimum": 0
           }
         },
         "required": [
@@ -2282,35 +2060,149 @@
       },
       "Product": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID único del producto",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del producto",
+            "example": "Aceite de motor 10W40"
+          },
+          "description": {
+            "type": "object",
+            "description": "Descripción del producto",
+            "example": "Aceite sintético para motor",
+            "nullable": true
+          },
+          "price": {
+            "type": "number",
+            "description": "Precio del producto",
+            "example": 29.99
+          },
+          "stock": {
+            "type": "number",
+            "description": "Cantidad en inventario",
+            "example": 50
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fecha de creación"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fecha de última actualización"
+          },
+          "userId": {
+            "type": "string",
+            "description": "ID del usuario propietario",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "price",
+          "stock",
+          "createdAt",
+          "updatedAt",
+          "userId"
+        ]
       },
       "UpdateProductDto": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "Nuevo nombre del producto",
-            "example": "Martillo de carpintero profesional",
+            "description": "Nombre del producto",
+            "example": "Aceite de motor 10W40",
             "maxLength": 100
           },
           "description": {
             "type": "string",
-            "description": "Nueva descripción del producto",
-            "example": "Martillo de carpintero profesional con mango de fibra de vidrio y cabeza de acero forjado",
+            "description": "Descripción detallada del producto",
+            "example": "Aceite sintético para motor de alto rendimiento",
             "maxLength": 500
           },
           "price": {
             "type": "number",
-            "description": "Nuevo precio del producto",
-            "example": 34.99,
-            "minimum": 0.01
+            "description": "Precio del producto",
+            "example": 29.99,
+            "minimum": 0
           },
           "stock": {
             "type": "number",
-            "description": "Nueva cantidad en stock",
-            "example": 75,
-            "minimum": 0,
-            "default": 0
+            "description": "Cantidad en inventario",
+            "example": 50,
+            "default": 0,
+            "minimum": 0
+          }
+        }
+      },
+      "Service": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateServiceDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "REPAIR",
+              "WARRANTY"
+            ],
+            "default": "REPAIR",
+            "description": "Tipo de servicio",
+            "example": "REPAIR"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "IN_PROGRESS",
+              "COMPLETED",
+              "DELIVERED",
+              "PAID"
+            ],
+            "default": "IN_PROGRESS",
+            "description": "Estado del servicio",
+            "example": "IN_PROGRESS"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del servicio",
+            "example": "Reparación de motor"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descripción detallada del servicio",
+            "example": "Revisión y reparación completa del motor"
+          },
+          "photoUrls": {
+            "default": [],
+            "description": "URLs de las fotos del servicio",
+            "example": [
+              "https://ejemplo.com/foto1.jpg",
+              "https://ejemplo.com/foto2.jpg"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "price": {
+            "type": "number",
+            "description": "Precio del servicio",
+            "example": 250.5
+          },
+          "orderId": {
+            "type": "string",
+            "description": "ID de la orden asociada",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
           }
         }
       }

@@ -4,6 +4,10 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UtilityModule } from './common/utility/utility.module';
+import { ClientModule } from './client/client.module';
+import { OrderModule } from './order/order.module';
+import { ProductModule } from './product/product.module';
+import { ServiceModule } from './service/service.module';
 
 @Module({
   imports: [
@@ -20,6 +24,10 @@ import { UtilityModule } from './common/utility/utility.module';
     PrismaModule,
     AuthModule,
     UsersModule,
+    ClientModule,
+    OrderModule,
+    ProductModule,
+    ServiceModule,
   ],
   controllers: [],
   providers: [],
