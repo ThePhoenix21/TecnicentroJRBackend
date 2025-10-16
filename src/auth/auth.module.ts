@@ -6,7 +6,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { MailModule } from '../mail/mail.module';
 import { JwtStrategy } from './jwt.strategy';
 import { EmailValidatorService } from '../common/validators/email-validator.service';

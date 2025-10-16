@@ -12,7 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma, User } from '@prisma/client';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { EmailValidatorService } from '../common/validators/email-validator.service';

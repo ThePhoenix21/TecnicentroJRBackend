@@ -3,21 +3,23 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { ClientModule } from './client/client.module';
-import { OrderModule } from './order/order.module';
-import { ProductModule } from './product/product.module';
+import { UtilityModule } from './common/utility/utility.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: ['.env', '.env.local'],
+      expandVariables: true,
+      cache: true,
     }),
+    
+    // Asegurarse de que el módulo de utilidades se cargue después de ConfigModule
+    // para que las variables de entorno estén disponibles
+    UtilityModule,
     PrismaModule,
     AuthModule,
     UsersModule,
-    ClientModule,
-    OrderModule,
-    ProductModule,
   ],
   controllers: [],
   providers: [],
