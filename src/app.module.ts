@@ -8,6 +8,7 @@ import { ClientModule } from './client/client.module';
 import { OrderModule } from './order/order.module';
 import { ProductModule } from './product/product.module';
 import { ServiceModule } from './service/service.module';
+import { ImageModule } from './image/image.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ServiceModule } from './service/service.module';
     OrderModule,
     ProductModule,
     ServiceModule,
+    ImageModule,
   ],
   controllers: [],
   providers: [],

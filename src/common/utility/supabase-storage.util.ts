@@ -90,4 +90,46 @@ export class SupabaseStorageService {
 
     await Promise.all(deletePromises);
   }
+
+  async uploadFile(
+    file: FileUpload, 
+    folder: string = 'uploads',
+    expiresIn: number = this.expiresIn
+  ): Promise<{ url: string; path: string }> {
+    try {
+      // Generar un nombre único para el archivo
+      const fileExt = file.originalname.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+      const filePath = `${folder}/${fileName}`;
+
+      // Subir el archivo a Supabase Storage
+      const { error: uploadError } = await this.supabase.storage
+        .from(this.bucketName)
+        .upload(filePath, file.buffer, {
+          contentType: file.mimetype,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error(`Error al subir el archivo: ${uploadError.message}`);
+      }
+
+      // Obtener URL pública en lugar de URL firmada
+      const { data: { publicUrl } } = this.supabase.storage
+        .from(this.bucketName)
+        .getPublicUrl(filePath);
+
+      if (!publicUrl) {
+        throw new Error('No se pudo generar la URL pública');
+      }
+
+      return {
+        url: publicUrl,
+        path: filePath
+      };
+    } catch (error) {
+      console.error('Error en uploadFile:', error);
+      throw new Error(`Error al procesar el archivo: ${error.message}`);
+    }
+  }
 }

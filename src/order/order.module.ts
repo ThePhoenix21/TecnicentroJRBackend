@@ -1,9 +1,10 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { OrderController } from './order.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
+import { SupabaseStorageModule } from '../supabase/supabase-storage.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { ConfigModule } from '@nestjs/config';
       signOptions: { expiresIn: '60m' },
     }),
     ConfigModule,
+    SupabaseStorageModule,
   ],
   controllers: [OrderController],
   providers: [OrderService],

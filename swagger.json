@@ -944,57 +944,43 @@
     },
     "/orders/create": {
       "post": {
-        "description": "Crea una nueva orden con productos y servicios. Se puede crear un nuevo cliente o usar uno existente.",
+        "description": "Crea una nueva orden con la información proporcionada.",
         "operationId": "OrderController_create",
         "parameters": [],
         "requestBody": {
           "required": true,
-          "description": "Datos de la orden a crear",
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/CreateOrderDto"
-              },
-              "examples": {
-                "Orden con cliente nuevo": {
-                  "value": {
-                    "clientInfo": {
-                      "name": "Juan Pérez",
-                      "email": "juan@example.com",
-                      "phone": "123456789",
-                      "address": "Calle Falsa 123",
-                      "dni": "12345678"
+                "type": "object",
+                "properties": {
+                  "createOrderDto": {
+                    "type": "string",
+                    "format": "json",
+                    "description": "JSON string del objeto CreateOrderDto"
+                  },
+                  "photos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
                     },
-                    "products": [
-                      {
-                        "productId": "550e8400-e29b-41d4-a716-446655440000",
-                        "quantity": 2
-                      }
-                    ],
-                    "services": [
-                      {
-                        "name": "Reparación de pantalla",
-                        "description": "Cambio de pantalla rota",
-                        "price": 150,
-                        "type": "REPAIR",
-                        "photoUrls": [
-                          "url1.jpg",
-                          "url2.jpg"
-                        ]
-                      }
-                    ]
+                    "description": "Fotos opcionales para la orden"
                   }
                 },
-                "Orden con cliente existente": {
+                "required": [
+                  "createOrderDto"
+                ]
+              },
+              "examples": {
+                "Orden con productos y servicios": {
                   "value": {
-                    "clientId": "123e4567-e89b-12d3-a456-426614174000",
-                    "products": [
-                      {
-                        "productId": "550e8400-e29b-41d4-a716-446655440000",
-                        "quantity": 1
-                      }
-                    ],
-                    "services": []
+                    "createOrderDto": "{\n  \"clientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n  \"description\": \"Reparación de laptop y mantenimiento\",\n  \"services\": [\n    {\n      \"name\": \"Mantenimiento preventivo\",\n      \"description\": \"Limpieza y mantenimiento general\",\n      \"price\": 150.5,\n      \"type\": \"MAINTENANCE\"\n    }\n  ]\n}"
+                  }
+                },
+                "Orden solo con fotos": {
+                  "value": {
+                    "createOrderDto": "{\n  \"clientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n  \"description\": \"Orden con evidencia fotográfica\"\n}"
                   }
                 }
               }
@@ -1003,7 +989,7 @@
         },
         "responses": {
           "201": {
-            "description": "La orden ha sido creada exitosamente",
+            "description": "Orden creada exitosamente",
             "content": {
               "application/json": {
                 "schema": {
@@ -1013,16 +999,16 @@
             }
           },
           "400": {
-            "description": "Datos de entrada inválidos o insuficiente stock"
+            "description": "Datos de entrada inválidos"
           },
           "401": {
-            "description": "Se requiere un token JWT válido para acceder a este recurso"
+            "description": "No autorizado"
           },
           "403": {
             "description": "El usuario no tiene los permisos necesarios para realizar esta acción"
           },
-          "404": {
-            "description": "Alguno de los productos no existe o el cliente no fue encontrado"
+          "413": {
+            "description": "Tamaño de archivo excede el límite"
           }
         },
         "security": [
@@ -1038,8 +1024,20 @@
     },
     "/orders/all": {
       "get": {
+        "description": "Retorna un listado de todas las órdenes asociadas al usuario autenticado. Los administradores pueden ver todas las órdenes.",
         "operationId": "OrderController_findAll",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar órdenes por estado (opcional)",
+            "schema": {
+              "example": "PENDING",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Lista de órdenes obtenida exitosamente",
@@ -1055,10 +1053,10 @@
             }
           },
           "401": {
-            "description": "Se requiere un token JWT válido para acceder a este recurso"
+            "description": "Usuario no autenticado"
           },
           "403": {
-            "description": "El usuario no tiene los permisos necesarios para realizar esta acción"
+            "description": "No tiene permisos para ver estas órdenes"
           }
         },
         "security": [
@@ -1074,22 +1072,23 @@
     },
     "/orders/get/{id}": {
       "get": {
+        "description": "Obtiene los detalles completos de una orden específica por su ID. Los usuarios solo pueden ver sus propias órdenes, a menos que sean administradores.",
         "operationId": "OrderController_findOne",
         "parameters": [
           {
             "name": "id",
             "required": true,
             "in": "path",
-            "description": "ID de la orden",
+            "description": "ID único de la orden (UUID)",
             "schema": {
-              "format": "uuid",
+              "example": "123e4567-e89b-12d3-a456-426614174000",
               "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Orden encontrada",
+            "description": "Orden encontrada exitosamente",
             "content": {
               "application/json": {
                 "schema": {
@@ -1098,14 +1097,17 @@
               }
             }
           },
+          "400": {
+            "description": "ID de orden inválido"
+          },
           "401": {
-            "description": "Se requiere un token JWT válido para acceder a este recurso"
+            "description": "Usuario no autenticado"
           },
           "403": {
-            "description": "El usuario no tiene los permisos necesarios para realizar esta acción"
+            "description": "No tiene permisos para ver esta orden"
           },
           "404": {
-            "description": "Orden no encontrada"
+            "description": "La orden no existe o no tiene permisos para verla"
           }
         },
         "security": [
@@ -1404,7 +1406,8 @@
                     "type": "string",
                     "enum": [
                       "REPAIR",
-                      "WARRANTY"
+                      "WARRANTY",
+                      "OTHER"
                     ],
                     "example": "REPAIR"
                   },
@@ -1511,7 +1514,8 @@
             "schema": {
               "enum": [
                 "REPAIR",
-                "WARRANTY"
+                "WARRANTY",
+                "OTHER"
               ],
               "type": "string"
             }
@@ -1717,6 +1721,238 @@
         "summary": "Eliminar un servicio",
         "tags": [
           "Servicios"
+        ]
+      }
+    },
+    "/images/upload": {
+      "post": {
+        "description": "Sube una imagen al bucket de Supabase",
+        "operationId": "ImageController_uploadImage",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Archivo de imagen a subir",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Archivo de imagen (JPEG, PNG, WebP) con tamaño máximo de 5MB"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Imagen subida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "example": "https://example.com/image.jpg"
+                    },
+                    "path": {
+                      "type": "string",
+                      "example": "folder/filename.jpg"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error al subir la imagen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Subir una imagen",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/images": {
+      "post": {
+        "operationId": "ImageController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateImageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "images"
+        ]
+      },
+      "get": {
+        "operationId": "ImageController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/images/{id}": {
+      "get": {
+        "operationId": "ImageController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "images"
+        ]
+      },
+      "patch": {
+        "operationId": "ImageController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateImageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "images"
+        ]
+      },
+      "delete": {
+        "operationId": "ImageController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "images"
         ]
       }
     }
@@ -2051,10 +2287,6 @@
           }
         }
       },
-      "CreateOrderDto": {
-        "type": "object",
-        "properties": {}
-      },
       "Order": {
         "type": "object",
         "properties": {}
@@ -2190,7 +2422,8 @@
             "type": "string",
             "enum": [
               "REPAIR",
-              "WARRANTY"
+              "WARRANTY",
+              "OTHER"
             ],
             "default": "REPAIR",
             "description": "Tipo de servicio",
@@ -2241,6 +2474,18 @@
             "example": "123e4567-e89b-12d3-a456-426614174000"
           }
         }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateImageDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateImageDto": {
+        "type": "object",
+        "properties": {}
       }
     }
   }
