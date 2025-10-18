@@ -1406,8 +1406,7 @@
                     "type": "string",
                     "enum": [
                       "REPAIR",
-                      "WARRANTY",
-                      "OTHER"
+                      "WARRANTY"
                     ],
                     "example": "REPAIR"
                   },
@@ -1514,8 +1513,7 @@
             "schema": {
               "enum": [
                 "REPAIR",
-                "WARRANTY",
-                "OTHER"
+                "WARRANTY"
               ],
               "type": "string"
             }
@@ -2422,8 +2420,7 @@
             "type": "string",
             "enum": [
               "REPAIR",
-              "WARRANTY",
-              "OTHER"
+              "WARRANTY"
             ],
             "default": "REPAIR",
             "description": "Tipo de servicio",

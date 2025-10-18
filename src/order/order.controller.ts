@@ -183,7 +183,7 @@ export class OrderController {
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Req() req: Request & { user: { userId: string; email: string; role: Role } },
-    @Body() body: { createOrderDto: string },
+    @Body() body: CreateOrderDto,
     @UploadedFiles() files: { photos?: UploadedFile[] },
   ): Promise<Order> {
     const userId = req.user?.userId;
@@ -193,14 +193,8 @@ export class OrderController {
     }
 
     try {
-      // Parsear el DTO
-      let createOrderDto: CreateOrderDto;
-      try {
-        const parsedData = JSON.parse(body.createOrderDto);
-        createOrderDto = plainToInstance(CreateOrderDto, parsedData);
-      } catch (error) {
-        throw new BadRequestException('El campo createOrderDto debe ser un JSON válido');
-      }
+      // Crear instancia del DTO
+      const createOrderDto = plainToInstance(CreateOrderDto, body);
 
       // Validar el DTO manualmente
       const errors = await validate(createOrderDto, { 
