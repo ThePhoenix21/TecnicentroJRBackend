@@ -13,9 +13,26 @@ async function bootstrap() {
     
     // Configuración de CORS
     app.enableCors({
-      origin: process.env.NODE_ENV === 'development' 
-        ? 'http://localhost:3000'  // Reemplaza con el puerto de tu frontend local
-        : process.env.FRONTEND_URL,
+      origin: (origin, callback) => {
+        const allowedOrigins = [
+          'http://localhost:3000',  // Desarrollo local
+          'https://tecnicentro-jr-projects.vercel.app',  // Producción
+          'https://tecnicentro-jr-projects.vercel.app/'  // Por si acaso
+        ];
+
+        // En producción, verifica el origen
+        if (process.env.NODE_ENV === 'production') {
+          if (!origin || allowedOrigins.some(allowed => origin.startsWith(allowed.replace(/\/$/, '')))) {
+            callback(null, true);
+          } else {
+            callback(new Error('Not allowed by CORS'));
+          }
+        } 
+        // En desarrollo, permite localhost
+        else {
+          callback(null, true);
+        }
+      },
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
       allowedHeaders: 'Content-Type, Accept, Authorization',
       credentials: true,
