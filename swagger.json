@@ -1022,10 +1022,10 @@
         ]
       }
     },
-    "/orders/all": {
+    "/orders/me": {
       "get": {
-        "description": "Retorna un listado de todas las órdenes asociadas al usuario autenticado. Los administradores pueden ver todas las órdenes.",
-        "operationId": "OrderController_findAll",
+        "description": "Retorna un listado de todas las órdenes asociadas al usuario autenticado.",
+        "operationId": "OrderController_findMyOrders",
         "parameters": [
           {
             "name": "status",
@@ -1064,7 +1064,55 @@
             "JWT": []
           }
         ],
-        "summary": "Obtener todas las órdenes del usuario",
+        "summary": "Obtener mis órdenes",
+        "tags": [
+          "Órdenes"
+        ]
+      }
+    },
+    "/orders/all": {
+      "get": {
+        "description": "Retorna un listado completo de todas las órdenes del sistema. Solo disponible para administradores.",
+        "operationId": "OrderController_findAll",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar órdenes por estado (opcional)",
+            "schema": {
+              "example": "PENDING",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista completa de órdenes obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Order"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Usuario no autenticado"
+          },
+          "403": {
+            "description": "No tiene permisos de administrador"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener todas las órdenes (solo administradores)",
         "tags": [
           "Órdenes"
         ]
@@ -1116,6 +1164,77 @@
           }
         ],
         "summary": "Obtener una orden por ID",
+        "tags": [
+          "Órdenes"
+        ]
+      }
+    },
+    "/orders/status/{id}": {
+      "patch": {
+        "description": "Actualiza el estado de una orden existente. Los usuarios solo pueden actualizar sus propias órdenes, a menos que sean administradores.",
+        "operationId": "OrderController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único de la orden a actualizar",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Datos para actualizar el estado de la orden",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrderStatusDto"
+              },
+              "examples": {
+                "actualizacionEstado": {
+                  "summary": "Actualización de estado",
+                  "value": {
+                    "status": "COMPLETED",
+                    "comment": "La orden ha sido completada exitosamente"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estado de la orden actualizado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos"
+          },
+          "401": {
+            "description": "Usuario no autenticado"
+          },
+          "403": {
+            "description": "No tiene permisos para actualizar esta orden"
+          },
+          "404": {
+            "description": "La orden no existe o no tiene permisos para actualizarla"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Actualizar el estado de una orden",
         "tags": [
           "Órdenes"
         ]
@@ -2288,6 +2407,24 @@
       "Order": {
         "type": "object",
         "properties": {}
+      },
+      "UpdateOrderStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Nuevo estado de la orden",
+            "enum": [
+              "COMPLETED",
+              "CANCELLED",
+              "PENDING"
+            ],
+            "example": "COMPLETED"
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "CreateProductDto": {
         "type": "object",

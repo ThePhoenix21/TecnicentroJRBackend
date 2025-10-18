@@ -187,7 +187,7 @@ export class ServiceController {
   }
 
   @Patch('update/:id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({
     summary: 'Actualizar un servicio',
     description: 'Actualiza los datos de un servicio existente. Solo actualiza los campos proporcionados.'

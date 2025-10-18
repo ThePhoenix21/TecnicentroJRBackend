@@ -52,7 +52,7 @@ export class ClientController {
   }
 
   @Get()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Obtener todos los clientes', description: 'Obtiene una lista paginada de todos los clientes. Solo para ADMIN' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Número de página (por defecto: 1)' })
