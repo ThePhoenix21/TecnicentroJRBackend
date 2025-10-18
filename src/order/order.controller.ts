@@ -17,7 +17,8 @@ import {
   PayloadTooLargeException,
   HttpException,
   BadRequestException,
-  UploadedFiles
+  UploadedFiles,
+  Patch
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
@@ -33,6 +34,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { ServiceType } from '@prisma/client';
 import { Order } from './entities/order.entity';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 
 // Definir el tipo para el usuario autenticado
 interface RequestWithUser extends Request {
@@ -254,11 +256,11 @@ export class OrderController {
     }
   }
 
-  @Get('all')
+  @Get('me')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
-    summary: 'Obtener todas las órdenes del usuario',
-    description: 'Retorna un listado de todas las órdenes asociadas al usuario autenticado. Los administradores pueden ver todas las órdenes.'
+    summary: 'Obtener mis órdenes',
+    description: 'Retorna un listado de todas las órdenes asociadas al usuario autenticado.'
   })
   @ApiQuery({
     name: 'status',
@@ -279,15 +281,46 @@ export class OrderController {
     status: HttpStatus.FORBIDDEN,
     description: 'No tiene permisos para ver estas órdenes',
   })
-  async findAll(
+  async findMyOrders(
     @Req() req: any,
     @Query('status') status?: string,
   ): Promise<Order[]> {
     const userId = req.user?.userId || req.user?.id;
     if (!userId) {
-      throw new Error('No se pudo obtener el ID del usuario del token JWT');
+      throw new BadRequestException('No se pudo obtener el ID del usuario del token JWT');
     }
-    return this.orderService.findAll(userId);
+    return this.orderService.findMe(userId);
+  }
+
+  @Get('all')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ 
+    summary: 'Obtener todas las órdenes (solo administradores)',
+    description: 'Retorna un listado completo de todas las órdenes del sistema. Solo disponible para administradores.'
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    description: 'Filtrar órdenes por estado (opcional)',
+    example: 'PENDING',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Lista completa de órdenes obtenida exitosamente',
+    type: [Order],
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Usuario no autenticado',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'No tiene permisos de administrador',
+  })
+  async findAll(
+    @Query('status') status?: string,
+  ): Promise<Order[]> {
+    return this.orderService.findAll();
   }
 
   @Get('get/:id')
@@ -332,5 +365,64 @@ export class OrderController {
       throw new Error('No se pudo obtener el ID del usuario del token JWT');
     }
     return this.orderService.findOne(id, userId);
+  }
+
+  @Patch('status/:id')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({
+    summary: 'Actualizar el estado de una orden',
+    description: 'Actualiza el estado de una orden existente. Los usuarios solo pueden actualizar sus propias órdenes, a menos que sean administradores.'
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID único de la orden a actualizar',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+    required: true
+  })
+  @ApiBody({
+    type: UpdateOrderStatusDto,
+    description: 'Datos para actualizar el estado de la orden',
+    examples: {
+      actualizacionEstado: {
+        summary: 'Actualización de estado',
+        value: {
+          status: 'COMPLETED',
+          comment: 'La orden ha sido completada exitosamente'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Estado de la orden actualizado exitosamente',
+    type: Order,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'La orden no existe o no tiene permisos para actualizarla',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Datos de entrada inválidos',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Usuario no autenticado',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'No tiene permisos para actualizar esta orden',
+  })
+  async updateStatus(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateOrderStatusDto: UpdateOrderStatusDto
+  ): Promise<Order> {
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('No se pudo obtener el ID del usuario del token JWT');
+    }
+    
+    return this.orderService.updateStatus(id, userId, updateOrderStatusDto);
   }
 }

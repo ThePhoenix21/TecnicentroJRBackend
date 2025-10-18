@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus } from '@prisma/client';
+import { Prisma, SaleStatus, PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class OrderService {
@@ -63,7 +63,6 @@ export class OrderService {
       const existingProducts = await prisma.product.findMany({
         where: {
           id: { in: productIds },
-          userId,
         },
       });
 
@@ -158,13 +157,31 @@ export class OrderService {
     });
   }
 
-  async findAll(userId: string): Promise<Order[]> {
+  async findMe(userId: string): Promise<Order[]> {
     return this.prisma.order.findMany({
       where: { userId },
       include: {
         orderProducts: true,
         services: true,
         client: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    }) as unknown as Promise<Order[]>;
+  }
+
+  async findAll(): Promise<Order[]> {
+    return this.prisma.order.findMany({
+      include: {
+        orderProducts: true,
+        services: true,
+        client: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     }) as unknown as Promise<Order[]>;
@@ -193,5 +210,48 @@ export class OrderService {
     }
 
     return order as unknown as Order;
+  }
+
+  async updateStatus(
+    id: string, 
+    userId: string,
+    updateOrderStatusDto: { status: SaleStatus }
+  ): Promise<Order> {
+    const { status } = updateOrderStatusDto;
+
+    return this.prisma.$transaction(async (prisma: Prisma.TransactionClient) => {
+      // 1. Verificar que la orden existe y pertenece al usuario
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              role: true
+            }
+          }
+        }
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Orden con ID ${id} no encontrada`);
+      }
+
+      // Solo el propietario o un administrador pueden actualizar el estado
+      if (order.userId !== userId && order.user.role !== 'ADMIN') {
+        throw new NotFoundException(`No tiene permisos para actualizar esta orden`);
+      }
+
+      // 2. Actualizar el estado de la orden
+      const updatedOrder = await prisma.order.update({
+        where: { id },
+        data: { 
+          status
+        },
+        include: { orderProducts: true, services: true, client: true }
+      });
+
+      return updatedOrder as unknown as Order;
+    });
   }
 }
