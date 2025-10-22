@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNumber, IsOptional, Min, MaxLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, MaxLength, IsPositive } from 'class-validator';
 
 export class CreateProductDto {
   @ApiProperty({
@@ -23,13 +23,22 @@ export class CreateProductDto {
   description?: string;
 
   @ApiProperty({
-    description: 'Precio del producto',
+    description: 'Precio de venta del producto',
     example: 29.99,
     minimum: 0
   })
   @IsNumber()
   @Min(0)
   price: number;
+
+  @ApiProperty({
+    description: 'Costo de compra del producto',
+    example: 20.50,
+    minimum: 0
+  })
+  @IsNumber()
+  @Min(0)
+  buycost: number;
 
   @ApiProperty({
     description: 'Cantidad en inventario',
@@ -40,4 +49,15 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   stock: number = 0;
+
+  @ApiProperty({
+    description: 'Umbral mínimo de inventario para alertas',
+    example: 5,
+    default: 1,
+    minimum: 0
+  })
+  @IsNumber()
+  @IsPositive()
+  @IsOptional()
+  stockTreshold: number = 1;
 }

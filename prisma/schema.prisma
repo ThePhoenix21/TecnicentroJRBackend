@@ -54,13 +54,15 @@ model User {
 }
  
 model Product {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  price       Float
-  stock       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  price           Float
+  buycost         Float   @default(0)
+  stock           Int      @default(0)
+  stockTreshold   Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
  
   // Clave foránea
   userId         String  
@@ -74,6 +76,7 @@ model OrderProduct {
   id          String   @id @default(uuid())
   quantity    Int      @default(1)
   price       Float  
+  buycost     Float    @default(0)
 
   //clave foranea
   productId   String
@@ -104,21 +107,22 @@ model Client {
 }
 
 model Order {
-  id          String          @id @default(uuid())  
-  totalAmount Float
-  status      SaleStatus      @default(COMPLETED)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id           String     @id @default(uuid())
+  orderNumber  String     @unique @default("ORD-0000")
+  totalAmount  Float
+  status       SaleStatus @default(PENDING)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  //clave foranea
+  // Claves foráneas
   userId      String
   clientId    String
-  
+
   // Relaciones
-  user        User            @relation(fields: [userId], references: [id], onDelete: SetNull)  
-  client      Client          @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  orderProducts    OrderProduct[]
-  services    Service[]  
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client       Client        @relation(fields: [clientId], references: [id])
+  orderProducts OrderProduct[]
+  services     Service[]
 }
 
 model Service {

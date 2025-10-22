@@ -60,7 +60,9 @@ CREATE TABLE "public"."Product" (
     "name" TEXT NOT NULL,
     "description" TEXT,
     "price" DOUBLE PRECISION NOT NULL,
+    "buycost" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "stock" INTEGER NOT NULL DEFAULT 0,
+    "stockTreshold" INTEGER NOT NULL DEFAULT 1,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "userId" TEXT NOT NULL,
@@ -73,6 +75,7 @@ CREATE TABLE "public"."OrderProduct" (
     "id" TEXT NOT NULL,
     "quantity" INTEGER NOT NULL DEFAULT 1,
     "price" DOUBLE PRECISION NOT NULL,
+    "buycost" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "productId" TEXT NOT NULL,
     "orderId" TEXT NOT NULL,
 
@@ -98,8 +101,9 @@ CREATE TABLE "public"."Client" (
 -- CreateTable
 CREATE TABLE "public"."Order" (
     "id" TEXT NOT NULL,
+    "orderNumber" TEXT NOT NULL DEFAULT 'ORD-0000',
     "totalAmount" DOUBLE PRECISION NOT NULL,
-    "status" "public"."SaleStatus" NOT NULL DEFAULT 'COMPLETED',
+    "status" "public"."SaleStatus" NOT NULL DEFAULT 'PENDING',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "userId" TEXT NOT NULL,
@@ -142,6 +146,9 @@ CREATE UNIQUE INDEX "Client_ruc_key" ON "public"."Client"("ruc");
 -- CreateIndex
 CREATE UNIQUE INDEX "Client_dni_key" ON "public"."Client"("dni");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "Order_orderNumber_key" ON "public"."Order"("orderNumber");
+
 -- AddForeignKey
 ALTER TABLE "public"."RefreshToken" ADD CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -158,10 +165,10 @@ ALTER TABLE "public"."OrderProduct" ADD CONSTRAINT "OrderProduct_orderId_fkey" F
 ALTER TABLE "public"."Client" ADD CONSTRAINT "Client_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "public"."Order" ADD CONSTRAINT "Order_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "public"."Order" ADD CONSTRAINT "Order_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "public"."Order" ADD CONSTRAINT "Order_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "public"."Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "public"."Order" ADD CONSTRAINT "Order_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "public"."Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."Service" ADD CONSTRAINT "Service_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "public"."Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;

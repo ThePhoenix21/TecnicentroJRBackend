@@ -10,4 +10,5 @@ export class Order implements PrismaOrder {
   clientId: string;
   orderProducts?: OrderProduct[];
   services?: Service[];
+  orderNumber: string;
 }

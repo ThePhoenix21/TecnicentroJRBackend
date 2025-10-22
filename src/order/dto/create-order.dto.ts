@@ -161,6 +161,10 @@ export class CreateOrderDto {
   @IsOptional() // Hacemos que userId sea opcional en el DTO, se asignará desde el token
   userId?: string;
 
+  @IsString()
+  @IsOptional()
+  orderNumber?: string;
+
   @IsEnum(SaleStatus)
   @IsOptional()
   status?: SaleStatus;

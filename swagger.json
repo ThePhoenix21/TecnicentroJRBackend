@@ -2443,8 +2443,14 @@
           },
           "price": {
             "type": "number",
-            "description": "Precio del producto",
+            "description": "Precio de venta del producto",
             "example": 29.99,
+            "minimum": 0
+          },
+          "buycost": {
+            "type": "number",
+            "description": "Costo de compra del producto",
+            "example": 20.5,
             "minimum": 0
           },
           "stock": {
@@ -2453,12 +2459,21 @@
             "example": 50,
             "default": 0,
             "minimum": 0
+          },
+          "stockTreshold": {
+            "type": "number",
+            "description": "Umbral mínimo de inventario para alertas",
+            "example": 5,
+            "default": 1,
+            "minimum": 0
           }
         },
         "required": [
           "name",
           "price",
-          "stock"
+          "buycost",
+          "stock",
+          "stockTreshold"
         ]
       },
       "Product": {
@@ -2485,10 +2500,21 @@
             "description": "Precio del producto",
             "example": 29.99
           },
+          "buycost": {
+            "type": "number",
+            "description": "Costo de compra del producto",
+            "example": 20.5
+          },
           "stock": {
             "type": "number",
             "description": "Cantidad en inventario",
             "example": 50
+          },
+          "stockTreshold": {
+            "type": "number",
+            "description": "Umbral mínimo de inventario para alertas",
+            "example": 5,
+            "default": 1
           },
           "createdAt": {
             "format": "date-time",
@@ -2510,7 +2536,9 @@
           "id",
           "name",
           "price",
+          "buycost",
           "stock",
+          "stockTreshold",
           "createdAt",
           "updatedAt",
           "userId"
@@ -2533,8 +2561,14 @@
           },
           "price": {
             "type": "number",
-            "description": "Precio del producto",
+            "description": "Precio de venta del producto",
             "example": 29.99,
+            "minimum": 0
+          },
+          "buycost": {
+            "type": "number",
+            "description": "Costo de compra del producto",
+            "example": 20.5,
             "minimum": 0
           },
           "stock": {
@@ -2542,6 +2576,13 @@
             "description": "Cantidad en inventario",
             "example": 50,
             "default": 0,
+            "minimum": 0
+          },
+          "stockTreshold": {
+            "type": "number",
+            "description": "Umbral mínimo de inventario para alertas",
+            "example": 5,
+            "default": 1,
             "minimum": 0
           }
         }

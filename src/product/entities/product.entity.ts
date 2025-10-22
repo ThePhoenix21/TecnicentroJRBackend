@@ -13,8 +13,14 @@ export class Product {
   @ApiProperty({ description: 'Precio del producto', example: 29.99 })
   price: number;
 
+  @ApiProperty({ description: 'Costo de compra del producto', example: 20.50 })
+  buycost: number;
+
   @ApiProperty({ description: 'Cantidad en inventario', example: 50 })
   stock: number;
+
+  @ApiProperty({ description: 'Umbral mínimo de inventario para alertas', example: 5, default: 1 })
+  stockTreshold: number;
 
   @ApiProperty({ description: 'Fecha de creación', type: Date })
   createdAt: Date;

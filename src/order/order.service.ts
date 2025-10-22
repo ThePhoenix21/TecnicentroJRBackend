@@ -4,9 +4,53 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { Order } from './entities/order.entity';
 import { Prisma, SaleStatus, PrismaClient } from '@prisma/client';
 
+// Función para generar el número de orden secuencial
+async function generateOrderNumber(prisma: any): Promise<string> {
+  // Buscar la última orden para obtener el último número
+  const lastOrder = await prisma.order.findFirst({
+    select: { orderNumber: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  let nextNumber = 1;
+  
+  if (lastOrder?.orderNumber) {
+    // Extraer el número de la última orden y sumar 1
+    const lastNumber = parseInt(lastOrder.orderNumber.split('-')[1], 10);
+    if (!isNaN(lastNumber)) {
+      nextNumber = lastNumber + 1;
+    }
+  }
+
+  // Formatear el número con ceros a la izquierda
+  return `ORD-${nextNumber.toString().padStart(4, '0')}`;
+}
+
 @Injectable()
 export class OrderService {
   constructor(private prisma: PrismaService) {}
+
+  // Función para generar el número de orden secuencial
+  private async generateOrderNumber(prisma: any): Promise<string> {
+    // Buscar la última orden para obtener el último número
+    const lastOrder = await prisma.order.findFirst({
+      select: { orderNumber: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let nextNumber = 1;
+    
+    if (lastOrder?.orderNumber) {
+      // Extraer el número de la última orden y sumar 1
+      const lastNumber = parseInt(lastOrder.orderNumber.split('-')[1], 10);
+      if (!isNaN(lastNumber)) {
+        nextNumber = lastNumber + 1;
+      }
+    }
+
+    // Formatear el número con ceros a la izquierda
+    return `ORD-${nextNumber.toString().padStart(4, '0')}`;
+  }
 
   async create(createOrderDto: CreateOrderDto): Promise<Order> {
     const { clientInfo, clientId, products, services, userId } = createOrderDto;
@@ -115,8 +159,12 @@ export class OrderService {
         ? SaleStatus.PENDING 
         : SaleStatus.COMPLETED;
 
-      // 5. Crear la orden
+          // 5. Generar número de orden
+      const orderNumber = await this.generateOrderNumber(prisma);
+
+      // 6. Crear la orden
       const orderData: Prisma.OrderCreateInput = {
+        orderNumber,
         totalAmount,
         status: orderStatus,
         user: {
