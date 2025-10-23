@@ -33,6 +33,7 @@ import * as bcrypt from 'bcrypt';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { Role } from 'src/auth/enums/role.enum';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangeRoleDto } from './dto/change-role.dto';
 import { CreateUserResponseDto } from 'src/auth/dto/create-user-response.dto';
 import { generateUsername } from 'src/common/utility/usernameGenerator';
 import { supabase } from '../supabase.client';
@@ -441,6 +442,172 @@ export class UsersController {
       }
       
       throw new InternalServerErrorException('Error al cambiar la contraseña');
+    }
+  }
+
+  @Put('update/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Actualizar perfil de usuario',
+    description: 'Actualiza los datos del perfil de un usuario existente (nombre, email, teléfono, etc.) incluyendo el estado. Requiere rol de ADMIN. No permite cambiar rol ni contraseña.'
+  })
+  @ApiParam({ name: 'id', description: 'ID del usuario a actualizar' })
+  @ApiBody({
+    description: 'Datos del usuario a actualizar (sin rol ni contraseña)',
+    type: UpdateUserDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Usuario actualizado exitosamente',
+    type: CreateUserResponseDto
+  })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
+  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+    this.logger.debug(`Iniciando actualización de usuario con ID: ${id}`);
+    this.logger.debug(`Datos recibidos: ${JSON.stringify(updateUserDto)}`);
+
+    try {
+      // Verificar que el usuario exista
+      const existingUser = await this.usersService.findOne(id);
+      if (!existingUser) {
+        this.logger.warn(`Usuario no encontrado con ID: ${id}`);
+        throw new NotFoundException('Usuario no encontrado');
+      }
+
+      // Actualizar usuario directamente con los datos del DTO
+      const updatedUser = await this.usersService.updateUser(id, updateUserDto);
+
+      this.logger.log(`Usuario actualizado exitosamente con ID: ${id}`);
+
+      return updatedUser;
+    } catch (error) {
+      this.logger.error(`Error al actualizar usuario: ${error.message}`, error.stack);
+
+      // Reenviar el error si ya es una excepción conocida
+      if (
+        error instanceof BadRequestException ||
+        error instanceof UnauthorizedException ||
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException('Error al actualizar el usuario');
+    }
+  }
+
+  @Put('change-role')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Cambiar rol de usuario',
+    description: 'Cambia el rol de un usuario existente. REQUIERE: 1) Usuario ADMIN autenticado con JWT, 2) Credenciales válidas (email/password) del usuario cuyo rol se cambiará. Incluye auditoría completa de quién realizó el cambio.'
+  })
+  @ApiBody({
+    description: 'Credenciales del usuario y nuevo rol',
+    type: ChangeRoleDto,
+    examples: {
+      example: {
+        value: {
+          email: 'usuario@example.com',
+          password: 'contraseñaSegura123',
+          newRole: 'ADMIN'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Rol actualizado exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Rol actualizado exitosamente' },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: 'uuid' },
+            email: { type: 'string', example: 'usuario@example.com' },
+            name: { type: 'string', example: 'Nombre Usuario' },
+            role: { type: 'string', example: 'ADMIN' }
+          }
+        },
+        changedBy: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: 'admin-uuid' },
+            email: { type: 'string', example: 'admin@example.com' },
+            role: { type: 'string', example: 'ADMIN' }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
+  async changeRole(@Body() changeRoleDto: ChangeRoleDto, @Request() req: any) {
+    this.logger.debug(`Iniciando cambio de rol para el email: ${changeRoleDto.email}`);
+    this.logger.debug(`Nuevo rol solicitado: ${changeRoleDto.newRole}`);
+    this.logger.debug(`Usuario ADMIN ejecutando: ${req.user.email} (ID: ${req.user.sub})`);
+
+    try {
+      // Verificar que el usuario que hace la petición sea ADMIN (redundante, pero explícito)
+      if (req.user.role !== Role.ADMIN) {
+        this.logger.warn(`Intento no autorizado de cambio de rol por usuario no ADMIN: ${req.user.email}`);
+        throw new ForbiddenException('Solo usuarios con rol ADMIN pueden cambiar roles');
+      }
+
+      // Validar las credenciales del usuario cuyo rol se quiere cambiar
+      const userToUpdate = await this.authService.validateAnyUser(changeRoleDto.email, changeRoleDto.password);
+
+      this.logger.debug(`Usuario a actualizar validado: ${userToUpdate.email} (ID: ${userToUpdate.id})`);
+
+      // Verificar que el usuario validado exista en la base de datos
+      const currentUser = await this.usersService.findOne(userToUpdate.id);
+      if (!currentUser) {
+        this.logger.warn(`Usuario validado no encontrado en la base de datos: ${userToUpdate.id}`);
+        throw new NotFoundException('Usuario no encontrado');
+      }
+
+      // Actualizar el rol del usuario validado
+      const updatedUser = await this.usersService.update(userToUpdate.id, { role: changeRoleDto.newRole });
+
+      this.logger.log(`Rol actualizado exitosamente por ADMIN ${req.user.email} para usuario ${userToUpdate.email} (ID: ${userToUpdate.id}) de ${userToUpdate.role} a ${changeRoleDto.newRole}`);
+
+      return {
+        message: 'Rol actualizado exitosamente',
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          name: updatedUser.name,
+          role: updatedUser.role
+        },
+        changedBy: {
+          id: req.user.sub,
+          email: req.user.email,
+          role: req.user.role
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Error al cambiar rol: ${error.message}`, error.stack);
+
+      // Reenviar el error si ya es una excepción conocida
+      if (
+        error instanceof BadRequestException ||
+        error instanceof UnauthorizedException ||
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException('Error al cambiar el rol del usuario');
     }
   }
 

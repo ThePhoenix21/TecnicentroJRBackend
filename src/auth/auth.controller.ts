@@ -131,41 +131,52 @@ export class AuthController {
   @ApiOperation({
     summary: 'Refrescar token',
     description:
-      'Obtiene un nuevo token de acceso usando un token de actualización',
+      'Obtiene un nuevo token de acceso usando un token de actualización (almacenado en cookie)',
   })
   @ApiResponse({
     status: 201,
     description: 'Token refrescado exitosamente',
-    type: TokensDto,
+    schema: {
+      type: 'object',
+      properties: {
+        access_token: { type: 'string' }
+      }
+    }
   })
   @ApiResponse({
     status: 401,
     description: 'Token de actualización inválido o expirado',
   })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        refreshToken: { type: 'string' },
-      },
-      required: ['refreshToken'],
-    },
-  })
-  async refreshToken(@Req() req, @Body('refreshToken') refreshToken: string) {
+  async refreshToken(@Req() req, @Res() res: Response, @Body('refreshToken') refreshToken: string) {
     const ipAddress = req.ip || req.connection.remoteAddress;
-    return this.authService.refreshToken(refreshToken, ipAddress);
+    return this.authService.refreshToken(refreshToken, ipAddress, res);
   }
 
   @Post('login')
   @ApiOperation({
     summary: 'Iniciar sesión',
     description:
-      'Autentica un usuario y devuelve tokens de acceso y actualización',
+      'Autentica un usuario y devuelve token de acceso (refresh_token en cookie)',
   })
   @ApiResponse({
     status: 200,
     description: 'Inicio de sesión exitoso',
-    type: TokensDto,
+    schema: {
+      type: 'object',
+      properties: {
+        access_token: { type: 'string' },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            email: { type: 'string' },
+            name: { type: 'string' },
+            role: { type: 'string' },
+            verified: { type: 'boolean' }
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: 401,
@@ -173,6 +184,7 @@ export class AuthController {
   })
   async login(
     @Req() req,
+    @Res() res: Response,
     @Body('email') email: string,
     @Body('password') password: string,
   ) {
@@ -187,9 +199,9 @@ export class AuthController {
         req.connection.remoteAddress;
       console.log('IP detectada:', ipAddress);
       console.log('Iniciando sesión...');
-      const tokens = await this.authService.login(user, ipAddress);
+      const result = await this.authService.login(user, ipAddress, res);
       console.log('Login exitoso');
-      return tokens;
+      return res.status(200).json(result);
     } catch (error) {
       console.error('Error en login:', error);
       if (error instanceof UnauthorizedException) {
@@ -204,12 +216,27 @@ export class AuthController {
   @Post('login/username')
   @ApiOperation({
     summary: 'Iniciar sesión con nombre de usuario',
-    description: 'Autentica un usuario regular (ROLE_USER) usando nombre de usuario y contraseña',
+    description: 'Autentica un usuario regular (ROLE_USER) usando nombre de usuario y contraseña (refresh_token en cookie)',
   })
   @ApiResponse({
     status: 200,
     description: 'Inicio de sesión exitoso',
-    type: TokensDto,
+    schema: {
+      type: 'object',
+      properties: {
+        access_token: { type: 'string' },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            email: { type: 'string' },
+            name: { type: 'string' },
+            role: { type: 'string' },
+            verified: { type: 'boolean' }
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: 401,
@@ -227,6 +254,7 @@ export class AuthController {
   })
   async loginWithUsername(
     @Req() req,
+    @Res() res: Response,
     @Body('username') username: string,
     @Body('password') password: string,
   ) {
@@ -244,10 +272,10 @@ export class AuthController {
       this.logger.debug(`IP detectada: ${ipAddress}`);
       this.logger.debug('Generando tokens...');
       
-      const tokens = await this.authService.login(user, ipAddress);
+      const result = await this.authService.login(user, ipAddress, res);
       this.logger.log('Login exitoso');
       
-      return tokens;
+      return res.status(200).json(result);
     } catch (error) {
       this.logger.error(`Error en login con usuario: ${error.message}`, error.stack);
       if (error instanceof UnauthorizedException) {

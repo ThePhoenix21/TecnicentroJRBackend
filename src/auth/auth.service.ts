@@ -1,3 +1,4 @@
+import { Response } from 'express';
 import { 
   BadRequestException, 
   ConflictException, 
@@ -161,7 +162,7 @@ export class AuthService {
 
   async validateUserByUsername(username: string, password: string) {
     const user = await this.usersService.findByUsername(username);
-    
+
     if (!user) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
@@ -172,13 +173,29 @@ export class AuthService {
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    
+
     if (!isMatch) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
     // No se requiere verificación de correo electrónico
     // para este método de autenticación
+
+    return user;
+  }
+
+  async validateAnyUser(email: string, password: string) {
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
 
     return user;
   }
@@ -351,7 +368,7 @@ export class AuthService {
     return true;
   }
 
-  async login(user: any, ipAddress?: string) {
+  async login(user: any, ipAddress?: string, res?: Response) {
     const payload = { 
       email: user.email, 
       sub: user.id,
@@ -385,9 +402,19 @@ export class AuthService {
       },
     });
 
+    // Setear cookie si res está disponible
+    if (res) {
+      res.cookie('refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: true, // Cambiar a false en desarrollo si no usas HTTPS
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
+        path: '/auth/refresh'
+      });
+    }
+
     return {
       access_token: accessToken,
-      refresh_token: refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -401,7 +428,7 @@ export class AuthService {
     throw new UnauthorizedException('Token de refresco inválido');
   }
 
-  async refreshToken(refreshToken: string, ipAddress: string) {
+  async refreshToken(refreshToken: string, ipAddress: string, res: Response) {
     try {
       // 1. Verificar que el token sea válido
       const payload = this.jwtService.verify(refreshToken);
@@ -459,10 +486,18 @@ export class AuthService {
         },
       });
 
-      return {
-        access_token: newAccessToken,
-        refresh_token: newRefreshToken
-      };
+      // 8. Setear la cookie para el refresh_token y devolver solo el access_token
+      res.cookie('refresh_token', newRefreshToken, {
+        httpOnly: true,
+        secure: true, // Cambiar a false en desarrollo si no usas HTTPS
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
+        path: '/auth/refresh'
+      });
+
+      return res.status(201).json({
+        access_token: newAccessToken
+      });
     } catch (error) {
       console.error('Error al refrescar token:', error);
       throw new UnauthorizedException('Token de refresco inválido');
