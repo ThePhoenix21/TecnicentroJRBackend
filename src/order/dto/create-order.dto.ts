@@ -69,8 +69,8 @@ function NotBothClientInfoAndId(validationOptions?: ValidationOptions) {
 
 class ClientInfoDto {
   @IsString()
-  @IsNotEmpty()
-  name: string;
+  @IsOptional()
+  name?: string;
 
   @IsString()
   @IsOptional()
@@ -89,8 +89,8 @@ class ClientInfoDto {
   ruc?: string;
 
   @IsString()
-  @IsOptional()
-  dni?: string;
+  @IsNotEmpty()
+  dni: string;
 }
 
 class OrderProductDto {

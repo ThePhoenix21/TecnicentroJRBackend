@@ -26,14 +26,14 @@ export class ClientService {
 
       return await this.prisma.client.create({
         data: {
-          ...createClientDto,
-          // Asegurarse de que los campos opcionales sean manejados correctamente
-          email: createClientDto.email || null,
-          phone: createClientDto.phone || null,
-          address: createClientDto.address || null,
-          ruc: createClientDto.ruc || null,
-          dni: createClientDto.dni || null,
-        },
+          name: createClientDto.name ?? null,
+          email: createClientDto.email ?? null,
+          phone: createClientDto.phone ?? null,
+          address: createClientDto.address ?? null,
+          ruc: createClientDto.ruc ?? null,
+          dni: createClientDto.dni, // obligatorio, no null
+          userId: createClientDto.userId,
+        } as any,
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

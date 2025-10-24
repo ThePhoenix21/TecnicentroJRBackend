@@ -2,10 +2,10 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEmail, IsNotEmpty, IsUUID } from 'class-validator';
 
 export class CreateClientDto {
-  @ApiProperty({ description: 'Nombre completo del cliente', example: 'Juan Pérez' })
+  @ApiProperty({ description: 'Nombre completo del cliente', example: 'Juan Pérez', required: false })
   @IsString()
-  @IsNotEmpty()
-  name: string;
+  @IsOptional()
+  name?: string;
 
   @ApiProperty({ 
     description: 'Correo electrónico del cliente', 
@@ -46,11 +46,11 @@ export class CreateClientDto {
   @ApiProperty({ 
     description: 'Número de DNI del cliente', 
     example: '76543210',
-    required: false
+    required: true
   })
   @IsString()
-  @IsOptional()
-  dni?: string;
+  @IsNotEmpty()
+  dni: string;
 
   @ApiProperty({ 
     description: 'ID del usuario que crea el cliente',

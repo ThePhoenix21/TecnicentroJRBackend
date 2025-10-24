@@ -89,12 +89,12 @@ model OrderProduct {
 
 model Client {
   id          String      @id @default(uuid())
-  name        String
+  name        String?
   email       String?     @unique
   phone       String?
   address     String?
   ruc         String?     @unique
-  dni         String?     @unique
+  dni         String     @unique
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   
