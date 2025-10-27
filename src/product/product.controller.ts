@@ -133,7 +133,7 @@ export class ProductController {
   }
 
   @Delete('remove/:id')
-  @Roles(Role.ADMIN, Role.USER)
+  @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar un producto' })
   @ApiParam({ name: 'id', description: 'ID del producto a eliminar', format: 'uuid' })
