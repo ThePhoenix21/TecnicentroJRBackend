@@ -137,20 +137,25 @@ export class ProductController {
   @Delete('remove/:id')
   @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Eliminar un producto' })
-  @ApiParam({ name: 'id', description: 'ID del producto a eliminar', format: 'uuid' })
+  @ApiOperation({ summary: 'Eliminación lógica de un producto' })
+  @ApiParam({ name: 'id', description: 'ID del producto a marcar como eliminado', format: 'uuid' })
   @ApiResponse({
     status: HttpStatus.NO_CONTENT,
-    description: 'Producto eliminado exitosamente',
+    description: 'Producto marcado como eliminado exitosamente',
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
     description: 'Producto no encontrado',
   })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'No tienes permiso para realizar esta acción',
+  })
   async remove(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    return this.productService.remove(req.user.userId, id);
+    // Pasamos isAdmin=true ya que el decorador @Roles(Role.ADMIN) ya validó que es administrador
+    return this.productService.remove(req.user.userId, id, true);
   }
 }

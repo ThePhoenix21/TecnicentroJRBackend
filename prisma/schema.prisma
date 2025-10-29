@@ -58,7 +58,8 @@ model Product {
   name            String
   description     String?
   price           Float
-  buycost         Float   @default(0)
+  isDeleted       Boolean  @default(false)
+  buycost         Float    @default(0)
   stock           Int      @default(0)
   stockTreshold   Int      @default(1)
   createdAt       DateTime @default(now())

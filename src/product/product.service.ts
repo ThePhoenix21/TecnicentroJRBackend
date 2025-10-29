@@ -129,12 +129,28 @@ export class ProductService {
     });
   }
 
-  async remove(userId: string, id: string): Promise<void> {
-    // Verificar que el producto existe y pertenece al usuario
-    await this.findOne(userId, id);
-
-    await this.prisma.product.delete({
+  async remove(userId: string, id: string, isAdmin: boolean = false): Promise<void> {
+    // Verificar que el producto existe
+    const product = await this.prisma.product.findUnique({
       where: { id },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
+    }
+
+    // Si no es admin, verificar que el producto pertenece al usuario
+    if (!isAdmin && product.userId !== userId) {
+      throw new ForbiddenException('No tienes permiso para eliminar este producto');
+    }
+
+    // Eliminación lógica: actualizar isDeleted a true
+    await this.prisma.product.update({
+      where: { id },
+      data: {
+        isDeleted: true,
+        updatedAt: new Date() // Asegurarse de actualizar la fecha de modificación
+      } as any, // Usamos 'as any' temporalmente para evitar problemas de tipos
     });
   }
 
