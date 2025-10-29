@@ -117,7 +117,12 @@ export class OrderService {
       }
 
       // 3. Calcular el monto total y verificar stock
-      const productMap = new Map(products.map(p => [p.productId, p.quantity]));
+      const productMap = new Map(products.map(p => [p.productId, { 
+        quantity: p.quantity, 
+        // Usamos customPrice si existe, de lo contrario usamos el precio del producto
+        price: 'customPrice' in p ? p.customPrice : undefined
+      }]));
+      
       let totalAmount = 0;
       const orderProductsData: Array<{
         productId: string;
@@ -127,17 +132,24 @@ export class OrderService {
 
       // Verificar stock y calcular total
       for (const product of existingProducts) {
-        const quantity = productMap.get(product.id) || 0;
+        const productData = productMap.get(product.id);
+        if (!productData) continue;
+        
+        const { quantity, price } = productData;
+        
         if (product.stock < quantity) {
           throw new BadRequestException(`No hay suficiente stock para el producto: ${product.name}`);
         }
-        const productPrice = product.price;
-        totalAmount += productPrice * quantity;
+        
+        // Si no se proporcionó un precio personalizado, usar el precio del producto
+        const finalPrice = price !== undefined ? price : product.price;
+        
+        totalAmount += finalPrice * quantity;
         
         orderProductsData.push({
           productId: product.id,
           quantity,
-          price: productPrice,
+          price: finalPrice
         });
       }
 
@@ -191,14 +203,17 @@ export class OrderService {
 
       // 5. Actualizar el stock de productos
       await Promise.all(
-        existingProducts.map(product => 
-          prisma.product.update({
+        existingProducts.map(product => {
+          const productData = productMap.get(product.id);
+          if (!productData) return null;
+          
+          return prisma.product.update({
             where: { id: product.id },
             data: { 
-              stock: product.stock - (productMap.get(product.id) || 0) 
+              stock: product.stock - productData.quantity
             },
-          })
-        )
+          });
+        }).filter(Boolean) // Filtrar posibles valores nulos
       );
 
       return order as unknown as Order;

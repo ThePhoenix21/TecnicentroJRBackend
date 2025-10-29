@@ -209,6 +209,20 @@ export class OrderController {
         throw new BadRequestException(errors);
       }
 
+      // Mapear customPrice a price si está presente
+      if (createOrderDto.products) {
+        createOrderDto.products = createOrderDto.products.map(product => {
+          // Si hay customPrice, lo usamos como price
+          if (product.customPrice !== undefined) {
+            return {
+              ...product,
+              price: product.customPrice
+            };
+          }
+          return product;
+        });
+      }
+
       // Asignar el ID del usuario al DTO
       createOrderDto.userId = userId;
 

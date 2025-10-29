@@ -102,6 +102,11 @@ class OrderProductDto {
   @IsPositive()
   @Min(1)
   quantity: number;
+
+  @IsNumber()
+  @IsPositive()
+  @IsOptional()
+  customPrice?: number;
 }
 
 class ServiceDto {
