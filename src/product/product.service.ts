@@ -107,9 +107,21 @@ export class ProductService {
     userId: string,
     id: string,
     updateProductDto: UpdateProductDto,
+    isAdmin: boolean = false
   ): Promise<Product> {
-    // Verificar que el producto existe y pertenece al usuario
-    await this.findOne(userId, id);
+    // Verificar que el producto existe
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
+    }
+
+    // Si no es admin, verificar que el producto pertenece al usuario
+    if (!isAdmin && product.userId !== userId) {
+      throw new ForbiddenException('No tienes permiso para actualizar este producto');
+    }
 
     return this.prisma.product.update({
       where: { id },

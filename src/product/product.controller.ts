@@ -111,7 +111,7 @@ export class ProductController {
   }
 
   @Patch('update/:id')
-  @Roles(Role.ADMIN, Role.USER)
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Actualizar un producto' })
   @ApiParam({ name: 'id', description: 'ID del producto a actualizar', format: 'uuid' })
   @ApiBody({ type: UpdateProductDto })
@@ -129,7 +129,9 @@ export class ProductController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateProductDto: UpdateProductDto,
   ): Promise<Product> {
-    return this.productService.update(req.user.userId, id, updateProductDto);
+    // Como este endpoint solo es accesible para administradores,
+    // pasamos isAdmin=true para permitir la actualización de cualquier producto
+    return this.productService.update(req.user.userId, id, updateProductDto, true);
   }
 
   @Delete('remove/:id')
