@@ -9,6 +9,7 @@ import { OrderModule } from './order/order.module';
 import { ProductModule } from './product/product.module';
 import { ServiceModule } from './service/service.module';
 import { ImageModule } from './image/image.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ImageModule } from './image/image.module';
     ProductModule,
     ServiceModule,
     ImageModule,
+    MaintenanceModule,
   ],
   controllers: [],
   providers: [],
