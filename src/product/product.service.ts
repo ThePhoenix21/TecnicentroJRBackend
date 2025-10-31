@@ -90,16 +90,22 @@ export class ProductService {
   async findOne(userId: string, id: string): Promise<Product> {
     const product = await this.prisma.product.findUnique({
       where: { id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     });
 
     if (!product) {
       throw new NotFoundException(`Producto con ID ${id} no encontrado`);
     }
 
-    if (product.userId !== userId) {
-      throw new ForbiddenException('No tienes permiso para ver este producto');
-    }
-
+    // Cualquier usuario autenticado puede ver el producto
     return product;
   }
 
