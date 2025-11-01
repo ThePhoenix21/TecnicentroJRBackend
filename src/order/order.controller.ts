@@ -264,9 +264,23 @@ export class OrderController {
       return await this.orderService.create(createOrderDto);
     } catch (error) {
       if (error instanceof HttpException) {
+        // Si ya es una excepción HTTP, la devolvemos tal cual
         throw error;
       }
-      throw new BadRequestException(`Error al procesar la orden: ${error.message}`);
+      
+      // Manejar errores específicos de Prisma
+      if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+        throw new BadRequestException({
+          statusCode: 400,
+          message: 'El correo electrónico ya está registrado con un DNI diferente',
+          error: 'Bad Request',
+          code: 'EMAIL_ALREADY_EXISTS'
+        });
+      }
+      
+      // Para otros errores, devolvemos un mensaje genérico
+      const errorMessage = error.message || 'Error desconocido al procesar la orden';
+      throw new BadRequestException(`Error al procesar la orden: ${errorMessage}`);
     }
   }
 

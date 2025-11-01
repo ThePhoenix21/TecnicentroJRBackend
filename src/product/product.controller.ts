@@ -106,7 +106,7 @@ export class ProductController {
   async findOne(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<Product> {    
+  ): Promise<Product> {  
     return this.productService.findOne(req.user.userId, id);
   }
 

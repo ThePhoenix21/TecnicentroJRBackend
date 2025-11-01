@@ -64,31 +64,60 @@ export class OrderService {
           throw new BadRequestException('Se requiere el ID de usuario para crear un cliente');
         }
         
-        // Verificar si ya existe un cliente con el mismo DNI o RUC
+        // Verificar si ya existe un cliente con el mismo DNI, RUC o email
         const existingClient = await prisma.client.findFirst({
           where: {
             OR: [
               { dni: clientInfo.dni },
-              { ruc: clientInfo.ruc }
+              { ruc: clientInfo.ruc },
+              ...(clientInfo.email ? [{ email: clientInfo.email }] : [])
             ].filter(condition => Object.values(condition)[0] !== undefined), // Solo incluir condiciones definidas
             userId: userId
           },
-          select: { id: true }
+          select: { 
+            id: true,
+            dni: true,
+            email: true 
+          }
         });
 
         if (existingClient) {
+          // Si el email existe pero el DNI es diferente, lanzar un error específico
+          if (clientInfo.email && existingClient.email === clientInfo.email && 
+              existingClient.dni !== clientInfo.dni) {
+            throw new BadRequestException({
+              statusCode: 400,
+              message: 'El correo electrónico ya está registrado con un DNI diferente',
+              error: 'Bad Request',
+              code: 'EMAIL_ALREADY_EXISTS'
+            });
+          }
+          
           // Usar el cliente existente
           clientIdToUse = existingClient.id;
         } else {
-          // Crear un nuevo cliente solo si no existe
-          const newClient = await prisma.client.create({
-            data: {
-              ...clientInfo,
-              userId: userId,
-            },
-            select: { id: true }
-          });
-          clientIdToUse = newClient.id;
+          try {
+            // Crear un nuevo cliente solo si no existe
+            const newClient = await prisma.client.create({
+              data: {
+                ...clientInfo,
+                userId: userId,
+              },
+              select: { id: true }
+            });
+            clientIdToUse = newClient.id;
+          } catch (error) {
+            // Capturar error de violación de restricción única
+            if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+              throw new BadRequestException({
+                statusCode: 400,
+                message: 'El correo electrónico ya está registrado',
+                error: 'Bad Request',
+                code: 'EMAIL_ALREADY_EXISTS'
+              });
+            }
+            throw error; // Relanzar otros errores
+          }
         }
       } else if (!clientId) {
         throw new BadRequestException('Se requiere el ID del cliente o la información del cliente');
