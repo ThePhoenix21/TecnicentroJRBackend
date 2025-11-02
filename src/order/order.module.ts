@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 import { SupabaseStorageModule } from '../supabase/supabase-storage.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { SupabaseStorageModule } from '../supabase/supabase-storage.module';
     }),
     ConfigModule,
     SupabaseStorageModule,
+    AuthModule,
   ],
   controllers: [OrderController],
   providers: [OrderService],

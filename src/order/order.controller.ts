@@ -35,6 +35,8 @@ import { Role } from '../auth/enums/role.enum';
 import { ServiceType } from '@prisma/client';
 import { Order } from './entities/order.entity';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
+import { AuthService } from '../auth/auth.service';
 
 // Definir el tipo para el usuario autenticado
 interface RequestWithUser extends Request {
@@ -73,7 +75,8 @@ interface UploadedFile {
 export class OrderController {
   constructor(
     private readonly orderService: OrderService,
-    private readonly supabaseStorage: SupabaseStorageService
+    private readonly supabaseStorage: SupabaseStorageService,
+    private readonly authService: AuthService
   ) {}
 
   /**
@@ -452,5 +455,89 @@ export class OrderController {
     }
     
     return this.orderService.updateStatus(id, userId, updateOrderStatusDto);
+  }
+
+  @Post(':id/cancel')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({
+    summary: 'Anular una orden',
+    description: 'Anula una orden existente y todos sus servicios asociados. Solo el propietario o un administrador pueden anular una orden.'
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID único de la orden a anular',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+    required: true
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Orden anulada exitosamente',
+    type: Order,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'La orden no existe o no tiene permisos para anularla',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'La orden ya está anulada o no se puede anular',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Usuario no autenticado',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'No tiene permisos para anular esta orden',
+  })
+  @Post(':id/cancel')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({
+    summary: 'Anular una orden',
+    description: 'Anula una orden existente y todos sus servicios asociados. Requiere autenticación con correo y contraseña.'
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID único de la orden a anular',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+    required: true
+  })
+  @ApiBody({ type: CancelOrderDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Orden anulada exitosamente',
+    type: Order,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'La orden no existe o no tiene permisos para anularla',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'La orden ya está anulada o no se puede anular',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Credenciales inválidas o no proporcionadas',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'No tiene permisos para anular esta orden',
+  })
+  async cancelOrder(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() cancelOrderDto: CancelOrderDto,
+  ): Promise<Order> {
+    // Verificar credenciales del usuario
+    const user = await this.authService.validateUser(
+      cancelOrderDto.email,
+      cancelOrderDto.password
+    );
+
+    if (!user) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+    
+    return this.orderService.cancelOrder(id, user.id);
   }
 }

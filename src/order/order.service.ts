@@ -272,6 +272,85 @@ export class OrderService {
     return order as unknown as Order;
   }
 
+  async cancelOrder(id: string, userId: string): Promise<Order> {
+    return this.prisma.$transaction(async (prisma) => {
+      // 1. Verificar que la orden existe y pertenece al usuario
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              role: true
+            }
+          },
+          services: true
+        }
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Orden con ID ${id} no encontrada`);
+      }
+
+      // Solo el propietario o un administrador pueden anular la orden
+      if (order.userId !== userId && order.user.role !== 'ADMIN') {
+        throw new NotFoundException(`No tiene permisos para anular esta orden`);
+      }
+
+      // 2. Verificar si la orden ya está anulada
+      if (order.status === 'CANCELLED') {
+        throw new BadRequestException('La orden ya está anulada');
+      }
+
+      // 3. Actualizar el estado de la orden a CANCELLED
+      const updatedOrder = await prisma.order.update({
+        where: { id },
+        data: { 
+          status: 'CANCELLED',
+          // Actualizar también la fecha de actualización
+          updatedAt: new Date()
+        },
+        include: {
+          orderProducts: true,
+          services: true,
+          client: true
+        }
+      });
+
+      // 4. Actualizar el estado de los servicios a ANNULLATED si existen
+      if (order.services && order.services.length > 0) {
+        await Promise.all(
+          order.services.map(service => 
+            prisma.service.update({
+              where: { id: service.id },
+              data: { 
+                status: 'ANNULLATED',
+                updatedAt: new Date()
+              }
+            })
+          )
+        );
+      }
+
+      // 5. Devolver la orden actualizada con los servicios
+      return prisma.order.findUnique({
+        where: { id },
+        include: {
+          orderProducts: true,
+          services: true,
+          client: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      }) as unknown as Order;
+    });
+  }
+
   async updateStatus(
     id: string, 
     userId: string,
