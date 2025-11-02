@@ -3,54 +3,22 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Order } from './entities/order.entity';
 import { Prisma, SaleStatus, PrismaClient } from '@prisma/client';
-
-// Función para generar el número de orden secuencial
-async function generateOrderNumber(prisma: any): Promise<string> {
-  // Buscar la última orden para obtener el último número
-  const lastOrder = await prisma.order.findFirst({
-    select: { orderNumber: true },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  let nextNumber = 1;
-  
-  if (lastOrder?.orderNumber) {
-    // Extraer el número de la última orden y sumar 1
-    const lastNumber = parseInt(lastOrder.orderNumber.split('-')[1], 10);
-    if (!isNaN(lastNumber)) {
-      nextNumber = lastNumber + 1;
-    }
-  }
-
-  // Formatear el número con ceros a la izquierda
-  return `ORD-${nextNumber.toString().padStart(4, '0')}`;
-}
+import { customAlphabet } from 'nanoid';
 
 @Injectable()
 export class OrderService {
   constructor(private prisma: PrismaService) {}
 
   // Función para generar el número de orden secuencial
-  private async generateOrderNumber(prisma: any): Promise<string> {
-    // Buscar la última orden para obtener el último número
-    const lastOrder = await prisma.order.findFirst({
-      select: { orderNumber: true },
-      orderBy: { createdAt: 'desc' },
-    });
+  private async generateOrderNumber(): Promise<string> {
+  const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
+  const uniqueId = nanoid(); // algo como: 9G7T1KQ2
 
-    let nextNumber = 1;
-    
-    if (lastOrder?.orderNumber) {
-      // Extraer el número de la última orden y sumar 1
-      const lastNumber = parseInt(lastOrder.orderNumber.split('-')[1], 10);
-      if (!isNaN(lastNumber)) {
-        nextNumber = lastNumber + 1;
-      }
-    }
+  const now = new Date();
+  const datePart = now.toISOString().slice(0,10).replace(/-/g, ''); // YYYYMMDD
 
-    // Formatear el número con ceros a la izquierda
-    return `ORD-${nextNumber.toString().padStart(4, '0')}`;
-  }
+  return `001-${datePart}-${uniqueId}`;
+}
 
   async create(createOrderDto: CreateOrderDto): Promise<Order> {
     const { clientInfo, clientId, products, services, userId } = createOrderDto;
@@ -201,7 +169,7 @@ export class OrderService {
         : SaleStatus.COMPLETED;
 
           // 5. Generar número de orden
-      const orderNumber = await this.generateOrderNumber(prisma);
+      const orderNumber = await this.generateOrderNumber();
 
       // 6. Crear la orden
       const orderData: Prisma.OrderCreateInput = {
