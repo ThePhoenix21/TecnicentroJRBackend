@@ -118,6 +118,32 @@ model Service {
   order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 
+model Payment {
+  id        String            @id @default(uuid())
+  type      PaymentType       @default(EFECTIVO)
+  amount    Float
+
+  sourceType PaymentSourceType
+  sourceId   String
+  
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+enum PaymentType {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  YAPE
+  PLIN
+  OTRO
+}
+
+enum PaymentSourceType {
+  ORDER
+  SERVICE
+}
+
 enum SaleStatus {
   COMPLETED
   CANCELLED

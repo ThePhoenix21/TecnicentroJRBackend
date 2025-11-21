@@ -1,4 +1,10 @@
 -- CreateEnum
+CREATE TYPE "public"."PaymentType" AS ENUM ('EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'YAPE', 'PLIN', 'OTRO');
+
+-- CreateEnum
+CREATE TYPE "public"."PaymentSourceType" AS ENUM ('ORDER', 'SERVICE');
+
+-- CreateEnum
 CREATE TYPE "public"."SaleStatus" AS ENUM ('COMPLETED', 'CANCELLED', 'PENDING');
 
 -- CreateEnum
@@ -127,6 +133,19 @@ CREATE TABLE "public"."Service" (
     "orderId" TEXT NOT NULL,
 
     CONSTRAINT "Service_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public"."Payment" (
+    "id" TEXT NOT NULL,
+    "type" "public"."PaymentType" NOT NULL DEFAULT 'EFECTIVO',
+    "amount" DOUBLE PRECISION NOT NULL,
+    "sourceType" "public"."PaymentSourceType" NOT NULL,
+    "sourceId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Payment_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
