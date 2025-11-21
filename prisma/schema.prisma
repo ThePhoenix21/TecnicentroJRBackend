@@ -14,11 +14,7 @@ model RefreshToken {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   revoked   Boolean  @default(false)
-
-  //clave foranea
   userId    String
-
-  //Relaciones
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -41,107 +37,85 @@ model User {
   verified                  Boolean        @default(false)
   verifyToken               String?
   verifyTokenExpires        DateTime?
-  avatarUrl                  String?
+  avatarUrl                 String?
   passwordChangedAt         DateTime?
   passwordResetToken        String?
-  passwordResetTokenExpires DateTime?  
-
-  // Relaciones inversas
-  products                  Product[]
-  orders                    Order[]  
-  refreshTokens             RefreshToken[]
+  passwordResetTokenExpires DateTime?
   clients                   Client[]
+  orders                    Order[]
+  products                  Product[]
+  refreshTokens             RefreshToken[]
 }
- 
+
 model Product {
-  id              String   @id @default(uuid())
-  name            String
-  description     String?
-  price           Float
-  isDeleted       Boolean  @default(false)
-  buycost         Float    @default(0)
-  stock           Int      @default(0)
-  stockTreshold   Int      @default(1)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
- 
-  // Clave foránea
-  userId         String  
-  
-  // Relación inversa
-  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String         @id @default(uuid())
+  name          String
+  description   String?
+  price         Float
+  isDeleted     Boolean        @default(false)
+  buycost       Float          @default(0)
+  stock         Int            @default(0)
+  stockTreshold Int            @default(1)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  userId        String
   orderProducts OrderProduct[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model OrderProduct {
-  id          String   @id @default(uuid())
-  quantity    Int      @default(1)
-  price       Float  
-  buycost     Float    @default(0)
-
-  //clave foranea
-  productId   String
-  orderId     String
-
-  //Relaciones
-  product    Product  @relation(fields: [productId], references: [id])
-  order      Order    @relation(fields: [orderId], references: [id])
+  id        String  @id @default(uuid())
+  quantity  Int     @default(1)
+  price     Float
+  buycost   Float   @default(0)
+  productId String
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
 }
 
 model Client {
-  id          String      @id @default(uuid())
-  name        String?
-  email       String?     @unique
-  phone       String?
-  address     String?
-  ruc         String?     @unique
-  dni         String     @unique
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
-  // Clave foránea
-  userId      String
-  
-  // Relaciones
-  user        User            @relation(fields: [userId], references: [id], onDelete: SetNull)
-  orders      Order[]
+  id        String   @id @default(uuid())
+  name      String?
+  email     String?  @unique
+  phone     String?
+  address   String?
+  ruc       String?  @unique
+  dni       String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orders    Order[]
 }
 
 model Order {
-  id           String     @id @default(uuid())
-  orderNumber  String     @unique @default("ORD-0000")
-  totalAmount  Float
-  status       SaleStatus @default(PENDING)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-
-  // Claves foráneas
-  userId      String
-  clientId    String
-
-  // Relaciones
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  client       Client        @relation(fields: [clientId], references: [id])
+  id            String         @id @default(uuid())
+  orderNumber   String         @unique @default("ORD-0000")
+  totalAmount   Float
+  status        SaleStatus     @default(PENDING)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  userId        String
+  clientId      String
+  client        Client         @relation(fields: [clientId], references: [id])
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   orderProducts OrderProduct[]
-  services     Service[]
+  services      Service[]
 }
 
 model Service {
-  id              String          @id @default(uuid())
-  type            ServiceType     @default(REPAIR)
-  status          ServiceStatus   @default(IN_PROGRESS)
-  name            String
-  description     String
-  photoUrls       String[]        @default([])
-  price           Float
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  
-  //clave foranea
-  orderId         String
-  
-  // Relaciones
-  order            Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id          String        @id @default(uuid())
+  type        ServiceType   @default(REPAIR)
+  status      ServiceStatus @default(IN_PROGRESS)
+  name        String
+  description String
+  photoUrls   String[]      @default([])
+  price       Float
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  orderId     String
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 
 enum SaleStatus {
@@ -151,11 +125,11 @@ enum SaleStatus {
 }
 
 enum ServiceStatus {
-  IN_PROGRESS   // En proceso
-  COMPLETED     // Completado
-  DELIVERED     // Entregado
-  PAID          // Pagado
-  ANNULLATED    // Anulado
+  IN_PROGRESS
+  COMPLETED
+  DELIVERED
+  PAID
+  ANNULLATED
 }
 
 enum ServiceType {
