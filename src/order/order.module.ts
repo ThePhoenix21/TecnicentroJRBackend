@@ -6,6 +6,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 import { SupabaseStorageModule } from '../supabase/supabase-storage.module';
 import { AuthModule } from '../auth/auth.module';
+import { PaymentModule } from '../payment/payment.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { AuthModule } from '../auth/auth.module';
     ConfigModule,
     SupabaseStorageModule,
     AuthModule,
+    PaymentModule,
   ],
   controllers: [OrderController],
   providers: [OrderService],

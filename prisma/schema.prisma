@@ -140,7 +140,7 @@ enum PaymentType {
 }
 
 enum PaymentSourceType {
-  ORDER
+  ORDERPRODUCT
   SERVICE
 }
 

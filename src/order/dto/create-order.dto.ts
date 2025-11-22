@@ -17,7 +17,7 @@ import {
   ValidatorConstraintInterface
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ServiceType, SaleStatus } from '@prisma/client';
+import { ServiceType, SaleStatus, PaymentType } from '@prisma/client';
 
 @ValidatorConstraint({ name: 'clientInfoOrId', async: false })
 class ClientInfoOrIdConstraint implements ValidatorConstraintInterface {
@@ -93,6 +93,15 @@ class ClientInfoDto {
   dni: string;
 }
 
+class PaymentDto {
+  @IsEnum(PaymentType)
+  type: PaymentType;
+
+  @IsNumber()
+  @IsPositive()
+  amount: number;
+}
+
 class OrderProductDto {
   @IsString()
   @IsUUID()
@@ -107,6 +116,12 @@ class OrderProductDto {
   @IsPositive()
   @IsOptional()
   customPrice?: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PaymentDto)
+  @IsOptional()
+  payments?: PaymentDto[];
 }
 
 class ServiceDto {
@@ -129,6 +144,12 @@ class ServiceDto {
   @IsString({ each: true })
   @IsOptional()
   photoUrls?: string[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PaymentDto)
+  @IsOptional()
+  payments?: PaymentDto[];
 }
 
 export class CreateOrderDto {

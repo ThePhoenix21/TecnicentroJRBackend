@@ -28,15 +28,17 @@ import { OrderService } from './order.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiQuery, ApiParam, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { SaleStatus } from '@prisma/client';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { SupabaseStorageService } from '../common/utility/supabase-storage.util';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
-import { ServiceType } from '@prisma/client';
+import { ServiceType, PaymentType, PaymentSourceType } from '@prisma/client';
 import { Order } from './entities/order.entity';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { AuthService } from '../auth/auth.service';
+import { PaymentService, CreatePaymentDto } from '../payment/payment.service';
 
 // Definir el tipo para el usuario autenticado
 interface RequestWithUser extends Request {
@@ -76,7 +78,8 @@ export class OrderController {
   constructor(
     private readonly orderService: OrderService,
     private readonly supabaseStorage: SupabaseStorageService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
+    private readonly paymentService: PaymentService
   ) {}
 
   /**
@@ -112,79 +115,383 @@ export class OrderController {
   @Post('create')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.USER)
-  @UseInterceptors(
-    FileFieldsInterceptor(
-      [{ name: 'photos', maxCount: 10 }],
-      {
-        limits: {
-          fileSize: 10 * 1024 * 1024, // 10MB por archivo
-          files: 10 // Máximo 10 archivos
-        },
-        fileFilter: (req, file, callback) => {
-          if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-            return callback(new Error('Solo se permiten imágenes'), false);
-          }
-          callback(null, true);
-        }
-      }
-    )
-  )
+  // Para subir fotos, usa el endpoint específico de carga de imágenes
+  // y luego incluye las URLs en el campo photoUrls del servicio correspondiente
   @ApiOperation({ 
     summary: 'Crear una nueva orden',
-    description: `Crea una nueva orden con la información proporcionada.`
+    description: `Crea una nueva orden con productos, servicios y fotos opcionales.\n\n` +
+    `**Requisitos de autenticación:**\n` +
+    `- Se requiere token JWT válido en el header 'Authorization'\n` +
+    `- Roles permitidos: ADMIN o USER\n\n` +
+    `**Límites de archivos:**\n` +
+    `- Máximo 10 archivos por orden\n` +
+    `- Tamaño máximo por archivo: 10MB\n` +
+    `- Formatos permitidos: jpg, jpeg, png, gif, webp`
   })
-  @ApiConsumes('multipart/form-data')
+  @ApiBearerAuth()
+  @ApiConsumes('application/json')
   @ApiBody({
+    description: 'Datos para crear una nueva orden',
     schema: {
       type: 'object',
+      required: ['clientInfo', 'products'],
       properties: {
-        createOrderDto: { 
-          type: 'string',
-          format: 'json',
-          description: 'JSON string del objeto CreateOrderDto'
+        clientInfo: {
+          type: 'object',
+          required: ['name', 'dni'],
+          properties: {
+            name: { type: 'string', example: 'Cliente Nuevo' },
+            email: { 
+              type: 'string', 
+              format: 'email',
+              example: 'cliente@ejemplo.com',
+              description: 'Opcional, pero recomendado para notificaciones'
+            },
+            phone: { 
+              type: 'string', 
+              example: '999999999',
+              description: 'Opcional, pero recomendado para contacto'
+            },
+            address: { 
+              type: 'string',
+              example: 'Av. Principal 123',
+              description: 'Opcional, dirección del cliente'
+            },
+            dni: { 
+              type: 'string',
+              example: '12345678',
+              description: 'DNI del cliente (requerido)'
+            },
+            ruc: { 
+              type: 'string',
+              example: '20123456781',
+              description: 'Opcional, solo si el cliente tiene RUC'
+            }
+          }
         },
-        photos: {
+        products: {
           type: 'array',
+          minItems: 0,
           items: {
-            type: 'string',
-            format: 'binary'
-          },
-          description: 'Fotos opcionales para la orden'
+            type: 'object',
+            required: ['productId', 'quantity'],
+            properties: {
+              productId: { 
+                type: 'string',
+                format: 'uuid',
+                example: '550e8400-e29b-41d4-a716-446655440000'
+              },
+              quantity: { 
+                type: 'integer',
+                minimum: 1,
+                example: 2
+              },
+              customPrice: {
+                type: 'number',
+                minimum: 0,
+                description: 'Opcional, sobreescribe el precio del producto',
+                example: 120.50
+              },
+              payments: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['type', 'amount'],
+                  properties: {
+                    type: {
+                      type: 'string',
+                      enum: Object.values(PaymentType),
+                      example: 'EFECTIVO'
+                    },
+                    amount: {
+                      type: 'number',
+                      minimum: 0,
+                      example: 241.00
+                    }
+                  }
+                },
+                description: 'Opcional, métodos de pago para este producto'
+              }
+            }
+          }
+        },
+        services: {
+          type: 'array',
+          minItems: 0,
+          items: {
+            type: 'object',
+            required: ['name', 'price', 'type'],
+            properties: {
+              name: { 
+                type: 'string',
+                example: 'Mantenimiento preventivo'
+              },
+              description: { 
+                type: 'string',
+                example: 'Limpieza y mantenimiento general'
+              },
+              price: { 
+                type: 'number',
+                minimum: 0,
+                example: 150.50
+              },
+              type: { 
+                type: 'string',
+                enum: Object.values(ServiceType),
+                example: 'MAINTENANCE'
+              },
+              photoUrls: {
+                type: 'array',
+                items: { type: 'string', format: 'uri' },
+                description: 'URLs de fotos (se llenan automáticamente al subir archivos)'
+              },
+              payments: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['type', 'amount'],
+                  properties: {
+                    type: {
+                      type: 'string',
+                      enum: Object.values(PaymentType),
+                      example: 'TARJETA'
+                    },
+                    amount: {
+                      type: 'number',
+                      minimum: 0,
+                      example: 150.50
+                    }
+                  }
+                },
+                description: 'Opcional, métodos de pago para este servicio'
+              }
+            }
+          }
+        },
+        orderNumber: {
+          type: 'string',
+          description: 'Opcional, se genera automáticamente si no se proporciona',
+          example: 'ORD-2023-001'
+        },
+        status: {
+          type: 'string',
+          enum: Object.values(SaleStatus),
+          default: 'PENDING',
+          description: 'Estado de la orden',
+          example: 'PENDING'
         }
-      },
-      required: ['createOrderDto']
+      }
     },
     examples: {
-      'Orden con productos y servicios': {
+      'Orden completa': {
+        summary: 'Orden con productos y servicios',
         value: {
-          createOrderDto: JSON.stringify({
-            clientId: '123e4567-e89b-12d3-a456-426614174000',
-            description: 'Reparación de laptop y mantenimiento',
-            services: [
-              {
-                name: 'Mantenimiento preventivo',
-                description: 'Limpieza y mantenimiento general',
-                price: 150.50,
-                type: 'MAINTENANCE'
-              }
-            ]
-          }, null, 2)
-        }
-      },
-      'Orden solo con fotos': {
-        value: {
-          createOrderDto: JSON.stringify({
-            clientId: '123e4567-e89b-12d3-a456-426614174000',
-            description: 'Orden con evidencia fotográfica'
-          }, null, 2)
+          clientInfo: {
+            name: 'Juan Perez',
+            email: 'juan.perez@example.com',
+            phone: '987654321',
+            address: 'Av. Siempre Viva 123',
+            ruc: '20123456789',
+            dni: '12345678'
+          },
+          products: [
+            {
+              productId: '11111111-1111-1111-1111-111111111111',
+              quantity: 2,
+              customPrice: 150.5,
+              payments: [
+                {
+                  type: 'EFECTIVO',
+                  amount: 301.00
+                }
+              ]
+            },
+            {
+              productId: '22222222-2222-2222-2222-222222222222',
+              quantity: 1,
+              payments: [
+                {
+                  type: 'TARJETA',
+                  amount: 99.90
+                },
+                {
+                  type: 'YAPE',
+                  amount: 50.10
+                }
+              ]
+            }
+          ],
+          services: [
+            {
+              name: 'Reparación de motor',
+              description: 'Revisión completa del motor',
+              price: 250.0,
+              type: 'REPAIR',
+              photoUrls: [
+                'https://example.com/img1.jpg',
+                'https://example.com/img2.jpg'
+              ],
+              payments: [
+                {
+                  type: 'TRANSFERENCIA',
+                  amount: 250.0
+                }
+              ]
+            },
+            {
+              name: 'Garantía extendida',
+              price: 50.0,
+              type: 'WARRANTY',
+              photoUrls: [],
+              payments: [
+                {
+                  type: 'EFECTIVO',
+                  amount: 50.0
+                }
+              ]
+            }
+          ],
+          userId: '33333333-3333-3333-3333-333333333333',
+          status: 'PENDING'
         }
       }
     }
   })
-  @ApiResponse({ status: 201, description: 'Orden creada exitosamente', type: Order })
-  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  @ApiResponse({ status: 413, description: 'Tamaño de archivo excede el límite' })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Orden creada exitosamente', 
+    schema: {
+      example: {
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        totalAmount: 320.50,
+        status: 'PENDING',
+        orderNumber: 'ORD-2023-001',
+        clientId: '123e4567-e89b-12d3-a456-426614174000',
+        userId: '550e8400-e29b-41d4-a716-446655440000',
+        createdAt: '2023-11-21T16:30:00.000Z',
+        updatedAt: '2023-11-21T16:30:00.000Z',
+        orderProducts: [
+          {
+            id: '550e8400-e29b-41d4-a716-446655440001',
+            orderId: '123e4567-e89b-12d3-a456-426614174000',
+            productId: '550e8400-e29b-41d4-a716-446655440002',
+            quantity: 2,
+            price: 120.50,
+            subtotal: 241.00,
+            createdAt: '2023-11-21T16:30:00.000Z',
+            updatedAt: '2023-11-21T16:30:00.000Z',
+            payments: [
+              {
+                id: 'pay-001',
+                type: 'EFECTIVO',
+                amount: 241.00,
+                sourceType: 'ORDERPRODUCT',
+                sourceId: '550e8400-e29b-41d4-a716-446655440001',
+                createdAt: '2023-11-21T16:30:00.000Z',
+                updatedAt: '2023-11-21T16:30:00.000Z'
+              }
+            ]
+          }
+        ],
+        services: [
+          {
+            id: '550e8400-e29b-41d4-a716-446655440003',
+            orderId: '123e4567-e89b-12d3-a456-426614174000',
+            name: 'Mantenimiento preventivo',
+            description: 'Limpieza y mantenimiento general',
+            price: 150.50,
+            type: 'MAINTENANCE',
+            photoUrls: [
+              'https://example.com/photos/orden-123e4567/photo1.jpg',
+              'https://example.com/photos/orden-123e4567/photo2.jpg'
+            ],
+            createdAt: '2023-11-21T16:30:00.000Z',
+            updatedAt: '2023-11-21T16:30:00.000Z',
+            payments: [
+              {
+                id: 'pay-002',
+                type: 'TARJETA',
+                amount: 150.50,
+                sourceType: 'SERVICE',
+                sourceId: '550e8400-e29b-41d4-a716-446655440003',
+                createdAt: '2023-11-21T16:30:00.000Z',
+                updatedAt: '2023-11-21T16:30:00.000Z'
+              }
+            ]
+          }
+        ]
+      }
+    },
+    headers: {
+      'Location': {
+        description: 'URL de la orden creada',
+        schema: { 
+          type: 'string', 
+          format: 'uri',
+          example: '/orders/123e4567-e89b-12d3-a456-426614174000'
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 400, 
+    description: 'Datos de entrada inválidos',
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            statusCode: { type: 'number', example: 400 },
+            message: { type: 'string', example: 'Error de validación' },
+            error: { type: 'string', example: 'Bad Request' },
+            code: { type: 'string', example: 'VALIDATION_ERROR' },
+            details: { 
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  property: { type: 'string' },
+                  constraints: { type: 'object' }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 401, 
+    description: 'No autorizado - Se requiere autenticación',
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            statusCode: { type: 'number', example: 401 },
+            message: { type: 'string', example: 'No autorizado' },
+            error: { type: 'string', example: 'Unauthorized' }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 413, 
+    description: 'El tamaño total de los archivos excede el límite de 50MB',
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            statusCode: { type: 'number', example: 413 },
+            message: { type: 'string', example: 'El tamaño total de los archivos no puede exceder los 50MB' },
+            error: { type: 'string', example: 'Payload Too Large' }
+          }
+        }
+      }
+    }
+  })
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Req() req: Request & { user: { userId: string; email: string; role: Role } },
@@ -229,6 +536,27 @@ export class OrderController {
       // Asignar el ID del usuario al DTO
       createOrderDto.userId = userId;
 
+      // Procesar pagos para productos
+      if (createOrderDto.products) {
+        createOrderDto.products = createOrderDto.products.map(product => {
+          const processedProduct: any = {
+            ...product,
+            // Si hay customPrice, lo usaremos, el precio real se obtendrá del servicio
+            ...(product.customPrice !== undefined && { price: product.customPrice })
+          };
+
+          return processedProduct;
+        });
+      }
+
+      // Procesar pagos para servicios
+      if (createOrderDto.services) {
+        createOrderDto.services = createOrderDto.services.map(service => {
+          const processedService: any = { ...service };
+          return processedService;
+        });
+      }
+
       // Procesar fotos si se enviaron
       if (files?.photos?.length) {
         // Validar el tamaño total de los archivos
@@ -264,7 +592,92 @@ export class OrderController {
         }
       }
       
-      return await this.orderService.create(createOrderDto);
+      // Guardar los pagos para productos
+      const allPayments: CreatePaymentDto[] = [];
+      
+      // Extraer pagos de los productos originales
+      if (body.products) {
+        body.products.forEach((product, index) => {
+          if (product.payments && product.payments.length > 0) {
+            // El ID del OrderProduct se asignará después de crear la orden
+            product.payments.forEach(payment => {
+              allPayments.push({
+                type: payment.type,
+                amount: payment.amount,
+                sourceType: 'ORDERPRODUCT' as any,
+                sourceId: '', // Se asignará después
+              });
+            });
+          }
+        });
+      }
+
+      // Extraer pagos de los servicios originales
+      if (body.services) {
+        body.services.forEach((service, index) => {
+          if (service.payments && service.payments.length > 0) {
+            // El ID del Service se asignará después de crear la orden
+            service.payments.forEach(payment => {
+              allPayments.push({
+                type: payment.type,
+                amount: payment.amount,
+                sourceType: 'SERVICE' as any,
+                sourceId: '', // Se asignará después
+              });
+            });
+          }
+        });
+      }
+
+      // Crear la orden primero
+      const createdOrder = await this.orderService.create(createOrderDto);
+
+      // Ahora guardar los pagos con los IDs correctos
+      if (allPayments.length > 0) {
+        const paymentsToCreate: CreatePaymentDto[] = [];
+        let paymentIndex = 0;
+
+        // Asignar IDs para pagos de productos
+        if (body.products && createdOrder.orderProducts && createdOrder.orderProducts.length > 0) {
+          body.products.forEach((product, productIndex) => {
+            if (product.payments && product.payments.length > 0 && productIndex < createdOrder.orderProducts!.length) {
+              const orderProductId = createdOrder.orderProducts![productIndex]?.id;
+              if (orderProductId) {
+                product.payments.forEach(() => {
+                  paymentsToCreate.push({
+                    ...allPayments[paymentIndex],
+                    sourceId: orderProductId,
+                  });
+                  paymentIndex++;
+                });
+              }
+            }
+          });
+        }
+
+        // Asignar IDs para pagos de servicios
+        if (body.services && createdOrder.services && createdOrder.services.length > 0) {
+          body.services.forEach((service, serviceIndex) => {
+            if (service.payments && service.payments.length > 0 && serviceIndex < createdOrder.services!.length) {
+              const serviceId = createdOrder.services![serviceIndex]?.id;
+              if (serviceId) {
+                service.payments.forEach(() => {
+                  paymentsToCreate.push({
+                    ...allPayments[paymentIndex],
+                    sourceId: serviceId,
+                  });
+                  paymentIndex++;
+                });
+              }
+            }
+          });
+        }
+
+        // Crear todos los pagos
+        await this.paymentService.createPayments(paymentsToCreate);
+      }
+
+      return createdOrder;
     } catch (error) {
       if (error instanceof HttpException) {
         // Si ya es una excepción HTTP, la devolvemos tal cual
