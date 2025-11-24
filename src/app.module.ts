@@ -10,7 +10,6 @@ import { ProductModule } from './product/product.module';
 import { ServiceModule } from './service/service.module';
 import { ImageModule } from './image/image.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
-import { SaleModule } from './sale/sale.module';
 
 @Module({
   imports: [
@@ -33,7 +32,6 @@ import { SaleModule } from './sale/sale.module';
     ServiceModule,
     ImageModule,
     MaintenanceModule,
-    SaleModule,
   ],
   controllers: [],
   providers: [],
