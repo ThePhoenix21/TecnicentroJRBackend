@@ -2,7 +2,7 @@
 CREATE TYPE "public"."PaymentType" AS ENUM ('EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'YAPE', 'PLIN', 'OTRO');
 
 -- CreateEnum
-CREATE TYPE "public"."PaymentSourceType" AS ENUM ('ORDER', 'SERVICE');
+CREATE TYPE "public"."PaymentSourceType" AS ENUM ('ORDERPRODUCT', 'SERVICE');
 
 -- CreateEnum
 CREATE TYPE "public"."SaleStatus" AS ENUM ('COMPLETED', 'CANCELLED', 'PENDING');
