@@ -62,6 +62,24 @@ export class StoreService {
         }
       });
 
+      // Obtener todos los usuarios administradores y crear registros en StoreUsers
+      const adminUsers = await this.prisma.user.findMany({
+        where: { role: 'ADMIN' }
+      });
+
+      if (adminUsers.length > 0) {
+        const storeUsersData = adminUsers.map(admin => ({
+          storeId: newStore.id,
+          userId: admin.id,
+        }));
+
+        await this.prisma.storeUsers.createMany({
+          data: storeUsersData,
+        });
+
+        this.logger.log(`Se crearon ${storeUsersData.length} registros StoreUsers para la nueva tienda ${newStore.name}`);
+      }
+
       this.logger.log(`Tienda creada exitosamente: ${newStore.id} - ${newStore.name} por admin: ${adminUser.email}`);
 
       return {

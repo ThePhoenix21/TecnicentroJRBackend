@@ -262,6 +262,24 @@ export class AuthService {
 
       const newUser = await this.prisma.user.create({ data: userData });
 
+      // Si el usuario es ADMIN, crear registros en StoreUsers para todas las tiendas
+      if (userData.role === Role.ADMIN) {
+        const stores = await this.prisma.store.findMany();
+        
+        if (stores.length > 0) {
+          const storeUsersData = stores.map(store => ({
+            storeId: store.id,
+            userId: newUser.id,
+          }));
+
+          await this.prisma.storeUsers.createMany({
+            data: storeUsersData,
+          });
+
+          this.logger.log(`Se crearon ${storeUsersData.length} registros StoreUsers para el admin ${newUser.email}`);
+        }
+      }
+
       /*
       // Enviar correo de verificación
       await this.mailService.sendVerificationEmail(newUser.email, verifyToken, newUser.name);
