@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, PrismaClient } from '@prisma/client';
+import { Prisma, SaleStatus, PrismaClient, SessionStatus } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 
 @Injectable()
@@ -20,10 +20,49 @@ export class OrderService {
   return `001-${datePart}-${uniqueId}`;
 }
 
-  async create(createOrderDto: CreateOrderDto): Promise<Order> {
-    const { clientInfo, clientId, products, services, userId } = createOrderDto;
+  async create(createOrderDto: CreateOrderDto, user?: { userId: string; email: string; role: string }): Promise<Order> {
+    const { clientInfo, clientId, products, services, userId, cashSessionId } = createOrderDto;
+
+    // Validar que cashSessionId esté presente
+    if (!cashSessionId) {
+      throw new BadRequestException('El ID de la sesión de caja es obligatorio');
+    }
 
     return this.prisma.$transaction(async (prisma) => {
+      // 0. Validar la sesión de caja
+      const cashSession = await prisma.cashSession.findUnique({
+        where: { id: cashSessionId },
+        include: {
+          User: {
+            select: {
+              id: true,
+              email: true,
+              name: true
+            }
+          },
+          Store: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      });
+
+      if (!cashSession) {
+        throw new NotFoundException('La sesión de caja especificada no existe');
+      }
+
+      // Validar que la sesión esté abierta
+      if (cashSession.status !== SessionStatus.OPEN) {
+        throw new ConflictException('La sesión de caja está cerrada. No se pueden crear órdenes en sesiones cerradas.');
+      }
+
+      // Validar que el usuario que crea la orden pertenezca a la sesión
+      if (user && cashSession.UserId !== user.userId) {
+        throw new ForbiddenException('No tienes permisos para crear órdenes en esta sesión de caja');
+      }
+
       // 1. Verificar o crear el cliente
       let clientIdToUse = clientId;
       
@@ -176,6 +215,9 @@ export class OrderService {
         orderNumber,
         totalAmount,
         status: orderStatus,
+        cashSession: {
+          connect: { id: cashSessionId }
+        },
         user: {
           connect: { id: userId }
         },

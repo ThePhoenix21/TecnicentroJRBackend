@@ -630,7 +630,7 @@ export class OrderController {
       }
 
       // Crear la orden primero
-      const createdOrder = await this.orderService.create(createOrderDto);
+      const createdOrder = await this.orderService.create(createOrderDto, req.user);
 
       // Ahora guardar los pagos con los IDs correctos
       if (allPayments.length > 0) {

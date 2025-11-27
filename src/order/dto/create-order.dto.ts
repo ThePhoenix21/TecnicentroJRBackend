@@ -184,6 +184,11 @@ export class CreateOrderDto {
 
   @IsString()
   @IsUUID()
+  @IsNotEmpty({ message: 'El ID de la sesión de caja es obligatorio' })
+  cashSessionId: string;
+
+  @IsString()
+  @IsUUID()
   @IsOptional() // Hacemos que userId sea opcional en el DTO, se asignará desde el token
   userId?: string;
 
