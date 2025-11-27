@@ -41,10 +41,15 @@ model User {
   passwordChangedAt         DateTime?
   passwordResetToken        String?
   passwordResetTokenExpires DateTime?
+
   clients                   Client[]
   orders                    Order[]
   products                  Product[]
   refreshTokens             RefreshToken[]
+  cashSessions              CashSession[]
+  cashMovements             CashMovement[]
+  storeUsers                StoreUsers[]
+  stores                    Store[]
 }
 
 model Product {
@@ -84,8 +89,10 @@ model Client {
   dni       String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   orders    Order[]
 }
 
@@ -96,10 +103,17 @@ model Order {
   status        SaleStatus     @default(PENDING)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  
   userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   clientId      String
   client        Client         @relation(fields: [clientId], references: [id])
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cashSessionsId String?
+  cashSession    CashSession?    @relation(fields: [cashSessionsId], references: [id])
+
+  cashMovements CashMovement[]
   orderProducts OrderProduct[]
   services      Service[]
 }
@@ -114,6 +128,7 @@ model Service {
   price       Float
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
   orderId     String
   order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
@@ -130,6 +145,71 @@ model Payment {
   updatedAt DateTime          @updatedAt
 }
 
+model CashSession {
+  id              String   @id @default(uuid())
+  openedAt        DateTime @default(now())
+  closedAt        DateTime?
+  openedById      String
+  closedById      String?
+  status          SessionStatus @default(OPEN)
+  openingAmount   Float
+  closingAmount   Float?
+
+  StoreId         String
+  Store           Store         @relation(fields: [StoreId], references: [id])
+
+  UserId          String
+  User            User          @relation(fields: [UserId], references: [id])
+
+  // relaciones
+  cashMovements       CashMovement[]
+  orders              Order[]
+}
+
+model CashMovement {
+  id            String      @id @default(uuid())
+  sessionId     String
+  type          MovementType
+  amount        Float
+  description   String?
+  createdAt     DateTime    @default(now())
+
+  relatedOrderId  String?
+  order           Order?       @relation(fields: [relatedOrderId], references: [id])
+
+  CashSessionId String
+  CashSession   CashSession @relation(fields: [CashSessionId], references: [id])
+
+  UserId        String
+  User          User        @relation(fields: [UserId], references: [id])
+}
+
+model Store {
+  id        String      @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdById String?
+  createdBy   User? @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  cashSessions        CashSession[]
+  storeUsers          StoreUsers[]
+}
+
+model StoreUsers {
+  id        String      @id @default(uuid())  
+  
+  storeId   String
+  store     Store       @relation(fields: [storeId], references: [id])
+
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+}
+
 enum PaymentType {
   EFECTIVO
   TARJETA
@@ -142,6 +222,16 @@ enum PaymentType {
 enum PaymentSourceType {
   ORDERPRODUCT
   SERVICE
+}
+
+enum SessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum MovementType {
+  INCOME
+  EXPENSE
 }
 
 enum SaleStatus {
