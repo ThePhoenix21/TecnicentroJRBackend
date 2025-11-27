@@ -33,12 +33,13 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { SupabaseStorageService } from '../common/utility/supabase-storage.util';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
-import { ServiceType, PaymentType, PaymentSourceType } from '@prisma/client';
+import { ServiceType, PaymentSourceType, PaymentType } from '@prisma/client';
 import { Order } from './entities/order.entity';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { AuthService } from '../auth/auth.service';
 import { PaymentService, CreatePaymentDto } from '../payment/payment.service';
+import { CashMovementService } from '../cash-movement/cash-movement.service';
 
 // Definir el tipo para el usuario autenticado
 interface RequestWithUser extends Request {
@@ -79,7 +80,8 @@ export class OrderController {
     private readonly orderService: OrderService,
     private readonly supabaseStorage: SupabaseStorageService,
     private readonly authService: AuthService,
-    private readonly paymentService: PaymentService
+    private readonly paymentService: PaymentService,
+    private readonly cashMovementService: CashMovementService
   ) {}
 
   /**
@@ -675,6 +677,48 @@ export class OrderController {
 
         // Crear todos los pagos
         await this.paymentService.createPayments(paymentsToCreate);
+
+        // Debug: Verificar todos los pagos creados
+        console.log('Todos los pagos a crear:', paymentsToCreate.map(p => ({ type: p.type, amount: p.amount })));
+
+        // Crear movimientos de caja para pagos en efectivo
+        const cashPayments = paymentsToCreate.filter(payment => payment.type === PaymentType.EFECTIVO);
+        console.log('Pagos en efectivo detectados:', cashPayments.length, cashPayments.map(p => ({ type: p.type, amount: p.amount })));
+        
+        if (cashPayments.length > 0) {
+          // Obtener información del cliente para los movimientos
+          const orderWithClient = await this.orderService.findOne(createdOrder.id, req.user.userId);
+          const clientInfo = orderWithClient.client;
+          console.log('Información del cliente:', clientInfo ? { id: clientInfo.id, name: clientInfo.name } : 'No encontrado');
+
+          for (const cashPayment of cashPayments) {
+            try {
+              console.log('Creando movimiento de caja:', {
+                cashSessionId: createOrderDto.cashSessionId!,
+                amount: cashPayment.amount,
+                orderId: createdOrder.id,
+                clientId: clientInfo?.id || undefined
+              });
+              
+              await this.cashMovementService.createFromOrder({
+                cashSessionId: createOrderDto.cashSessionId!,
+                amount: cashPayment.amount,
+                orderId: createdOrder.id,
+                clientId: clientInfo?.id || undefined,
+                clientName: clientInfo?.name || undefined,
+                clientEmail: clientInfo?.email || undefined
+              });
+              
+              console.log('Movimiento de caja creado exitosamente para monto:', cashPayment.amount);
+            } catch (error) {
+              // Si falla la creación del movimiento, loguear pero no fallar la orden
+              console.error(`Error al crear movimiento de caja para pago ${cashPayment.amount}:`, error.message);
+              console.error('Stack trace:', error.stack);
+            }
+          }
+        } else {
+          console.log('No se encontraron pagos en efectivo en esta orden');
+        }
       }
 
       return createdOrder;
