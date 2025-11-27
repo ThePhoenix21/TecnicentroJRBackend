@@ -47,20 +47,33 @@ export class CashSessionService {
 
       this.logger.debug(`Usuario ${user.email} verificado como miembro de la tienda ${storeId}`);
 
-      // 3. Validar que no haya una sesión abierta para esa tienda
-      const existingOpenSession = await this.prisma.cashSession.findFirst({
+      // 3. Validar que el usuario no tenga otra sesión abierta
+      const existingUserOpenSession = await this.prisma.cashSession.findFirst({
+        where: {
+          UserId: user.userId,
+          status: SessionStatus.OPEN
+        }
+      });
+
+      if (existingUserOpenSession) {
+        this.logger.warn(`Usuario ${user.email} ya tiene una sesión abierta: ${existingUserOpenSession.id}`);
+        throw new ConflictException('Ya tienes una sesión de caja abierta. Ciérrala antes de abrir otra.');
+      }
+
+      // 4. Validar que no haya una sesión abierta para esa tienda
+      const existingStoreOpenSession = await this.prisma.cashSession.findFirst({
         where: {
           StoreId: storeId,
           status: SessionStatus.OPEN
         }
       });
 
-      if (existingOpenSession) {
-        this.logger.warn(`Ya existe una sesión abierta para la tienda ${storeId}: ${existingOpenSession.id}`);
+      if (existingStoreOpenSession) {
+        this.logger.warn(`Ya existe una sesión abierta para la tienda ${storeId}: ${existingStoreOpenSession.id}`);
         throw new ConflictException('Ya hay una sesión de caja abierta para esta tienda');
       }
 
-      // 4. Crear la sesión de caja
+      // 5. Crear la sesión de caja
       const newCashSession = await this.prisma.cashSession.create({
         data: {
           StoreId: storeId,
