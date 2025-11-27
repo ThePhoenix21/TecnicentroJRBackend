@@ -297,6 +297,7 @@ export class UsersController {
       language: 'es',
       timezone: 'UTC',
       verified: true, // Usuario verificado por defecto
+      storeId: createUserDto.storeId, // Agregar el storeId (obligatorio)
     };
 
     this.logger.debug(`Datos del usuario a crear: ${JSON.stringify({...userData, password: '***'})}`);
@@ -304,6 +305,10 @@ export class UsersController {
     try {
       const user = await this.usersService.create(userData);
       this.logger.debug(`Usuario creado exitosamente con ID: ${user.id}`);
+      
+      // Registrar asociación con la tienda (ahora es obligatorio)
+      this.logger.debug(`Usuario asociado obligatoriamente a la tienda con ID: ${createUserDto.storeId}`);
+      
       return user;
     } catch (error) {
       this.logger.error(`Error al crear usuario: ${error.message}`, error.stack);

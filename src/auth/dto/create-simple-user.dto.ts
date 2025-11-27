@@ -1,4 +1,4 @@
-﻿import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+﻿import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, IsUUID } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateSimpleUserDto {
@@ -45,4 +45,13 @@ export class CreateSimpleUserDto {
   @IsNotEmpty({ message: 'La contraseña es obligatoria' })
   @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
   password: string;
+
+  @ApiProperty({
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    description: 'ID de la tienda a la que pertenecerá el usuario (obligatorio)',
+    required: true
+  })
+  @IsNotEmpty({ message: 'El ID de la tienda es obligatorio' })
+  @IsUUID('4', { message: 'El ID de la tienda debe ser un UUID válido' })
+  storeId: string;
 }

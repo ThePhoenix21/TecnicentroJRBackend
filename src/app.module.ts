@@ -10,6 +10,9 @@ import { ProductModule } from './product/product.module';
 import { ServiceModule } from './service/service.module';
 import { ImageModule } from './image/image.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
+import { StoreModule } from './store/store.module';
+import { CashSessionModule } from './cash-session/cash-session.module';
+import { CashMovementModule } from './cash-movement/cash-movement.module';
 
 @Module({
   imports: [
@@ -32,6 +35,9 @@ import { MaintenanceModule } from './maintenance/maintenance.module';
     ServiceModule,
     ImageModule,
     MaintenanceModule,
+    StoreModule,
+    CashSessionModule,
+    CashMovementModule,
   ],
   controllers: [],
   providers: [],

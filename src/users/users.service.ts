@@ -1,7 +1,10 @@
 import { 
   Injectable, 
   BadRequestException, 
-  UnauthorizedException 
+  UnauthorizedException,
+  Logger,
+  ConflictException,
+  NotFoundException
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
@@ -9,6 +12,8 @@ import { User, Role } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
+    private readonly logger = new Logger(UsersService.name);
+
     constructor(private prisma: PrismaService) {}
 
     /**
@@ -30,7 +35,7 @@ export class UsersService {
      *    - verifyTokenExpires: fecha de expiración del token (24 horas)
      * 6. Retorna el usuario recién creado.
      */
-    async createUser(email: string, password: string, name: string, username: string, phone?: string, birthdate?: Date, language?: string, timezone?: string) {
+    async createUser(email: string, password: string, name: string, username: string, storeId: string, phone?: string, birthdate?: Date, language?: string, timezone?: string) {
         return this.create({
             email,
             password,
@@ -40,7 +45,8 @@ export class UsersService {
             birthdate,
             language,
             timezone,
-            role: Role.USER
+            role: Role.USER,
+            storeId
         });
     }
 
@@ -55,9 +61,30 @@ export class UsersService {
         timezone?: string;
         role?: Role;
         verified?: boolean;
+        storeId: string; // Ahora es obligatorio
     }) {
-        const { email, password, name, username, phone, birthdate, language, timezone, role, verified = true } = userData;
+        const { email, password, name, username, phone, birthdate, language, timezone, role, verified = true, storeId } = userData;
         
+        this.logger.log(`Iniciando creación de usuario: ${username || email}`);
+
+        // Validar que se proporcionó storeId (es obligatorio)
+        if (!storeId) {
+            this.logger.error('El ID de la tienda es obligatorio para crear un usuario');
+            throw new BadRequestException('El ID de la tienda es obligatorio');
+        }
+
+        // Verificar que la tienda exista
+        const store = await this.prisma.store.findUnique({
+            where: { id: storeId }
+        });
+        
+        if (!store) {
+            this.logger.error(`Tienda no encontrada con ID: ${storeId}`);
+            throw new NotFoundException('La tienda especificada no existe');
+        }
+        
+        this.logger.debug(`Tienda encontrada: ${store.name} (ID: ${storeId})`);
+
         const existing = await this.prisma.user.findFirst({
             where: {
                 OR: [
@@ -98,35 +125,55 @@ export class UsersService {
         const verifyTokenExpires = new Date();
         verifyTokenExpires.setHours(verifyTokenExpires.getHours() + 24);
 
-        return this.prisma.user.create({
-            data: {
-                email,
-                password: hashedPassword,
-                name,
-                username,
-                phone: phone || 'sin_telefono',
-                birthdate,
-                language: finalLanguage,
-                timezone: finalTimezone,
-                role: finalRole,
-                verifyToken,
-                verifyTokenExpires,
-                verified,
-                lastLoginAt: new Date(),
-            },
-            select: {
-                id: true,
-                email: true,
-                name: true,
-                username: true,
-                phone: true,
-                role: true,
-                createdAt: true,
-                updatedAt: true,
-                lastLoginAt: true,
-                verified: true
-            }
+        // Crear usuario y StoreUsers en una transacción
+        const result = await this.prisma.$transaction(async (tx) => {
+            // Crear el usuario
+            const newUser = await tx.user.create({
+                data: {
+                    email,
+                    password: hashedPassword,
+                    name,
+                    username,
+                    phone: phone || 'sin_telefono',
+                    birthdate,
+                    language: finalLanguage,
+                    timezone: finalTimezone,
+                    role: finalRole,
+                    verifyToken,
+                    verifyTokenExpires,
+                    verified,
+                    lastLoginAt: new Date(),
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                    username: true,
+                    phone: true,
+                    role: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    lastLoginAt: true,
+                    verified: true
+                }
+            });
+
+            // Crear la relación en StoreUsers (ahora es obligatorio)
+            await tx.storeUsers.create({
+                data: {
+                    storeId: storeId,
+                    userId: newUser.id
+                }
+            });
+            
+            this.logger.debug(`Relación StoreUsers creada: Usuario ${newUser.id} -> Tienda ${storeId}`);
+
+            return newUser;
         });
+
+        this.logger.log(`Usuario creado exitosamente: ${result.id} - ${result.username || result.email}`);
+        
+        return result;
     }
 
     private generateToken(): string {

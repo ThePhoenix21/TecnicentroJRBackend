@@ -11,4 +11,5 @@ export class Order implements PrismaOrder {
   orderProducts?: (OrderProduct & { payments?: Payment[] })[];
   services?: (Service & { payments?: Payment[] })[];
   orderNumber: string;
+  cashSessionsId: string | null;
 }
