@@ -115,7 +115,7 @@ export class CashMovementService {
   }
 
   // 2. Crear movimiento desde orden (uso interno)
-  async createFromOrder(createOrderCashMovementDto: CreateOrderCashMovementDto) {
+  async createFromOrder(createOrderCashMovementDto: CreateOrderCashMovementDto, isRefund: boolean = false) {
     const { cashSessionId, amount, orderId, clientId, clientName, clientEmail } = createOrderCashMovementDto;
     
     console.log('🔄 [CashMovementService] Creando movimiento desde orden:', {
@@ -124,7 +124,8 @@ export class CashMovementService {
       orderId,
       clientId,
       clientName,
-      clientEmail
+      clientEmail,
+      isRefund
     });
 
     try {
@@ -154,13 +155,19 @@ export class CashMovementService {
 
       console.log('✅ [CashMovementService] Sesión validada, usuario de sesión:', cashSession.User?.id);
 
-      // Crear el movimiento de tipo INCOME (los pagos de órdenes siempre son ingresos)
+      // Determinar el tipo y descripción según si es reembolso o pago
+      const movementType = isRefund ? MovementType.EXPENSE : MovementType.INCOME;
+      const description = isRefund 
+        ? `Reembolso por anulación - Orden ${orderId}`
+        : `Pago en efectivo - Orden ${orderId}`;
+
+      // Crear el movimiento
       const cashMovement = await this.prisma.cashMovement.create({
         data: {
           sessionId: cashSessionId,        // Campo sessionId
-          type: MovementType.INCOME,
+          type: movementType,              // INCOME para pagos, EXPENSE para reembolsos
           amount: amount,
-          description: `Pago en efectivo - Orden ${orderId}`,
+          description: description,
           relatedOrderId: orderId,         // Campo relacionado con orden
           CashSessionId: cashSessionId,    // FK para CashSession
           UserId: cashSession.openedById   // FK para User - usar el usuario que abrió la sesión

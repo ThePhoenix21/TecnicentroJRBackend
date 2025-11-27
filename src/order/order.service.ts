@@ -432,15 +432,15 @@ export class OrderService {
                 clientName: order.client?.name
               });
 
-              // Usar CashMovementService para crear el movimiento
-              await this.cashMovementService.createManual({
+              // Usar createFromOrder para obtener datos directamente de la orden
+              await this.cashMovementService.createFromOrder({
                 cashSessionId: order.cashSession.id,
                 amount: cashPayment.amount,
-                type: MovementType.EXPENSE,
-                description: `Reembolso por anulación - Orden ${order.orderNumber}`,
                 orderId: order.id,
-                clientId: order.client?.id
-              }, authenticatedUser || { userId: order.userId, email: '', role: 'USER' });
+                clientId: order.client?.id || undefined,
+                clientName: order.client?.name || undefined,
+                clientEmail: order.client?.email || undefined
+              }, true); // isRefund: true para reembolsos
 
               console.log('✅ [OrderService] Movimiento de reembolso creado:', cashPayment.amount);
             } catch (error) {
@@ -456,11 +456,14 @@ export class OrderService {
         console.warn('⚠️ [OrderService] No se encontraron pagos en efectivo para reembolsar');
       }
 
-      // 6. Actualizar el estado de la orden a CANCELLED
+      // 6. Actualizar el estado de la orden a CANCELLED y registrar auditoría
       const updatedOrder = await prisma.order.update({
         where: { id },
         data: { 
           status: 'CANCELLED',
+          // Auditoría de anulación
+          canceledAt: new Date(),
+          canceledById: userId, // ID del usuario que está anulando
           // Actualizar también la fecha de actualización
           updatedAt: new Date()
         },
@@ -468,7 +471,23 @@ export class OrderService {
           orderProducts: true,
           services: true,
           client: true,
-          cashSession: true
+          cashSession: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          },
+          canceledBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          }
         }
       });
 

@@ -50,6 +50,8 @@ model User {
   cashMovements             CashMovement[]
   storeUsers                StoreUsers[]
   stores                    Store[]
+  // auditoría de anulaciones
+  ordersCanceled Order[] @relation("OrderCanceledBy")
 }
 
 model Product {
@@ -116,6 +118,11 @@ model Order {
   cashMovements CashMovement[]
   orderProducts OrderProduct[]
   services      Service[]
+
+  // auditoría de anulaciones
+  canceledAt     DateTime?
+  canceledById   String?
+  canceledBy     User?       @relation("OrderCanceledBy", fields: [canceledById], references: [id])
 }
 
 model Service {

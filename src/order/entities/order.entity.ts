@@ -1,4 +1,4 @@
-import { Order as PrismaOrder, SaleStatus, Service, OrderProduct, Payment, Client } from '@prisma/client';
+import { Order as PrismaOrder, SaleStatus, Service, OrderProduct, Payment, Client, User } from '@prisma/client';
 
 export class Order implements PrismaOrder {
   id: string;
@@ -13,4 +13,10 @@ export class Order implements PrismaOrder {
   orderNumber: string;
   cashSessionsId: string | null;
   client?: Client;
+  
+  // Nuevos campos de auditoría de anulaciones (tipos exactos de Prisma)
+  canceledAt: Date | null;
+  canceledById: string | null;
+  canceledBy?: User | null;
+  user?: User | null; // Usuario que creó la orden
 }
