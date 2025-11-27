@@ -984,6 +984,7 @@ export class OrderController {
   async cancelOrder(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() cancelOrderDto: CancelOrderDto,
+    @Req() req: any,
   ): Promise<Order> {
     // Verificar credenciales del usuario
     const user = await this.authService.validateUser(
@@ -995,6 +996,6 @@ export class OrderController {
       throw new UnauthorizedException('Credenciales inválidas');
     }
     
-    return this.orderService.cancelOrder(id, user.id);
+    return this.orderService.cancelOrder(id, user.id, user.role, req.user);
   }
 }

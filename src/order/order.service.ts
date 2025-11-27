@@ -2,12 +2,16 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException,
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, PrismaClient, SessionStatus } from '@prisma/client';
+import { Prisma, SaleStatus, PrismaClient, SessionStatus, PaymentType, MovementType } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
+import { CashMovementService } from '../cash-movement/cash-movement.service';
 
 @Injectable()
 export class OrderService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cashMovementService: CashMovementService
+  ) {}
 
   // Función para generar el número de orden secuencial
   private async generateOrderNumber(): Promise<string> {
@@ -314,9 +318,9 @@ export class OrderService {
     return order as unknown as Order;
   }
 
-  async cancelOrder(id: string, userId: string): Promise<Order> {
+  async cancelOrder(id: string, userId: string, userRole: string, authenticatedUser?: { userId: string; email: string; role: string }): Promise<Order> {
     return this.prisma.$transaction(async (prisma) => {
-      // 1. Verificar que la orden existe y pertenece al usuario
+      // 1. Verificar que la orden existe
       const order = await prisma.order.findUnique({
         where: { id },
         include: {
@@ -326,7 +330,10 @@ export class OrderService {
               role: true
             }
           },
-          services: true
+          services: true,
+          orderProducts: true,
+          client: true,
+          cashSession: true
         }
       });
 
@@ -334,17 +341,122 @@ export class OrderService {
         throw new NotFoundException(`Orden con ID ${id} no encontrada`);
       }
 
-      // Solo el propietario o un administrador pueden anular la orden
-      if (order.userId !== userId && order.user.role !== 'ADMIN') {
-        throw new NotFoundException(`No tiene permisos para anular esta orden`);
+      // 2. Verificar permisos: Admin puede anular cualquier orden, otros solo sus propias órdenes
+      const isAdmin = userRole === 'ADMIN';
+      const isOwner = order.userId === userId;
+      
+      if (!isAdmin && !isOwner) {
+        throw new ForbiddenException(`No tiene permisos para anular esta orden`);
       }
 
-      // 2. Verificar si la orden ya está anulada
+      // 3. Verificar si la orden ya está anulada
       if (order.status === 'CANCELLED') {
         throw new BadRequestException('La orden ya está anulada');
       }
 
-      // 3. Actualizar el estado de la orden a CANCELLED
+      // 4. Obtener todos los pagos en EFECTIVO de la orden
+      const allPayments: any[] = [];
+      
+      // Obtener pagos de orderProducts
+      if (order.orderProducts && order.orderProducts.length > 0) {
+        console.log('🔍 [OrderService] Buscando pagos en orderProducts:', order.orderProducts.length);
+        const orderProductIds = order.orderProducts.map(op => op.id);
+        console.log('🔍 [OrderService] OrderProduct IDs:', orderProductIds);
+        
+        const orderProductPayments = await prisma.payment.findMany({
+          where: {
+            sourceType: 'ORDERPRODUCT',
+            sourceId: { in: orderProductIds }
+          }
+        });
+        
+        console.log('🔍 [OrderService] Pagos de orderProducts encontrados:', orderProductPayments.length);
+        orderProductPayments.forEach(payment => {
+          allPayments.push({
+            ...payment,
+            sourceType: 'ORDERPRODUCT',
+            sourceId: payment.sourceId
+          });
+        });
+      }
+
+      // Obtener pagos de servicios
+      if (order.services && order.services.length > 0) {
+        console.log('🔍 [OrderService] Buscando pagos en servicios:', order.services.length);
+        const serviceIds = order.services.map(s => s.id);
+        console.log('🔍 [OrderService] Service IDs:', serviceIds);
+        
+        const servicePayments = await prisma.payment.findMany({
+          where: {
+            sourceType: 'SERVICE',
+            sourceId: { in: serviceIds }
+          }
+        });
+        
+        console.log('🔍 [OrderService] Pagos de servicios encontrados:', servicePayments.length);
+        servicePayments.forEach(payment => {
+          allPayments.push({
+            ...payment,
+            sourceType: 'SERVICE',
+            sourceId: payment.sourceId
+          });
+        });
+      }
+
+      console.log('🔄 [OrderService] Pagos encontrados para anulación:', allPayments.map(p => ({ type: p.type, amount: p.amount })));
+
+      // 5. Filtrar pagos en EFECTIVO y crear movimientos de caja
+      const cashPayments = allPayments.filter(payment => payment.type === PaymentType.EFECTIVO);
+      console.log('💰 [OrderService] Pagos en efectivo a reembolsar:', cashPayments.length, cashPayments.map(p => ({ amount: p.amount })));
+
+      console.log('🔍 [OrderService] Información de sesión de caja:', {
+        exists: !!order.cashSession,
+        sessionId: order.cashSession?.id,
+        status: order.cashSession?.status
+      });
+
+      if (cashPayments.length > 0 && order.cashSession) {
+        // Verificar que la sesión de caja esté abierta
+        if (order.cashSession.status !== SessionStatus.OPEN) {
+          console.warn('⚠️ [OrderService] La sesión de caja está cerrada, no se pueden crear movimientos de reembolso');
+        } else {
+          console.log('✅ [OrderService] Sesión abierta, creando movimientos de reembolso...');
+          // Crear movimientos de caja de tipo EXPENSE por cada pago en efectivo
+          for (const cashPayment of cashPayments) {
+            try {
+              console.log('🔄 [OrderService] Creando movimiento de reembolso:', {
+                cashSessionId: order.cashSession.id,
+                amount: cashPayment.amount,
+                orderId: order.id,
+                clientId: order.client?.id,
+                clientName: order.client?.name
+              });
+
+              // Usar CashMovementService para crear el movimiento
+              await this.cashMovementService.createManual({
+                cashSessionId: order.cashSession.id,
+                amount: cashPayment.amount,
+                type: MovementType.EXPENSE,
+                description: `Reembolso por anulación - Orden ${order.orderNumber}`,
+                orderId: order.id,
+                clientId: order.client?.id
+              }, authenticatedUser || { userId: order.userId, email: '', role: 'USER' });
+
+              console.log('✅ [OrderService] Movimiento de reembolso creado:', cashPayment.amount);
+            } catch (error) {
+              console.error('❌ [OrderService] Error al crear movimiento de reembolso:', error.message);
+              console.error('❌ [OrderService] Stack trace:', error.stack);
+              // No fallar la cancelación si falla el movimiento
+            }
+          }
+        }
+      } else if (cashPayments.length > 0 && !order.cashSession) {
+        console.warn('⚠️ [OrderService] La orden no tiene sesión de caja asociada, no se pueden crear movimientos de reembolso');
+      } else if (cashPayments.length === 0) {
+        console.warn('⚠️ [OrderService] No se encontraron pagos en efectivo para reembolsar');
+      }
+
+      // 6. Actualizar el estado de la orden a CANCELLED
       const updatedOrder = await prisma.order.update({
         where: { id },
         data: { 
@@ -355,11 +467,12 @@ export class OrderService {
         include: {
           orderProducts: true,
           services: true,
-          client: true
+          client: true,
+          cashSession: true
         }
       });
 
-      // 4. Actualizar el estado de los servicios a ANNULLATED si existen
+      // 7. Actualizar el estado de los servicios a ANNULLATED si existen
       if (order.services && order.services.length > 0) {
         await Promise.all(
           order.services.map(service => 
@@ -374,22 +487,8 @@ export class OrderService {
         );
       }
 
-      // 5. Devolver la orden actualizada con los servicios
-      return prisma.order.findUnique({
-        where: { id },
-        include: {
-          orderProducts: true,
-          services: true,
-          client: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          }
-        }
-      }) as unknown as Order;
+      // 8. Devolver la orden actualizada
+      return updatedOrder as unknown as Order;
     });
   }
 

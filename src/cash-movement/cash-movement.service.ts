@@ -15,43 +15,58 @@ export class CashMovementService {
   async createManual(createCashMovementDto: CreateCashMovementDto, user: { userId: string; email: string; role: string }) {
     const { cashSessionId, amount, type, description, orderId, clientId } = createCashMovementDto;
     
+    console.log(' [CashMovementService] Creando movimiento manual:', {
+      user: user.email,
+      cashSessionId,
+      amount,
+      type,
+      description,
+      orderId,
+      clientId
+    });
+    
     this.logger.log(`Creando movimiento manual para usuario: ${user.email} - Sesión: ${cashSessionId} - Monto: ${amount}`);
 
     try {
       // Validar que la sesión de caja exista y esté abierta
       const cashSession = await this.prisma.cashSession.findUnique({
-        where: { id: cashSessionId }
+        where: { id: cashSessionId },
+        include: {
+          User: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      console.log(' [CashMovementService] Sesión encontrada:', {
+        exists: !!cashSession,
+        status: cashSession?.status,
+        openedById: cashSession?.openedById
       });
 
       if (!cashSession) {
+        console.error(' [CashMovementService] La sesión de caja no existe:', cashSessionId);
         throw new NotFoundException('La sesión de caja especificada no existe');
       }
 
       if (cashSession.status !== SessionStatus.OPEN) {
+        console.error(' [CashMovementService] La sesión de caja está cerrada:', cashSessionId, cashSession.status);
         throw new BadRequestException('La sesión de caja está cerrada. No se pueden realizar movimientos.');
       }
 
-      // Validar que el usuario pertenezca a la sesión
-      if (cashSession.UserId !== user.userId) {
-        throw new ForbiddenException('No tienes permisos para realizar movimientos en esta sesión de caja');
-      }
-
-      // Validar consistencia entre tipo y monto
-      if (type === MovementType.INCOME && amount < 0) {
-        throw new BadRequestException('Los ingresos deben tener montos positivos');
-      }
-
-      if (type === MovementType.EXPENSE && amount < 0) {
-        throw new BadRequestException('Los gastos deben tener montos positivos');
-      }
+      console.log(' [CashMovementService] Sesión validada, creando movimiento...');
 
       // Crear el movimiento
       const cashMovement = await this.prisma.cashMovement.create({
         data: {
           sessionId: cashSessionId,
           type: type,
-          amount: Math.abs(amount), // Guardar siempre como positivo, el tipo indica la dirección
-          description: description,
+          amount: amount,
+          description: description || 'Movimiento manual',
           relatedOrderId: orderId || null,
           CashSessionId: cashSessionId,
           UserId: user.userId
@@ -73,12 +88,18 @@ export class CashMovementService {
         }
       });
 
+      console.log('✅ [CashMovementService] Movimiento creado exitosamente:', {
+        id: cashMovement.id,
+        amount: cashMovement.amount,
+        type: cashMovement.type,
+        sessionId: cashMovement.sessionId,
+        relatedOrderId: cashMovement.relatedOrderId,
+        UserId: cashMovement.UserId
+      });
+
       this.logger.log(`Movimiento manual creado exitosamente: ${cashMovement.id}`);
 
-      return {
-        message: 'Movimiento de caja creado exitosamente',
-        cashMovement
-      };
+      return cashMovement;
 
     } catch (error) {
       this.logger.error(`Error al crear movimiento manual: ${error.message}`, error.stack);
