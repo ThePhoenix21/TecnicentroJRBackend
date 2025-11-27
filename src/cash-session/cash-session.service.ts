@@ -273,4 +273,48 @@ export class CashSessionService {
       }
     });
   }
+
+  // Método para cerrar una sesión de caja
+  async close(id: string, closedById: string, closingAmount: number) {
+    this.logger.log(`Iniciando cierre de sesión de caja: ${id} - Usuario: ${closedById} - Monto de cierre: ${closingAmount}`);
+
+    try {
+      // Actualizar la sesión de caja con los datos de cierre
+      const updatedSession = await this.prisma.cashSession.update({
+        where: { id },
+        data: {
+          status: SessionStatus.CLOSED,
+          closedAt: new Date(),
+          closedById: closedById,
+          closingAmount: closingAmount
+        },
+        include: {
+          Store: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true
+            }
+          },
+          User: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              username: true
+            }
+          }
+        }
+      });
+
+      this.logger.log(`Sesión de caja cerrada exitosamente: ${updatedSession.id} - Cerrada por: ${closedById}`);
+
+      return updatedSession;
+
+    } catch (error) {
+      this.logger.error(`Error al cerrar sesión de caja: ${error.message}`, error.stack);
+      throw new BadRequestException('Error al cerrar la sesión de caja');
+    }
+  }
 }
