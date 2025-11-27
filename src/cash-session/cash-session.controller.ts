@@ -1,34 +1,179 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Req, UnauthorizedException } from '@nestjs/common';
 import { CashSessionService } from './cash-session.service';
 import { CreateCashSessionDto } from './dto/create-cash-session.dto';
 import { UpdateCashSessionDto } from './dto/update-cash-session.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { User } from '@prisma/client';
 
+@ApiTags('Cash Sessions')
 @Controller('cash-session')
 export class CashSessionController {
   constructor(private readonly cashSessionService: CashSessionService) {}
 
   @Post()
-  create(@Body() createCashSessionDto: CreateCashSessionDto) {
-    return this.cashSessionService.create(createCashSessionDto);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Crear nueva sesión de caja',
+    description: 'Crea una nueva sesión de caja para una tienda específica. Requiere autenticación JWT y rol USER o ADMIN. El usuario debe pertenecer a la tienda y no debe haber sesiones abiertas previas.'
+  })
+  @ApiBody({
+    description: 'Datos para crear la sesión de caja',
+    type: CreateCashSessionDto,
+    examples: {
+      example: {
+        value: {
+          storeId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          openingAmount: 100.50
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Sesión de caja creada exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Sesión de caja creada exitosamente' },
+        cashSession: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            openedAt: { type: 'string' },
+            closedAt: { type: 'string', nullable: true },
+            openedById: { type: 'string' },
+            closedById: { type: 'string', nullable: true },
+            status: { type: 'string', example: 'OPEN' },
+            openingAmount: { type: 'number' },
+            closingAmount: { type: 'number', nullable: true },
+            StoreId: { type: 'string' },
+            UserId: { type: 'string' },
+            Store: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                address: { type: 'string', nullable: true },
+                phone: { type: 'string', nullable: true }
+              }
+            },
+            User: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                email: { type: 'string' },
+                username: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  @ApiResponse({ status: 403, description: 'No tienes permisos para crear sesiones en esta tienda' })
+  @ApiResponse({ status: 404, description: 'La tienda especificada no existe' })
+  @ApiResponse({ status: 409, description: 'Ya hay una sesión de caja abierta para esta tienda' })
+  async create(@Body() createCashSessionDto: CreateCashSessionDto, @Req() req: any) {
+    console.log('Usuario en request:', req.user);
+    console.log('Request completo:', req);
+    
+    if (!req.user) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    
+    return this.cashSessionService.create(createCashSessionDto, req.user);
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Obtener todas las sesiones de caja',
+    description: 'Obtiene una lista de todas las sesiones de caja registradas. Requiere rol ADMIN'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Lista de sesiones de caja obtenida exitosamente'
+  })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
   findAll() {
     return this.cashSessionService.findAll();
   }
 
+  @Get('store/:storeId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Obtener sesiones de caja por tienda',
+    description: 'Obtiene todas las sesiones de caja de una tienda específica. Requiere rol USER o ADMIN'
+  })
+  @ApiResponse({ status: 200, description: 'Sesiones de caja obtenidas exitosamente' })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
+  findByStore(@Param('storeId') storeId: string) {
+    return this.cashSessionService.findByStore(storeId);
+  }
+
+  @Get('store/:storeId/open')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Obtener sesión abierta actual de una tienda',
+    description: 'Obtiene la sesión de caja actualmente abierta para una tienda específica. Requiere rol USER o ADMIN'
+  })
+  @ApiResponse({ status: 200, description: 'Sesión abierta obtenida exitosamente' })
+  @ApiResponse({ status: 404, description: 'No hay sesión abierta para esta tienda' })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
+  findOpenSessionByStore(@Param('storeId') storeId: string) {
+    return this.cashSessionService.findOpenSessionByStore(storeId);
+  }
+
   @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Obtener sesión de caja por ID',
+    description: 'Obtiene los detalles de una sesión de caja específica por su ID. Requiere rol USER o ADMIN'
+  })
+  @ApiResponse({ status: 200, description: 'Sesión de caja encontrada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Sesión de caja no encontrada' })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
   findOne(@Param('id') id: string) {
-    return this.cashSessionService.findOne(+id);
+    return this.cashSessionService.findOne(id);
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Actualizar sesión de caja',
+    description: 'Actualiza los datos de una sesión de caja existente. Requiere rol ADMIN'
+  })
+  @ApiResponse({ status: 200, description: 'Sesión de caja actualizada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Sesión de caja no encontrada' })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
   update(@Param('id') id: string, @Body() updateCashSessionDto: UpdateCashSessionDto) {
-    return this.cashSessionService.update(+id, updateCashSessionDto);
+    return this.cashSessionService.update(id, updateCashSessionDto);
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Eliminar sesión de caja',
+    description: 'Elimina una sesión de caja del sistema. Requiere rol ADMIN'
+  })
+  @ApiResponse({ status: 200, description: 'Sesión de caja eliminada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Sesión de caja no encontrada' })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
   remove(@Param('id') id: string) {
-    return this.cashSessionService.remove(+id);
+    return this.cashSessionService.remove(id);
   }
 }
