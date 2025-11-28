@@ -1,82 +1,41 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateProductDto } from './dto/create-product.dto';
+import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { Product } from './entities/product.entity';
+import { CatalogProduct } from './entities/catalog-product.entity';
 
 @Injectable()
 export class ProductService {
   constructor(private prisma: PrismaService) {}
 
-  async create(userId: string, createProductDto: CreateProductDto): Promise<Product> {
-    if (!userId) {
-      throw new Error('Se requiere un ID de usuario válido para crear un producto');
-    }
-
-    console.log('Intentando crear producto con userId:', userId);
-    
+  async create(createCatalogProductDto: CreateCatalogProductDto): Promise<CatalogProduct> {
     try {
-      // Crear el producto y obtenerlo con la información del usuario en una sola consulta
-      const product = await this.prisma.$transaction(async (prisma) => {
-        const createdProduct = await prisma.product.create({
-          data: {
-            ...createProductDto,
-            userId: userId,
-          },
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
+      const product = await this.prisma.product.create({
+        data: createCatalogProductDto,
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
             },
           },
-        });
-        
-        if (!createdProduct) {
-          throw new Error('No se pudo crear el producto');
-        }
-        
-        return createdProduct;
-      });
-      
-      return product as unknown as Product;
-    } catch (error) {
-      console.error('Error al crear el producto:', error);
-      throw new Error('No se pudo crear el producto: ' + (error as Error).message);
-    }
-  }
-
-  async findAll(userId: string): Promise<Product[]> {
-    if (!userId) {
-      throw new Error('Se requiere un ID de usuario válido para listar productos');
-    }
-    
-    return this.prisma.product.findMany({
-      where: { 
-        userId: userId 
-      },
-      orderBy: { 
-        createdAt: 'desc' 
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
         },
-      },
-    });
+      });
+
+      return product as unknown as CatalogProduct;
+    } catch (error) {
+      console.error('Error al crear el producto del catálogo:', error);
+      throw new Error('No se pudo crear el producto del catálogo: ' + (error as Error).message);
+    }
   }
 
-  async findAllProducts(): Promise<Product[]> {
+  async findAll(): Promise<CatalogProduct[]> {
     return this.prisma.product.findMany({
+      where: { isDeleted: false }, // Solo productos no eliminados
       orderBy: { createdAt: 'desc' },
       include: {
-        user: {
+        createdBy: {
           select: {
             id: true,
             name: true,
@@ -87,11 +46,11 @@ export class ProductService {
     });
   }
 
-  async findOne(userId: string, id: string): Promise<Product> {
+  async findOne(id: string): Promise<CatalogProduct> {
     const product = await this.prisma.product.findUnique({
-      where: { id },
+      where: { id, isDeleted: false }, // Solo si no está eliminado
       include: {
-        user: {
+        createdBy: {
           select: {
             id: true,
             name: true,
@@ -102,72 +61,69 @@ export class ProductService {
     });
 
     if (!product) {
-      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
+      throw new NotFoundException(`Producto del catálogo con ID ${id} no encontrado`);
     }
 
-    // Cualquier usuario autenticado puede ver el producto
-    return product;
+    return product as unknown as CatalogProduct;
   }
 
   async update(
-    userId: string,
     id: string,
     updateProductDto: UpdateProductDto,
-    isAdmin: boolean = false
-  ): Promise<Product> {
-    // Verificar que el producto existe
+  ): Promise<CatalogProduct> {
+    // Verificar que el producto existe y no está eliminado
     const product = await this.prisma.product.findUnique({
-      where: { id },
+      where: { id, isDeleted: false },
     });
 
     if (!product) {
-      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
-    }
-
-    // Si no es admin, verificar que el producto pertenece al usuario
-    if (!isAdmin && product.userId !== userId) {
-      throw new ForbiddenException('No tienes permiso para actualizar este producto');
+      throw new NotFoundException(`Producto del catálogo con ID ${id} no encontrado`);
     }
 
     return this.prisma.product.update({
       where: { id },
       data: updateProductDto,
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     });
   }
 
-  async remove(userId: string, id: string, isAdmin: boolean = false): Promise<void> {
-    // Verificar que el producto existe
+  async remove(id: string): Promise<CatalogProduct> {
+    // Verificar que el producto existe y no está ya eliminado
     const product = await this.prisma.product.findUnique({
       where: { id },
     });
 
     if (!product) {
-      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
+      throw new NotFoundException(`Producto del catálogo con ID ${id} no encontrado`);
     }
 
-    // Si no es admin, verificar que el producto pertenece al usuario
-    if (!isAdmin && product.userId !== userId) {
-      throw new ForbiddenException('No tienes permiso para eliminar este producto');
+    if (product.isDeleted) {
+      throw new NotFoundException(`Producto del catálogo con ID ${id} ya está eliminado`);
     }
 
-    // Eliminación lógica: actualizar isDeleted a true
-    await this.prisma.product.update({
+    // Soft delete: marcar como eliminado en lugar de borrar físicamente
+    const updatedProduct = await this.prisma.product.update({
       where: { id },
-      data: {
-        isDeleted: true,
-        updatedAt: new Date() // Asegurarse de actualizar la fecha de modificación
-      } as any, // Usamos 'as any' temporalmente para evitar problemas de tipos
-    });
-  }
-
-  async updateStock(id: string, quantity: number): Promise<Product> {
-    return this.prisma.product.update({
-      where: { id },
-      data: {
-        stock: {
-          increment: quantity,
+      data: { isDeleted: true },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
         },
       },
     });
+
+    return updatedProduct as unknown as CatalogProduct;
   }
 }

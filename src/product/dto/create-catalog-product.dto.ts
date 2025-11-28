@@ -1,21 +1,19 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNumber, IsOptional, Min, MaxLength, IsPositive } from 'class-validator';
 
-export class UpdateProductDto {
+export class CreateCatalogProductDto {
   @ApiProperty({
-    description: 'Nombre del producto',
-    example: 'Aceite de motor 10W40 Premium',
-    maxLength: 100,
-    required: false
+    description: 'Nombre del producto (catálogo maestro)',
+    example: 'Aceite de motor 10W40',
+    maxLength: 100
   })
   @IsString()
-  @IsOptional()
   @MaxLength(100)
-  name?: string;
+  name: string;
 
   @ApiProperty({
     description: 'Descripción detallada del producto',
-    example: 'Aceite sintético para motor de alto rendimiento con aditivos de protección',
+    example: 'Aceite sintético para motor de alto rendimiento',
     required: false,
     maxLength: 500
   })
@@ -31,8 +29,8 @@ export class UpdateProductDto {
     required: false
   })
   @IsNumber()
-  @IsOptional()
   @Min(0)
+  @IsOptional()
   basePrice?: number;
 
   @ApiProperty({
@@ -42,12 +40,12 @@ export class UpdateProductDto {
     required: false
   })
   @IsNumber()
-  @IsOptional()
   @Min(0)
+  @IsOptional()
   buyCost?: number;
 
   @ApiProperty({
-    description: 'ID del usuario que creó el producto',
+    description: 'ID del usuario que crea el producto en el catálogo',
     example: '123e4567-e89b-12d3-a456-426614174000',
     required: false
   })

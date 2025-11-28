@@ -50,24 +50,44 @@ model User {
   cashMovements             CashMovement[]
   storeUsers                StoreUsers[]
   stores                    Store[]
+  storeProducts             StoreProduct[]
   // auditoría de anulaciones
   ordersCanceled Order[] @relation("OrderCanceledBy")
 }
 
 model Product {
-  id            String         @id @default(uuid())
-  name          String
-  description   String?
-  price         Float
-  isDeleted     Boolean        @default(false)
-  buycost       Float          @default(0)
-  stock         Int            @default(0)
-  stockTreshold Int            @default(1)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  userId        String
+  id          String   @id @default(uuid())
+  name        String
+  description String?  
+  basePrice   Float?   // precio de venta sugerido
+  buyCost     Float?   // costo de adquisición del producto
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?  // si quieres registrar quién lo creó
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+
+  storeProducts StoreProduct[]
+}
+
+model StoreProduct {
+  id            String   @id @default(uuid())
+  price         Float    // precio que esta tienda aplica
+  stock         Int      @default(0) // unidades disponibles en esta tienda
+  stockThreshold Int     @default(1) // alerta de stock mínimo
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  storeId String
+  store   Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   orderProducts OrderProduct[]
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model OrderProduct {
@@ -77,8 +97,8 @@ model OrderProduct {
   buycost   Float   @default(0)
   productId String
   orderId   String
-  order     Order   @relation(fields: [orderId], references: [id])
-  product   Product @relation(fields: [productId], references: [id])
+  order     Order        @relation(fields: [orderId], references: [id])
+  product   StoreProduct @relation(fields: [productId], references: [id])
 }
 
 model Client {
@@ -205,6 +225,7 @@ model Store {
 
   cashSessions        CashSession[]
   storeUsers          StoreUsers[]
+  storeProducts       StoreProduct[]
 }
 
 model StoreUsers {

@@ -144,22 +144,25 @@ export class OrderService {
 
       // 2. Verificar que los productos existan y tengan suficiente stock
       const productIds = products.map(p => p.productId);
-      const existingProducts = await prisma.product.findMany({
+      const existingStoreProducts = await prisma.storeProduct.findMany({
         where: {
           id: { in: productIds },
         },
+        include: {
+          product: true,
+        },
       });
 
-      if (existingProducts.length !== products.length) {
-        const foundIds = new Set(existingProducts.map(p => p.id));
+      if (existingStoreProducts.length !== products.length) {
+        const foundIds = new Set(existingStoreProducts.map(p => p.id));
         const missingIds = productIds.filter(id => !foundIds.has(id));
-        throw new NotFoundException(`Los siguientes productos no existen: ${missingIds.join(', ')}`);
+        throw new NotFoundException(`Los siguientes productos en tienda no existen: ${missingIds.join(', ')}`);
       }
 
       // 3. Calcular el monto total y verificar stock
       const productMap = new Map(products.map(p => [p.productId, { 
         quantity: p.quantity, 
-        // Usamos customPrice si existe, de lo contrario usamos el precio del producto
+        // Si hay customPrice, lo usamos, de lo contrario usamos el precio del StoreProduct
         price: 'customPrice' in p ? p.customPrice : undefined
       }]));
       
@@ -171,23 +174,23 @@ export class OrderService {
       }> = [];
 
       // Verificar stock y calcular total
-      for (const product of existingProducts) {
-        const productData = productMap.get(product.id);
+      for (const storeProduct of existingStoreProducts) {
+        const productData = productMap.get(storeProduct.id);
         if (!productData) continue;
         
         const { quantity, price } = productData;
         
-        if (product.stock < quantity) {
-          throw new BadRequestException(`No hay suficiente stock para el producto: ${product.name}`);
+        if (storeProduct.stock < quantity) {
+          throw new BadRequestException(`No hay suficiente stock para el producto: ${storeProduct.product?.name || storeProduct.id}`);
         }
         
-        // Si no se proporcionó un precio personalizado, usar el precio del producto
-        const finalPrice = price !== undefined ? price : product.price;
+        // Si no se proporcionó un precio personalizado, usar el precio del StoreProduct
+        const finalPrice = price !== undefined ? price : storeProduct.price;
         
         totalAmount += finalPrice * quantity;
         
         orderProductsData.push({
-          productId: product.id,
+          productId: storeProduct.id, // Usar el ID del StoreProduct
           quantity,
           price: finalPrice
         });
@@ -244,16 +247,16 @@ export class OrderService {
         },
       });
 
-      // 5. Actualizar el stock de productos
+      // 5. Actualizar el stock de los productos en tienda
       await Promise.all(
-        existingProducts.map(product => {
-          const productData = productMap.get(product.id);
+        existingStoreProducts.map(storeProduct => {
+          const productData = productMap.get(storeProduct.id);
           if (!productData) return null;
           
-          return prisma.product.update({
-            where: { id: product.id },
+          return prisma.storeProduct.update({
+            where: { id: storeProduct.id },
             data: { 
-              stock: product.stock - productData.quantity
+              stock: storeProduct.stock - productData.quantity
             },
           });
         }).filter(Boolean) // Filtrar posibles valores nulos
@@ -299,7 +302,11 @@ export class OrderService {
       include: {
         orderProducts: {
           include: {
-            product: true,
+            product: {
+              include: {
+                product: true, // Incluir el producto del catálogo
+              },
+            },
           },
         },
         services: true,
