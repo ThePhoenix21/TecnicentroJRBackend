@@ -77,11 +77,35 @@ export class StoreController {
   @Get()
   @ApiOperation({
     summary: 'Obtener todas las tiendas',
-    description: 'Obtiene una lista de todas las tiendas registradas en el sistema'
+    description: 'Obtiene una lista de todas las tiendas registradas en el sistema con información del creador'
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'Lista de tiendas obtenida exitosamente'
+    description: 'Lista de tiendas obtenida exitosamente',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+          name: { type: 'string', example: 'Tienda Principal' },
+          address: { type: 'string', example: 'Av. Principal 123' },
+          phone: { type: 'string', example: '+123456789' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+          createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+          createdBy: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+              name: { type: 'string', example: 'Administrador' },
+              email: { type: 'string', example: 'admin@ejemplo.com' },
+              role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'ADMIN' }
+            }
+          }
+        }
+      }
+    }
   })
   findAll() {
     return this.storeService.findAll();
@@ -90,9 +114,33 @@ export class StoreController {
   @Get(':id')
   @ApiOperation({
     summary: 'Obtener tienda por ID',
-    description: 'Obtiene los detalles de una tienda específica por su ID'
+    description: 'Obtiene los detalles de una tienda específica por su ID incluyendo información del creador'
   })
-  @ApiResponse({ status: 200, description: 'Tienda encontrada exitosamente' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Tienda encontrada exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+        name: { type: 'string', example: 'Tienda Principal' },
+        address: { type: 'string', example: 'Av. Principal 123' },
+        phone: { type: 'string', example: '+123456789' },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+        createdBy: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+            name: { type: 'string', example: 'Administrador' },
+            email: { type: 'string', example: 'admin@ejemplo.com' },
+            role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'ADMIN' }
+          }
+        }
+      }
+    }
+  })
   @ApiResponse({ status: 404, description: 'Tienda no encontrada' })
   findOne(@Param('id') id: string) {
     return this.storeService.findOne(id);
@@ -103,11 +151,60 @@ export class StoreController {
   @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Actualizar tienda',
-    description: 'Actualiza los datos de una tienda existente. Requiere rol ADMIN'
+    description: 'Actualiza los datos de una tienda existente. Requiere rol ADMIN. Solo se actualizarán los campos proporcionados en el body.'
   })
-  @ApiResponse({ status: 200, description: 'Tienda actualizada exitosamente' })
+  @ApiBody({
+    description: 'Datos parciales de la tienda a actualizar. Todos los campos son opcionales.',
+    type: UpdateStoreDto,
+    examples: {
+      updateName: {
+        summary: 'Actualizar nombre de la tienda',
+        value: {
+          name: 'Tienda Actualizada'
+        }
+      },
+      updateAddress: {
+        summary: 'Actualizar dirección y teléfono',
+        value: {
+          address: 'Calle Nueva 456',
+          phone: '+987654321'
+        }
+      },
+      updateAll: {
+        summary: 'Actualizar todos los campos',
+        value: {
+          name: 'Tienda Completa',
+          address: 'Av. Central 789',
+          phone: '+555123456'
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Tienda actualizada exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Tienda actualizada exitosamente' },
+        store: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+            name: { type: 'string', example: 'Tienda Actualizada' },
+            address: { type: 'string', example: 'Calle Nueva 456' },
+            phone: { type: 'string', example: '+987654321' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+            createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
   @ApiResponse({ status: 404, description: 'Tienda no encontrada' })
-  @ApiResponse({ status: 403, description: 'No autorizado' })
+  @ApiResponse({ status: 403, description: 'No autorizado - se requiere rol ADMIN' })
   update(@Param('id') id: string, @Body() updateStoreDto: UpdateStoreDto) {
     return this.storeService.update(id, updateStoreDto);
   }
@@ -117,11 +214,22 @@ export class StoreController {
   @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Eliminar tienda',
-    description: 'Elimina una tienda del sistema. Requiere rol ADMIN'
+    description: 'Elimina una tienda del sistema permanentemente. Esta acción no se puede deshacer. Requiere rol ADMIN.'
   })
-  @ApiResponse({ status: 200, description: 'Tienda eliminada exitosamente' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Tienda eliminada exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Tienda eliminada exitosamente' },
+        storeId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' }
+      }
+    }
+  })
   @ApiResponse({ status: 404, description: 'Tienda no encontrada' })
-  @ApiResponse({ status: 403, description: 'No autorizado' })
+  @ApiResponse({ status: 403, description: 'No autorizado - se requiere rol ADMIN' })
+  @ApiResponse({ status: 409, description: 'No se puede eliminar la tienda - tiene dependencias activas' })
   remove(@Param('id') id: string) {
     return this.storeService.remove(id);
   }
