@@ -115,7 +115,7 @@ class OrderProductDto {
   @IsNumber()
   @IsPositive()
   @IsOptional()
-  customPrice?: number;
+  price?: number;
 
   @IsArray()
   @ValidateNested({ each: true })

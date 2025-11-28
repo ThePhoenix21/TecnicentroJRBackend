@@ -160,11 +160,14 @@ export class OrderService {
       }
 
       // 3. Calcular el monto total y verificar stock
+      console.log('Products recibidos en service:', JSON.stringify(products, null, 2));
       const productMap = new Map(products.map(p => [p.productId, { 
         quantity: p.quantity, 
         // Si hay customPrice, lo usamos, de lo contrario usamos el precio del StoreProduct
-        price: 'customPrice' in p ? p.customPrice : undefined
+        price: ('customPrice' in p && p.customPrice !== undefined) ? Number(p.customPrice) : undefined
       }]));
+      
+      console.log('ProductMap:', Array.from(productMap.entries()));
       
       let totalAmount = 0;
       const orderProductsData: Array<{
@@ -179,13 +182,15 @@ export class OrderService {
         if (!productData) continue;
         
         const { quantity, price } = productData;
+        console.log(`Procesando producto ${storeProduct.id}:`, { quantity, price, storeProductPrice: storeProduct.price });
         
         if (storeProduct.stock < quantity) {
           throw new BadRequestException(`No hay suficiente stock para el producto: ${storeProduct.product?.name || storeProduct.id}`);
         }
         
         // Si no se proporcionó un precio personalizado, usar el precio del StoreProduct
-        const finalPrice = price !== undefined ? price : storeProduct.price;
+        const finalPrice: number = price !== undefined ? price : (storeProduct.price || 0);
+        console.log(`Precio final para producto ${storeProduct.id}:`, finalPrice);
         
         totalAmount += finalPrice * quantity;
         

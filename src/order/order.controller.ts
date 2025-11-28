@@ -188,7 +188,7 @@ export class OrderController {
                 minimum: 1,
                 example: 2
               },
-              customPrice: {
+              price: {
                 type: 'number',
                 minimum: 0,
                 description: 'Opcional, sobreescribe el precio del producto',
@@ -300,7 +300,7 @@ export class OrderController {
             {
               productId: '11111111-1111-1111-1111-111111111111',
               quantity: 2,
-              customPrice: 150.5,
+              price: 150.5,
               payments: [
                 {
                   type: 'EFECTIVO',
@@ -521,14 +521,14 @@ export class OrderController {
         throw new BadRequestException(errors);
       }
 
-      // Mapear customPrice a price si está presente
+      // Mapear price si está presente
       if (createOrderDto.products) {
         createOrderDto.products = createOrderDto.products.map(product => {
-          // Si hay customPrice, lo usamos como price
-          if (product.customPrice !== undefined) {
+          // Si hay price, lo usamos como price
+          if (product.price !== undefined) {
             return {
               ...product,
-              price: product.customPrice
+              customPrice: product.price
             };
           }
           return product;
@@ -543,8 +543,8 @@ export class OrderController {
         createOrderDto.products = createOrderDto.products.map(product => {
           const processedProduct: any = {
             ...product,
-            // Si hay customPrice, lo usaremos, el precio real se obtendrá del servicio
-            ...(product.customPrice !== undefined && { price: product.customPrice })
+            // Si hay price personalizado, lo usaremos, el precio real se obtendrá del servicio
+            ...(product.price !== undefined && { customPrice: product.price })
           };
 
           return processedProduct;
@@ -748,26 +748,157 @@ export class OrderController {
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
     summary: 'Obtener mis órdenes',
-    description: 'Retorna un listado de todas las órdenes asociadas al usuario autenticado.'
+    description: 'Retorna un listado de todas las órdenes asociadas al usuario autenticado. Incluye información completa de cada orden con sus productos, servicios y pagos.'
   })
   @ApiQuery({
     name: 'status',
     required: false,
     description: 'Filtrar órdenes por estado (opcional)',
     example: 'PENDING',
+    schema: {
+      type: 'string',
+      enum: ['PENDING', 'PAID', 'CANCELLED', 'COMPLETED'],
+      description: 'Estados posibles de las órdenes'
+    }
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Lista de órdenes obtenida exitosamente',
-    type: [Order],
+    description: 'Lista de órdenes del usuario obtenida exitosamente',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000', description: 'ID único de la orden' },
+          totalAmount: { type: 'number', example: 700.50, description: 'Monto total de la orden' },
+          status: { type: 'string', example: 'PENDING', enum: ['PENDING', 'PAID', 'CANCELLED', 'COMPLETED'], description: 'Estado de la orden' },
+          orderNumber: { type: 'string', example: 'ORD-2023-001', description: 'Número único de orden' },
+          clientId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174001', description: 'ID del cliente' },
+          userId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440000', description: 'ID del usuario que creó la orden' },
+          cashSessionsId: { type: 'string', nullable: true, example: null, description: 'ID de la sesión de caja' },
+          createdAt: { type: 'string', format: 'date-time', example: '2023-11-21T16:30:00.000Z' },
+          updatedAt: { type: 'string', format: 'date-time', example: '2023-11-21T16:30:00.000Z' },
+          orderProducts: {
+            type: 'array',
+            description: 'Productos de la orden',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+                productId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+                quantity: { type: 'number', example: 2, description: 'Cantidad del producto' },
+                price: { type: 'number', example: 120.50, description: 'Precio unitario del producto' },
+                subtotal: { type: 'number', example: 241.00, description: 'Subtotal del producto' },
+                product: {
+                  type: 'object',
+                  description: 'Información del producto del catálogo',
+                  properties: {
+                    id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+                    name: { type: 'string', example: 'Aceite de Motor 10W40', description: 'Nombre del producto' },
+                    description: { type: 'string', nullable: true, example: 'Aceite sintético de alta calidad' },
+                    basePrice: { type: 'number', nullable: true, example: 29.99, description: 'Precio base del producto' },
+                    buyCost: { type: 'number', nullable: true, example: 20.50, description: 'Costo de compra del producto' },
+                    isDeleted: { type: 'boolean', example: false, description: 'Indica si el producto está eliminado' }
+                  }
+                },
+                payments: {
+                  type: 'array',
+                  description: 'Pagos asociados al producto',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string', example: 'pay-001' },
+                      type: { type: 'string', example: 'EFECTIVO', enum: ['EFECTIVO', 'TARJETA', 'YAPE', 'TRANSFERENCIA', 'DEPOSITO'], description: 'Tipo de pago' },
+                      amount: { type: 'number', example: 241.00, description: 'Monto del pago' },
+                      sourceType: { type: 'string', example: 'ORDERPRODUCT', description: 'Tipo de origen del pago' },
+                      sourceId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+                      createdAt: { type: 'string', format: 'date-time' }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          services: {
+            type: 'array',
+            description: 'Servicios de la orden',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440003' },
+                name: { type: 'string', example: 'Reparación de motor', description: 'Nombre del servicio' },
+                description: { type: 'string', nullable: true, example: 'Revisión completa del motor', description: 'Descripción del servicio' },
+                price: { type: 'number', example: 250.00, description: 'Precio del servicio' },
+                type: { type: 'string', example: 'REPAIR', enum: ['MAINTENANCE', 'REPAIR', 'WARRANTY', 'OTHER'], description: 'Tipo de servicio' },
+                photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://example.com/img1.jpg'], description: 'URLs de fotos del servicio' },
+                payments: {
+                  type: 'array',
+                  description: 'Pagos asociados al servicio',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string', example: 'pay-002' },
+                      type: { type: 'string', example: 'TRANSFERENCIA', description: 'Tipo de pago' },
+                      amount: { type: 'number', example: 250.00, description: 'Monto del pago' },
+                      sourceType: { type: 'string', example: 'SERVICE', description: 'Tipo de origen del pago' },
+                      sourceId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440003' },
+                      createdAt: { type: 'string', format: 'date-time' }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          client: {
+            type: 'object',
+            nullable: true,
+            description: 'Información del cliente',
+            properties: {
+              id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174001' },
+              name: { type: 'string', example: 'Juan Perez', description: 'Nombre del cliente' },
+              email: { type: 'string', nullable: true, example: 'juan.perez@example.com', description: 'Email del cliente' },
+              phone: { type: 'string', nullable: true, example: '987654321', description: 'Teléfono del cliente' },
+              address: { type: 'string', nullable: true, example: 'Av. Siempre Viva 123', description: 'Dirección del cliente' },
+              dni: { type: 'string', example: '12345678', description: 'DNI del cliente' },
+              ruc: { type: 'string', nullable: true, example: '20123456789', description: 'RUC del cliente (si aplica)' }
+            }
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'Usuario no autenticado',
+    description: 'No autorizado - Token JWT inválido o ausente',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+        error: 'Unauthorized'
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.FORBIDDEN,
     description: 'No tiene permisos para ver estas órdenes',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'Forbidden resource',
+        error: 'Forbidden'
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'No se pudo obtener el ID del usuario',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: 'No se pudo obtener el ID del usuario del token JWT',
+        error: 'Bad Request'
+      }
+    }
   })
   async findMyOrders(
     @Req() req: any,
@@ -781,29 +912,160 @@ export class OrderController {
   }
 
   @Get('all')
-  @Roles(Role.ADMIN, Role.USER)
+  @Roles(Role.ADMIN)
   @ApiOperation({ 
     summary: 'Obtener todas las órdenes (solo administradores)',
-    description: 'Retorna un listado completo de todas las órdenes del sistema. Solo disponible para administradores.'
+    description: 'Retorna un listado completo de todas las órdenes del sistema. Solo disponible para administradores. Incluye información completa de cada orden con sus productos, servicios y pagos.'
   })
   @ApiQuery({
     name: 'status',
     required: false,
     description: 'Filtrar órdenes por estado (opcional)',
     example: 'PENDING',
+    schema: {
+      type: 'string',
+      enum: ['PENDING', 'PAID', 'CANCELLED', 'COMPLETED'],
+      description: 'Estados posibles de las órdenes'
+    }
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Lista completa de órdenes obtenida exitosamente',
-    type: [Order],
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000', description: 'ID único de la orden' },
+          totalAmount: { type: 'number', example: 700.50, description: 'Monto total de la orden' },
+          status: { type: 'string', example: 'PENDING', enum: ['PENDING', 'PAID', 'CANCELLED', 'COMPLETED'], description: 'Estado de la orden' },
+          orderNumber: { type: 'string', example: 'ORD-2023-001', description: 'Número único de orden' },
+          clientId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174001', description: 'ID del cliente' },
+          userId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440000', description: 'ID del usuario que creó la orden' },
+          cashSessionsId: { type: 'string', nullable: true, example: null, description: 'ID de la sesión de caja' },
+          createdAt: { type: 'string', format: 'date-time', example: '2023-11-21T16:30:00.000Z' },
+          updatedAt: { type: 'string', format: 'date-time', example: '2023-11-21T16:30:00.000Z' },
+          orderProducts: {
+            type: 'array',
+            description: 'Productos de la orden',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+                productId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+                quantity: { type: 'number', example: 2, description: 'Cantidad del producto' },
+                price: { type: 'number', example: 120.50, description: 'Precio unitario del producto' },
+                subtotal: { type: 'number', example: 241.00, description: 'Subtotal del producto' },
+                product: {
+                  type: 'object',
+                  description: 'Información del producto del catálogo',
+                  properties: {
+                    id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+                    name: { type: 'string', example: 'Aceite de Motor 10W40', description: 'Nombre del producto' },
+                    description: { type: 'string', nullable: true, example: 'Aceite sintético de alta calidad' },
+                    basePrice: { type: 'number', nullable: true, example: 29.99, description: 'Precio base del producto' },
+                    buyCost: { type: 'number', nullable: true, example: 20.50, description: 'Costo de compra del producto' },
+                    isDeleted: { type: 'boolean', example: false, description: 'Indica si el producto está eliminado' }
+                  }
+                },
+                payments: {
+                  type: 'array',
+                  description: 'Pagos asociados al producto',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string', example: 'pay-001' },
+                      type: { type: 'string', example: 'EFECTIVO', enum: ['EFECTIVO', 'TARJETA', 'YAPE', 'TRANSFERENCIA', 'DEPOSITO'], description: 'Tipo de pago' },
+                      amount: { type: 'number', example: 241.00, description: 'Monto del pago' },
+                      sourceType: { type: 'string', example: 'ORDERPRODUCT', description: 'Tipo de origen del pago' },
+                      sourceId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+                      createdAt: { type: 'string', format: 'date-time' }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          services: {
+            type: 'array',
+            description: 'Servicios de la orden',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440003' },
+                name: { type: 'string', example: 'Reparación de motor', description: 'Nombre del servicio' },
+                description: { type: 'string', nullable: true, example: 'Revisión completa del motor', description: 'Descripción del servicio' },
+                price: { type: 'number', example: 250.00, description: 'Precio del servicio' },
+                type: { type: 'string', example: 'REPAIR', enum: ['MAINTENANCE', 'REPAIR', 'WARRANTY', 'OTHER'], description: 'Tipo de servicio' },
+                photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://example.com/img1.jpg'], description: 'URLs de fotos del servicio' },
+                payments: {
+                  type: 'array',
+                  description: 'Pagos asociados al servicio',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string', example: 'pay-002' },
+                      type: { type: 'string', example: 'TRANSFERENCIA', description: 'Tipo de pago' },
+                      amount: { type: 'number', example: 250.00, description: 'Monto del pago' },
+                      sourceType: { type: 'string', example: 'SERVICE', description: 'Tipo de origen del pago' },
+                      sourceId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440003' },
+                      createdAt: { type: 'string', format: 'date-time' }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          client: {
+            type: 'object',
+            nullable: true,
+            description: 'Información del cliente',
+            properties: {
+              id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174001' },
+              name: { type: 'string', example: 'Juan Perez', description: 'Nombre del cliente' },
+              email: { type: 'string', nullable: true, example: 'juan.perez@example.com', description: 'Email del cliente' },
+              phone: { type: 'string', nullable: true, example: '987654321', description: 'Teléfono del cliente' },
+              address: { type: 'string', nullable: true, example: 'Av. Siempre Viva 123', description: 'Dirección del cliente' },
+              dni: { type: 'string', example: '12345678', description: 'DNI del cliente' },
+              ruc: { type: 'string', nullable: true, example: '20123456789', description: 'RUC del cliente (si aplica)' }
+            }
+          },
+          user: {
+            type: 'object',
+            nullable: true,
+            description: 'Información del usuario que creó la orden',
+            properties: {
+              id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440000' },
+              name: { type: 'string', example: 'Admin User', description: 'Nombre del usuario' },
+              email: { type: 'string', example: 'admin@example.com', description: 'Email del usuario' },
+              role: { type: 'string', example: 'ADMIN', description: 'Rol del usuario' }
+            }
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'Usuario no autenticado',
+    description: 'No autorizado - Token JWT inválido o ausente',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+        error: 'Unauthorized'
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.FORBIDDEN,
     description: 'No tiene permisos de administrador',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'Forbidden resource',
+        error: 'Forbidden'
+      }
+    }
   })
   async findAll(
     @Query('status') status?: string,
@@ -826,23 +1088,173 @@ export class OrderController {
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Orden encontrada exitosamente',
-    type: Order,
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000', description: 'ID único de la orden' },
+        totalAmount: { type: 'number', example: 700.50, description: 'Monto total de la orden' },
+        status: { type: 'string', example: 'PENDING', enum: ['PENDING', 'PAID', 'CANCELLED', 'COMPLETED'], description: 'Estado de la orden' },
+        orderNumber: { type: 'string', example: 'ORD-2023-001', description: 'Número único de orden' },
+        clientId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174001', description: 'ID del cliente' },
+        userId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440000', description: 'ID del usuario que creó la orden' },
+        cashSessionsId: { type: 'string', nullable: true, example: null, description: 'ID de la sesión de caja' },
+        createdAt: { type: 'string', format: 'date-time', example: '2023-11-21T16:30:00.000Z' },
+        updatedAt: { type: 'string', format: 'date-time', example: '2023-11-21T16:30:00.000Z' },
+        orderProducts: {
+          type: 'array',
+          description: 'Productos de la orden',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+              productId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+              quantity: { type: 'number', example: 2, description: 'Cantidad del producto' },
+              price: { type: 'number', example: 120.50, description: 'Precio unitario del producto' },
+              subtotal: { type: 'number', example: 241.00, description: 'Subtotal del producto' },
+              product: {
+                type: 'object',
+                description: 'Información del producto del catálogo',
+                properties: {
+                  id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' },
+                  name: { type: 'string', example: 'Aceite de Motor 10W40', description: 'Nombre del producto' },
+                  description: { type: 'string', nullable: true, example: 'Aceite sintético de alta calidad' },
+                  basePrice: { type: 'number', nullable: true, example: 29.99, description: 'Precio base del producto' },
+                  buyCost: { type: 'number', nullable: true, example: 20.50, description: 'Costo de compra del producto' },
+                  isDeleted: { type: 'boolean', example: false, description: 'Indica si el producto está eliminado' }
+                }
+              },
+              payments: {
+                type: 'array',
+                description: 'Pagos asociados al producto',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', example: 'pay-001' },
+                    type: { type: 'string', example: 'EFECTIVO', enum: ['EFECTIVO', 'TARJETA', 'YAPE', 'TRANSFERENCIA', 'DEPOSITO'], description: 'Tipo de pago' },
+                    amount: { type: 'number', example: 241.00, description: 'Monto del pago' },
+                    sourceType: { type: 'string', example: 'ORDERPRODUCT', description: 'Tipo de origen del pago' },
+                    sourceId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+                    createdAt: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          }
+        },
+        services: {
+          type: 'array',
+          description: 'Servicios de la orden',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440003' },
+              name: { type: 'string', example: 'Reparación de motor', description: 'Nombre del servicio' },
+              description: { type: 'string', nullable: true, example: 'Revisión completa del motor', description: 'Descripción del servicio' },
+              price: { type: 'number', example: 250.00, description: 'Precio del servicio' },
+              type: { type: 'string', example: 'REPAIR', enum: ['MAINTENANCE', 'REPAIR', 'WARRANTY', 'OTHER'], description: 'Tipo de servicio' },
+              photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://example.com/img1.jpg'], description: 'URLs de fotos del servicio' },
+              payments: {
+                type: 'array',
+                description: 'Pagos asociados al servicio',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', example: 'pay-002' },
+                    type: { type: 'string', example: 'TRANSFERENCIA', description: 'Tipo de pago' },
+                    amount: { type: 'number', example: 250.00, description: 'Monto del pago' },
+                    sourceType: { type: 'string', example: 'SERVICE', description: 'Tipo de origen del pago' },
+                    sourceId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440003' },
+                    createdAt: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          }
+        },
+        client: {
+          type: 'object',
+          nullable: true,
+          description: 'Información del cliente',
+          properties: {
+            id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174001' },
+            name: { type: 'string', example: 'Juan Perez', description: 'Nombre del cliente' },
+            email: { type: 'string', nullable: true, example: 'juan.perez@example.com', description: 'Email del cliente' },
+            phone: { type: 'string', nullable: true, example: '987654321', description: 'Teléfono del cliente' },
+            address: { type: 'string', nullable: true, example: 'Av. Siempre Viva 123', description: 'Dirección del cliente' },
+            dni: { type: 'string', example: '12345678', description: 'DNI del cliente' },
+            ruc: { type: 'string', nullable: true, example: '20123456789', description: 'RUC del cliente (si aplica)' }
+          }
+        },
+        user: {
+          type: 'object',
+          nullable: true,
+          description: 'Información del usuario que creó la orden',
+          properties: {
+            id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440000' },
+            name: { type: 'string', example: 'Admin User', description: 'Nombre del usuario' },
+            email: { type: 'string', example: 'admin@example.com', description: 'Email del usuario' },
+            role: { type: 'string', example: 'ADMIN', description: 'Rol del usuario' }
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
     description: 'La orden no existe o no tiene permisos para verla',
+    schema: {
+      examples: {
+        noEncontrada: {
+          summary: 'Orden no encontrada',
+          value: {
+            statusCode: 404,
+            message: 'Orden con ID 123e4567-e89b-12d3-a456-426614174000 no encontrada',
+            error: 'Not Found'
+          }
+        },
+        sinPermisos: {
+          summary: 'No tiene permisos para ver esta orden',
+          value: {
+            statusCode: 404,
+            message: 'Orden con ID 123e4567-e89b-12d3-a456-426614174000 no encontrada',
+            error: 'Not Found'
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
     description: 'ID de orden inválido',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: 'Validation failed (uuid is expected)',
+        error: 'Bad Request'
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'Usuario no autenticado',
+    description: 'No autorizado - Token JWT inválido o ausente',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+        error: 'Unauthorized'
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.FORBIDDEN,
     description: 'No tiene permisos para ver esta orden',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'Forbidden resource',
+        error: 'Forbidden'
+      }
+    }
   })
   async findOne(
     @Req() req: any,
@@ -868,14 +1280,45 @@ export class OrderController {
     required: true
   })
   @ApiBody({
-    type: UpdateOrderStatusDto,
     description: 'Datos para actualizar el estado de la orden',
+    schema: {
+      type: 'object',
+      required: ['status'],
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['PENDING', 'PAID', 'CANCELLED', 'COMPLETED'],
+          example: 'COMPLETED',
+          description: 'Nuevo estado de la orden'
+        },
+        comment: {
+          type: 'string',
+          nullable: true,
+          example: 'La orden ha sido completada exitosamente',
+          description: 'Comentario opcional sobre el cambio de estado'
+        }
+      }
+    },
     examples: {
-      actualizacionEstado: {
-        summary: 'Actualización de estado',
+      marcarPagada: {
+        summary: 'Marcar orden como pagada',
+        value: {
+          status: 'PAID',
+          comment: 'Pago recibido y verificado'
+        }
+      },
+      marcarCompletada: {
+        summary: 'Marcar orden como completada',
         value: {
           status: 'COMPLETED',
           comment: 'La orden ha sido completada exitosamente'
+        }
+      },
+      marcarCancelada: {
+        summary: 'Marcar orden como cancelada',
+        value: {
+          status: 'CANCELLED',
+          comment: 'Cancelación solicitada por el cliente'
         }
       }
     }
@@ -883,23 +1326,90 @@ export class OrderController {
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Estado de la orden actualizado exitosamente',
-    type: Order,
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000', description: 'ID único de la orden' },
+        totalAmount: { type: 'number', example: 700.50, description: 'Monto total de la orden' },
+        status: { type: 'string', example: 'COMPLETED', enum: ['PENDING', 'PAID', 'CANCELLED', 'COMPLETED'], description: 'Estado actualizado de la orden' },
+        orderNumber: { type: 'string', example: 'ORD-2023-001', description: 'Número único de orden' },
+        clientId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174001', description: 'ID del cliente' },
+        userId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440000', description: 'ID del usuario que creó la orden' },
+        cashSessionsId: { type: 'string', nullable: true, example: null, description: 'ID de la sesión de caja' },
+        createdAt: { type: 'string', format: 'date-time', example: '2023-11-21T16:30:00.000Z' },
+        updatedAt: { type: 'string', format: 'date-time', example: '2023-11-21T18:30:00.000Z' }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
     description: 'La orden no existe o no tiene permisos para actualizarla',
+    schema: {
+      examples: {
+        noEncontrada: {
+          summary: 'Orden no encontrada',
+          value: {
+            statusCode: 404,
+            message: 'Orden con ID 123e4567-e89b-12d3-a456-426614174000 no encontrada',
+            error: 'Not Found'
+          }
+        },
+        sinPermisos: {
+          summary: 'No tiene permisos para actualizar esta orden',
+          value: {
+            statusCode: 404,
+            message: 'Orden con ID 123e4567-e89b-12d3-a456-426614174000 no encontrada',
+            error: 'Not Found'
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'Datos de entrada inválidos',
+    description: 'Datos de entrada inválidos o estado no válido',
+    schema: {
+      examples: {
+        estadoInvalido: {
+          summary: 'Estado no válido',
+          value: {
+            statusCode: 400,
+            message: 'Estado inválido. Debe ser uno de: PENDING, PAID, CANCELLED, COMPLETED',
+            error: 'Bad Request'
+          }
+        },
+        datosInvalidos: {
+          summary: 'Campos requeridos faltantes',
+          value: {
+            statusCode: 400,
+            message: 'El campo status es requerido',
+            error: 'Bad Request'
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'Usuario no autenticado',
+    description: 'No autorizado - Token JWT inválido o ausente',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+        error: 'Unauthorized'
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.FORBIDDEN,
     description: 'No tiene permisos para actualizar esta orden',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'Forbidden resource',
+        error: 'Forbidden'
+      }
+    }
   })
   async updateStatus(
     @Req() req: any,
@@ -918,7 +1428,7 @@ export class OrderController {
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({
     summary: 'Anular una orden',
-    description: 'Anula una orden existente y todos sus servicios asociados. Solo el propietario o un administrador pueden anular una orden.'
+    description: 'Anula una orden existente y todos sus servicios asociados. Requiere autenticación con correo y contraseña para seguridad adicional. Solo el propietario o un administrador pueden anular una orden.'
   })
   @ApiParam({
     name: 'id',
@@ -926,60 +1436,145 @@ export class OrderController {
     example: '123e4567-e89b-12d3-a456-426614174000',
     required: true
   })
+  @ApiBody({
+    description: 'Credenciales para anular la orden',
+    schema: {
+      type: 'object',
+      required: ['email', 'password'],
+      properties: {
+        email: {
+          type: 'string',
+          format: 'email',
+          example: 'usuario@ejemplo.com',
+          description: 'Correo electrónico del usuario'
+        },
+        password: {
+          type: 'string',
+          example: 'contraseña123',
+          description: 'Contraseña del usuario'
+        },
+        reason: {
+          type: 'string',
+          nullable: true,
+          example: 'Cliente solicitó cancelación',
+          description: 'Motivo de la anulación (opcional)'
+        }
+      }
+    },
+    examples: {
+      cancelacionCliente: {
+        summary: 'Anulación por solicitud del cliente',
+        value: {
+          email: 'usuario@ejemplo.com',
+          password: 'contraseña123',
+          reason: 'Cliente solicitó cancelación'
+        }
+      },
+      cancelacionAdmin: {
+        summary: 'Anulación por administrador',
+        value: {
+          email: 'admin@ejemplo.com',
+          password: 'admin123',
+          reason: 'Cancelación administrativa por falta de pago'
+        }
+      }
+    }
+  })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Orden anulada exitosamente',
-    type: Order,
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000', description: 'ID único de la orden' },
+        totalAmount: { type: 'number', example: 700.50, description: 'Monto total de la orden' },
+        status: { type: 'string', example: 'CANCELLED', enum: ['PENDING', 'PAID', 'CANCELLED', 'COMPLETED'], description: 'Estado actualizado de la orden' },
+        orderNumber: { type: 'string', example: 'ORD-2023-001', description: 'Número único de orden' },
+        clientId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174001', description: 'ID del cliente' },
+        userId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440000', description: 'ID del usuario que creó la orden' },
+        cashSessionsId: { type: 'string', nullable: true, example: null, description: 'ID de la sesión de caja' },
+        createdAt: { type: 'string', format: 'date-time', example: '2023-11-21T16:30:00.000Z' },
+        updatedAt: { type: 'string', format: 'date-time', example: '2023-11-21T18:30:00.000Z' }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
     description: 'La orden no existe o no tiene permisos para anularla',
+    schema: {
+      examples: {
+        noEncontrada: {
+          summary: 'Orden no encontrada',
+          value: {
+            statusCode: 404,
+            message: 'Orden con ID 123e4567-e89b-12d3-a456-426614174000 no encontrada',
+            error: 'Not Found'
+          }
+        },
+        sinPermisos: {
+          summary: 'No tiene permisos para anular esta orden',
+          value: {
+            statusCode: 404,
+            message: 'Orden con ID 123e4567-e89b-12d3-a456-426614174000 no encontrada',
+            error: 'Not Found'
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'La orden ya está anulada o no se puede anular',
+    description: 'La orden ya está anulada o credenciales inválidas',
+    schema: {
+      examples: {
+        yaAnulada: {
+          summary: 'Orden ya anulada',
+          value: {
+            statusCode: 400,
+            message: 'La orden ya está anulada',
+            error: 'Bad Request'
+          }
+        },
+        credencialesInvalidas: {
+          summary: 'Credenciales inválidas',
+          value: {
+            statusCode: 401,
+            message: 'Credenciales inválidas',
+            error: 'Unauthorized'
+          }
+        },
+        datosInvalidos: {
+          summary: 'Campos requeridos faltantes',
+          value: {
+            statusCode: 400,
+            message: 'El campo email es requerido',
+            error: 'Bad Request'
+          }
+        }
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'Usuario no autenticado',
+    description: 'No autorizado - Token JWT inválido o ausente',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+        error: 'Unauthorized'
+      }
+    }
   })
   @ApiResponse({
     status: HttpStatus.FORBIDDEN,
     description: 'No tiene permisos para anular esta orden',
-  })
-  @Post(':id/cancel')
-  @Roles(Role.ADMIN, Role.USER)
-  @ApiOperation({
-    summary: 'Anular una orden',
-    description: 'Anula una orden existente y todos sus servicios asociados. Requiere autenticación con correo y contraseña.'
-  })
-  @ApiParam({
-    name: 'id',
-    description: 'ID único de la orden a anular',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-    required: true
-  })
-  @ApiBody({ type: CancelOrderDto })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Orden anulada exitosamente',
-    type: Order,
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'La orden no existe o no tiene permisos para anularla',
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'La orden ya está anulada o no se puede anular',
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'Credenciales inválidas o no proporcionadas',
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos para anular esta orden',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'Forbidden resource',
+        error: 'Forbidden'
+      }
+    }
   })
   async cancelOrder(
     @Param('id', ParseUUIDPipe) id: string,
