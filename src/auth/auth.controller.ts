@@ -37,6 +37,7 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Role } from '@prisma/client';
 import { Logger } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('Autenticación')
 @Controller('auth')
@@ -47,22 +48,53 @@ export class AuthController {
     @Inject(forwardRef(() => AuthService))
     private readonly authService: AuthService,
     private readonly userService: UsersService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Post('register')
   @ApiOperation({
     summary: 'Registrar nuevo usuario',
-    description: 'Crea una nueva cuenta de usuario',
+    description: 'Crea una nueva cuenta de usuario con detección automática de idioma y zona horaria basada en la IP del cliente',
   })
   @ApiResponse({
     status: 201,
     description: 'Usuario registrado exitosamente',
-    type: CreateUserResponseDto,
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+        email: { type: 'string', example: 'usuario@ejemplo.com' },
+        name: { type: 'string', example: 'Nombre del Usuario' },
+        username: { type: 'string', example: 'nombreusuario' },
+        phone: { type: 'string', example: '+1234567890' },
+        verified: { type: 'boolean', example: false },
+        createdAt: { type: 'string', format: 'date-time', example: '2025-11-28T19:52:12.930Z' }
+      }
+    }
   })
-  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
+  @ApiResponse({ 
+    status: 400, 
+    description: 'Datos de entrada inválidos',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'El email debe ser un correo válido' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
+  })
   @ApiResponse({
     status: 409,
     description: 'El correo electrónico o nombre de usuario ya está en uso',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 409 },
+        message: { type: 'string', example: 'El email ya está registrado' },
+        error: { type: 'string', example: 'Conflict' }
+      }
+    }
   })
   @ApiBody({
     type: CreateUserRequestDto,
@@ -113,6 +145,43 @@ export class AuthController {
       timezone,
     );
 
+    // Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
+    let stores: any[] = [];
+    if (user.role === 'ADMIN') {
+      stores = await this.prisma.store.findMany({
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          }
+        }
+      });
+    } else {
+      // Para usuarios normales, obtener sus tiendas asignadas
+      const userStores = await this.prisma.storeUsers.findMany({
+        where: { userId: user.id },
+        include: {
+          store: {
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true
+                }
+              }
+            }
+          }
+        }
+      });
+      stores = userStores.map(us => us.store);
+    }
+
     // Devolver la respuesta
     const response: CreateUserResponseDto = {
       id: user.id,
@@ -122,6 +191,7 @@ export class AuthController {
       phone: user.phone,
       verified: user.verified, // Usar la propiedad 'verified' del modelo de usuario
       createdAt: user.createdAt,
+      stores: stores // Incluir tiendas del usuario
     };
 
     return response;
@@ -131,7 +201,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Refrescar token',
     description:
-      'Obtiene un nuevo token de acceso usando un token de actualización (almacenado en cookie)',
+      'Obtiene un nuevo token de acceso usando un token de actualización almacenado en cookie HttpOnly. La cookie debe enviarse automáticamente con withCredentials: true',
   })
   @ApiResponse({
     status: 201,
@@ -139,13 +209,52 @@ export class AuthController {
     schema: {
       type: 'object',
       properties: {
-        access_token: { type: 'string' }
+        access_token: { 
+          type: 'string',
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
+        },
+        stores: {
+          type: 'array',
+          description: 'Tiendas asociadas al usuario (para ADMIN: todas las tiendas, para USER: tiendas asignadas)',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+              name: { type: 'string', example: 'Tienda Principal' },
+              address: { type: 'string', example: 'Av. Principal 123' },
+              phone: { type: 'string', example: '+123456789' },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
+              createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
+            }
+          }
+        }
       }
     }
   })
   @ApiResponse({
     status: 401,
     description: 'Token de actualización inválido o expirado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 401 },
+        message: { type: 'string', example: 'Token de actualización inválido' },
+        error: { type: 'string', example: 'Unauthorized' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Cookie de refresh_token no encontrada',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'No se encontró cookie de refresh_token' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
   })
   async refreshToken(@Req() req, @Res() res: Response, @Body('refreshToken') refreshToken: string) {
     const ipAddress = req.ip || req.connection.remoteAddress;
@@ -156,7 +265,28 @@ export class AuthController {
   @ApiOperation({
     summary: 'Iniciar sesión',
     description:
-      'Autentica un usuario y devuelve token de acceso (refresh_token en cookie)',
+      'Autentica un usuario usando email y contraseña. Devuelve access_token en JSON y establece refresh_token en cookie HttpOnly segura',
+  })
+  @ApiBody({
+    description: 'Credenciales de inicio de sesión',
+    schema: {
+      type: 'object',
+      properties: {
+        email: { 
+          type: 'string', 
+          format: 'email',
+          example: 'usuario@ejemplo.com',
+          description: 'Correo electrónico del usuario'
+        },
+        password: { 
+          type: 'string', 
+          format: 'password',
+          example: 'contraseñaSegura123',
+          description: 'Contraseña del usuario'
+        }
+      },
+      required: ['email', 'password']
+    }
   })
   @ApiResponse({
     status: 200,
@@ -164,15 +294,35 @@ export class AuthController {
     schema: {
       type: 'object',
       properties: {
-        access_token: { type: 'string' },
+        access_token: { 
+          type: 'string',
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
+        },
         user: {
           type: 'object',
           properties: {
-            id: { type: 'string' },
-            email: { type: 'string' },
-            name: { type: 'string' },
-            role: { type: 'string' },
-            verified: { type: 'boolean' }
+            id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+            email: { type: 'string', example: 'usuario@ejemplo.com' },
+            name: { type: 'string', example: 'Nombre del Usuario' },
+            username: { type: 'string', example: 'nombreusuario' },
+            role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
+            verified: { type: 'boolean', example: true },
+            stores: {
+              type: 'array',
+              description: 'Tiendas asociadas al usuario (para ADMIN: todas las tiendas, para USER: tiendas asignadas)',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+                  name: { type: 'string', example: 'Tienda Principal' },
+                  address: { type: 'string', example: 'Av. Principal 123' },
+                  phone: { type: 'string', example: '+123456789' },
+                  createdAt: { type: 'string', format: 'date-time' },
+                  updatedAt: { type: 'string', format: 'date-time' },
+                  createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
+                }
+              }
+            }
           }
         }
       }
@@ -181,6 +331,26 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description: 'Credenciales inválidas o cuenta no verificada',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 401 },
+        message: { type: 'string', example: 'Credenciales inválidas' },
+        error: { type: 'string', example: 'Unauthorized' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Cuenta no verificada',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'Por favor verifica tu correo electrónico' },
+        error: { type: 'string', example: 'Forbidden' }
+      }
+    }
   })
   async login(
     @Req() req,
@@ -216,7 +386,26 @@ export class AuthController {
   @Post('login/username')
   @ApiOperation({
     summary: 'Iniciar sesión con nombre de usuario',
-    description: 'Autentica un usuario regular (ROLE_USER) usando nombre de usuario y contraseña (refresh_token en cookie)',
+    description: 'Autentica un usuario usando nombre de usuario y contraseña. Devuelve access_token en JSON y establece refresh_token en cookie HttpOnly segura',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        username: { 
+          type: 'string', 
+          example: 'usuario123',
+          description: 'Nombre de usuario único'
+        },
+        password: { 
+          type: 'string', 
+          format: 'password',
+          example: 'contraseñaSegura123',
+          description: 'Contraseña del usuario'
+        },
+      },
+      required: ['username', 'password'],
+    },
   })
   @ApiResponse({
     status: 200,
@@ -224,15 +413,35 @@ export class AuthController {
     schema: {
       type: 'object',
       properties: {
-        access_token: { type: 'string' },
+        access_token: { 
+          type: 'string',
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
+        },
         user: {
           type: 'object',
           properties: {
-            id: { type: 'string' },
-            email: { type: 'string' },
-            name: { type: 'string' },
-            role: { type: 'string' },
-            verified: { type: 'boolean' }
+            id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+            email: { type: 'string', example: 'usuario@ejemplo.com' },
+            name: { type: 'string', example: 'Nombre del Usuario' },
+            username: { type: 'string', example: 'usuario123' },
+            role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
+            verified: { type: 'boolean', example: true },
+            stores: {
+              type: 'array',
+              description: 'Tiendas asociadas al usuario (para ADMIN: todas las tiendas, para USER: tiendas asignadas)',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+                  name: { type: 'string', example: 'Tienda Principal' },
+                  address: { type: 'string', example: 'Av. Principal 123' },
+                  phone: { type: 'string', example: '+123456789' },
+                  createdAt: { type: 'string', format: 'date-time' },
+                  updatedAt: { type: 'string', format: 'date-time' },
+                  createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
+                }
+              }
+            }
           }
         }
       }
@@ -241,16 +450,38 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description: 'Credenciales inválidas o cuenta no verificada',
-  })
-  @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        username: { type: 'string', example: 'usuario123' },
-        password: { type: 'string', format: 'password', example: 'contraseñaSegura123' },
-      },
-      required: ['username', 'password'],
-    },
+        statusCode: { type: 'number', example: 401 },
+        message: { type: 'string', example: 'Credenciales inválidas' },
+        error: { type: 'string', example: 'Unauthorized' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Cuenta no verificada',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'Por favor verifica tu correo electrónico' },
+        error: { type: 'string', example: 'Forbidden' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Usuario no encontrado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Usuario no encontrado' },
+        error: { type: 'string', example: 'Not Found' }
+      }
+    }
   })
   async loginWithUsername(
     @Req() req,
@@ -291,33 +522,33 @@ export class AuthController {
   @ApiOperation({
     summary: 'Verificar correo electrónico',
     description:
-      'Verifica la dirección de correo electrónico del usuario usando un token de verificación',
+      'Verifica la dirección de correo electrónico del usuario usando un token de verificación. Redirige al frontend con mensaje de éxito o error',
   })
   @ApiResponse({
-    status: 200,
-    description: 'Correo electrónico verificado exitosamente',
-    content: {
-      'text/html': {
-        example:
-          '<html><body><h1>Correo verificado exitosamente</h1></body></html>',
-      },
-    },
+    status: 302,
+    description: 'Redirección al frontend',
+    headers: {
+      Location: {
+        description: 'URL de redirección al frontend',
+        schema: { type: 'string', example: 'http://localhost:3000/login?verified=true' }
+      }
+    }
   })
   @ApiResponse({
     status: 400,
     description: 'Token de verificación inválido o expirado',
-    content: {
-      'text/html': {
-        example:
-          '<html><body><h1>Error: Token inválido o expirado</h1></body></html>',
-      },
-    },
+    headers: {
+      Location: {
+        description: 'URL de redirección al frontend con error',
+        schema: { type: 'string', example: 'http://localhost:3000/verify-email?error=invalid_token' }
+      }
+    }
   })
   @ApiQuery({
     name: 'token',
     required: true,
     description: 'Token de verificación enviado por correo electrónico',
-    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ2ZXJpZmljYXRpb24iLCJpYXQiOjE2MzAwMDAwMDAsImV4cCI6MTYzMDA4NjQwMH0.signature',
   })
   async verifyEmail(@Query('token') token: string, @Res() res: Response) {
     try {
@@ -472,22 +703,53 @@ export class AuthController {
   @ApiOperation({
     summary: 'Solicitar restablecimiento de contraseña',
     description:
-      'Envía un correo electrónico con un enlace para restablecer la contraseña',
+      'Envía un correo electrónico con un enlace para restablecer la contraseña. Por seguridad, siempre devuelve éxito sin revelar si el email existe',
   })
   @ApiResponse({
     status: 200,
-    description:
-      'Si el correo existe, se enviarán instrucciones para restablecer la contraseña',
+    description: 'Solicitud procesada exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          example: 'Si el correo existe, recibirás un enlace para resetear tu contraseña, intentalo de nuevo si no recibes nada.'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Formato de correo electrónico inválido',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'El email debe ser un correo válido' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
   })
   @ApiBody({
-    type: RequestPasswordResetDto,
-    description:
-      'Correo electrónico del usuario que desea restablecer su contraseña',
-    examples: {
-      example: {
-        value: { email: 'usuario@ejemplo.com' },
+    description: 'Correo electrónico del usuario que desea restablecer su contraseña',
+    schema: {
+      type: 'object',
+      properties: {
+        email: {
+          type: 'string',
+          format: 'email',
+          example: 'usuario@ejemplo.com',
+          description: 'Correo electrónico del usuario'
+        }
       },
+      required: ['email']
     },
+    examples: {
+      validEmail: {
+        summary: 'Email válido',
+        value: { email: 'usuario@ejemplo.com' }
+      }
+    }
   })
   async requestPasswordReset(@Body() body: RequestPasswordResetDto) {
     await this.authService.requestPasswordReset(body.email);
@@ -502,24 +764,65 @@ export class AuthController {
   @ApiOperation({
     summary: 'Restablecer contraseña',
     description:
-      'Restablece la contraseña de un usuario usando un token de restablecimiento',
+      'Restablece la contraseña de un usuario usando un token de restablecimiento válido. El token expira después de 1 hora',
   })
   @ApiResponse({
     status: 200,
     description: 'Contraseña restablecida exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { 
+          type: 'string',
+          example: 'Contraseña restablecida correctamente.'
+        }
+      }
+    }
   })
-  @ApiResponse({ status: 400, description: 'Token inválido o expirado' })
-  @ApiBody({
-    type: ResetPasswordDto,
-    description: 'Token de restablecimiento y nueva contraseña',
-    examples: {
-      example: {
-        value: {
-          token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-          newPassword: 'nuevaContraseñaSegura123',
+  @ApiResponse({ 
+    status: 400, 
+    description: 'Token inválido, expirado o nueva contraseña inválida',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { 
+          type: 'string',
+          example: 'No se pudo restablecer la contraseña. El token puede ser inválido o haber expirado.'
         },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
+  })
+  @ApiBody({
+    description: 'Token de restablecimiento y nueva contraseña',
+    schema: {
+      type: 'object',
+      properties: {
+        token: {
+          type: 'string',
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJyZXNldCIsImlhdCI6MTYzMDAwMDAwMCwiZXhwIjoxNjMwMDM2NDAwfQ.signature',
+          description: 'Token de restablecimiento recibido por correo'
+        },
+        newPassword: {
+          type: 'string',
+          format: 'password',
+          minLength: 8,
+          example: 'nuevaContraseñaSegura123',
+          description: 'Nueva contraseña (mínimo 8 caracteres)'
+        }
       },
+      required: ['token', 'newPassword']
     },
+    examples: {
+      validReset: {
+        summary: 'Restablecimiento válido',
+        value: {
+          token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJyZXNldCIsImlhdCI6MTYzMDAwMDAwMCwiZXhwIjoxNjMwMDM2NDAwfQ.signature',
+          newPassword: 'nuevaContraseñaSegura123'
+        }
+      }
+    }
   })
   async resetPassword(@Body() body: ResetPasswordDto) {
     const { token, newPassword } = body;

@@ -387,10 +387,46 @@ export class AuthService {
   }
 
   async login(user: any, ipAddress?: string, res?: Response) {
+    // Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
+    let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
+    if (user.role === 'ADMIN') {
+      stores = await this.prisma.store.findMany({
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          phone: true,
+          createdAt: true,
+          updatedAt: true,
+          createdById: true
+        }
+      });
+    } else {
+      // Para usuarios normales, obtener sus tiendas asignadas
+      const userStores = await this.prisma.storeUsers.findMany({
+        where: { userId: user.id },
+        include: {
+          store: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+              createdAt: true,
+              updatedAt: true,
+              createdById: true
+            }
+          }
+        }
+      });
+      stores = userStores.map(us => us.store);
+    }
+
     const payload = { 
       email: user.email, 
       sub: user.id,
-      role: user.role 
+      role: user.role,
+      stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
     };
 
     // Crear tokens
@@ -437,8 +473,10 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: user.name,
+        username: user.username,
         role: user.role,
-        verified: user.verified
+        verified: user.verified,
+        stores: stores // Incluir tiendas completas en la respuesta
       }
     };
   } catch (error) {
@@ -471,11 +509,47 @@ export class AuthService {
         throw new UnauthorizedException('Usuario no encontrado');
       }
 
-      // 4. Crear nuevos tokens
+      // 4. Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
+      let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
+      if (user.role === 'ADMIN') {
+        stores = await this.prisma.store.findMany({
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+            createdAt: true,
+            updatedAt: true,
+            createdById: true
+          }
+        });
+      } else {
+        // Para usuarios normales, obtener sus tiendas asignadas
+        const userStores = await this.prisma.storeUsers.findMany({
+          where: { userId: user.id },
+          include: {
+            store: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+                createdAt: true,
+                updatedAt: true,
+                createdById: true
+              }
+            }
+          }
+        });
+        stores = userStores.map(us => us.store);
+      }
+
+      // 5. Crear nuevos tokens
       const newPayload = { 
         email: user.email, 
         sub: user.id,
-        role: user.role 
+        role: user.role,
+        stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
       };
 
       const newAccessToken = this.jwtService.sign(newPayload);
@@ -504,7 +578,7 @@ export class AuthService {
         },
       });
 
-      // 8. Setear la cookie para el refresh_token y devolver solo el access_token
+      // 8. Setear la cookie para el refresh_token y devolver el access_token y tiendas
       res.cookie('refresh_token', newRefreshToken, {
         httpOnly: true,
         secure: true, // Cambiar a false en desarrollo si no usas HTTPS
@@ -514,7 +588,8 @@ export class AuthService {
       });
 
       return res.status(201).json({
-        access_token: newAccessToken
+        access_token: newAccessToken,
+        stores: stores // Incluir tiendas actualizadas en la respuesta
       });
     } catch (error) {
       console.error('Error al refrescar token:', error);

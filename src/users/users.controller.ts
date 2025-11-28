@@ -326,7 +326,37 @@ export class UsersController {
   @ApiResponse({ 
     status: 200, 
     description: 'Lista de usuarios obtenida exitosamente',
-    type: [CreateUserResponseDto]
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+          email: { type: 'string', example: 'usuario@ejemplo.com' },
+          name: { type: 'string', example: 'Nombre del Usuario' },
+          role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
+          phone: { type: 'string', example: '+123456789' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+          stores: {
+            type: 'array',
+            description: 'Tiendas asociadas al usuario (para ADMIN: todas las tiendas, para USER: tiendas asignadas)',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+                name: { type: 'string', example: 'Tienda Principal' },
+                address: { type: 'string', example: 'Av. Principal 123' },
+                phone: { type: 'string', example: '+123456789' },
+                createdAt: { type: 'string', format: 'date-time' },
+                updatedAt: { type: 'string', format: 'date-time' },
+                createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
+              }
+            }
+          }
+        }
+      }
+    }
   })
   @ApiResponse({ status: 403, description: 'No autorizado' })
   async findAll() {
@@ -457,19 +487,134 @@ export class UsersController {
     summary: 'Actualizar perfil de usuario',
     description: 'Actualiza los datos del perfil de un usuario existente (nombre, email, teléfono, etc.) incluyendo el estado. Requiere rol de ADMIN. No permite cambiar rol ni contraseña.'
   })
-  @ApiParam({ name: 'id', description: 'ID del usuario a actualizar' })
+  @ApiParam({ 
+    name: 'id', 
+    description: 'ID del usuario a actualizar',
+    example: '550e8400-e29b-41d4-a716-446655440001'
+  })
   @ApiBody({
-    description: 'Datos del usuario a actualizar (sin rol ni contraseña)',
+    description: 'Datos del usuario a actualizar (sin rol ni contraseña). Todos los campos son opcionales.',
     type: UpdateUserDto,
+    examples: {
+      ejemplo_actualizacion_parcial: {
+        summary: 'Actualización parcial de datos básicos',
+        description: 'Ejemplo para actualizar nombre y teléfono del usuario',
+        value: {
+          name: 'Juan Pérez Actualizado',
+          phone: '+346987654321'
+        }
+      },
+      ejemplo_actualizacion_completa: {
+        summary: 'Actualización completa del perfil',
+        description: 'Ejemplo para actualizar todos los campos permitidos',
+        value: {
+          name: 'María García López',
+          email: 'maria.garcia@ejemplo.com',
+          phone: '+346123456789',
+          username: 'maria.garcia',
+          birthdate: '1990-01-01',
+          language: 'es',
+          timezone: 'Europe/Madrid',
+          status: 'ACTIVE',
+          avatarUrl: 'https://example.com/avatars/maria.jpg',
+          verified: true
+        }
+      },
+      ejemplo_cambio_estado: {
+        summary: 'Cambiar estado del usuario',
+        description: 'Ejemplo para activar/desactivar un usuario',
+        value: {
+          status: 'INACTIVE'
+        }
+      }
+    }
   })
   @ApiResponse({
     status: 200,
     description: 'Usuario actualizado exitosamente',
-    type: CreateUserResponseDto
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+        email: { type: 'string', example: 'usuario@ejemplo.com' },
+        name: { type: 'string', example: 'Nombre del Usuario' },
+        role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
+        phone: { type: 'string', example: '+123456789' },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        stores: {
+          type: 'array',
+          description: 'Tiendas asociadas al usuario',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+              name: { type: 'string', example: 'Tienda Principal' },
+              address: { type: 'string', example: 'Av. Principal 123' },
+              phone: { type: 'string', example: '+123456789' },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
+              createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
+            }
+          }
+        }
+      }
+    }
   })
-  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
-  @ApiResponse({ status: 403, description: 'No autorizado' })
+  @ApiResponse({ 
+    status: 404, 
+    description: 'Usuario no encontrado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Usuario no encontrado' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 400, 
+    description: 'Datos de entrada inválidos',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Datos de entrada inválidos' },
+        details: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              field: { type: 'string', example: 'email' },
+              message: { type: 'string', example: 'Email inválido' }
+            }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 403, 
+    description: 'No autorizado - Requiere rol de ADMIN',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'No autorizado' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 409, 
+    description: 'Conflicto - Email o username ya existen',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 409 },
+        message: { type: 'string', example: 'El correo electrónico ya está en uso' }
+      }
+    }
+  })
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     this.logger.debug(`Iniciando actualización de usuario con ID: ${id}`);
     this.logger.debug(`Datos recibidos: ${JSON.stringify(updateUserDto)}`);

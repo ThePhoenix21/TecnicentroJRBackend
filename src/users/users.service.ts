@@ -286,20 +286,68 @@ export class UsersService {
     }
 
     async findAll() {
-        return this.prisma.user.findMany({
+        const users = await this.prisma.user.findMany({
             select: {
-            id: true,
-            email: true,
-            name: true,
-            role: true,
-            phone: true,
-            createdAt: true,
-            updatedAt: true,
-            // Excluir campos sensibles como password, passwordResetToken, etc.
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                phone: true,
+                createdAt: true,
+                updatedAt: true,
+                // Excluir campos sensibles como password, passwordResetToken, etc.
             },
             orderBy: {
-            createdAt: 'desc', // Opcional: ordenar por fecha de creación
+                createdAt: 'desc', // Opcional: ordenar por fecha de creación
             },
         });
+
+        // Para cada usuario, obtener sus tiendas asociadas
+        const usersWithStores = await Promise.all(
+            users.map(async (user) => {
+                let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
+                
+                if (user.role === 'ADMIN') {
+                    // ADMIN: obtener todas las tiendas
+                    stores = await this.prisma.store.findMany({
+                        select: {
+                            id: true,
+                            name: true,
+                            address: true,
+                            phone: true,
+                            createdAt: true,
+                            updatedAt: true,
+                            createdById: true
+                        }
+                    });
+                } else {
+                    // USER: obtener tiendas asignadas
+                    const userStores = await this.prisma.storeUsers.findMany({
+                        where: { userId: user.id },
+                        include: {
+                            store: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    address: true,
+                                    phone: true,
+                                    createdAt: true,
+                                    updatedAt: true,
+                                    createdById: true
+                                }
+                            }
+                        }
+                    });
+                    stores = userStores.map(us => us.store);
+                }
+
+                return {
+                    ...user,
+                    stores
+                };
+            })
+        );
+
+        return usersWithStores;
     }
 }
