@@ -337,11 +337,52 @@ export class OrderService {
         }
       }
       
-      // NOTA: Los servicios NO generan pagos al crear la orden
-      // Los pagos de servicios se generan al completar la orden
+      // NOTA: Los servicios SÍ pueden tener pagos de adelanto
+      // Los pagos de servicios se procesan al crear y al completar la orden
       if (servicesDto && servicesDto.length > 0) {
-        console.log('🔧 Servicios creados en IN_PROGRESS - sin generar pagos iniciales');
-        console.log('🔍 Los pagos de servicios se procesarán cuando la orden se complete');
+        for (let i = 0; i < servicesData.length; i++) {
+          const service = servicesData[i];
+          const serviceDto = servicesDto[i];
+          
+          if (serviceDto.payments && serviceDto.payments.length > 0) {
+            console.log('🔧 Creando pagos de adelanto para servicio:', service.id);
+            
+            // Crear pagos de adelanto
+            const paymentData = serviceDto.payments.map(payment => ({
+              type: payment.type as any,
+              amount: payment.amount,
+              sourceType: 'SERVICE' as PaymentSourceType,
+              sourceId: service.id
+            }));
+            
+            const createdPayments = await this.paymentService.createPayments(paymentData);
+            console.log('✅ Pagos de adelanto de servicio creados:', createdPayments.length);
+            
+            // Crear movimientos de caja para pagos en efectivo (adelantos)
+            const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
+            if (cashPayments.length > 0) {
+              console.log('💰 Creando movimientos de caja para adelantos en efectivo');
+              
+              for (const cashPayment of cashPayments) {
+                try {
+                  await this.cashMovementService.createFromOrder({
+                    cashSessionId: cashSessionId,
+                    amount: cashPayment.amount,
+                    orderId: order.id,
+                    clientId: clientIdToUse,
+                    clientName: clientInfo?.name,
+                    clientEmail: clientInfo?.email
+                  }, false, userId); // isRefund: false para ingresos
+                  
+                  console.log('✅ Movimiento de caja de adelanto creado:', cashPayment.amount);
+                } catch (error) {
+                  console.error('❌ Error al crear movimiento de caja de adelanto:', error.message);
+                  // No fallar la creación de la orden si falla el movimiento
+                }
+              }
+            }
+          }
+        }
       }
 
       return order;
@@ -694,15 +735,15 @@ export class OrderService {
         return service && service.status === ServiceStatus.COMPLETED;
       });
 
-      console.log('💰 Procesando pagos para servicios completados:', completedServices.length);
+      console.log('💰 Procesando pagos adicionales para servicios completados:', completedServices.length);
 
       for (const servicePayment of completedServices) {
         const service = servicesMap.get(servicePayment.serviceId);
         if (!service) continue; // Skip if service not found
         
-        console.log('🔧 Creando pagos para servicio completado:', service.id);
+        console.log('🔧 Creando pagos adicionales para servicio completado:', service.id);
         
-        // Crear pagos
+        // Crear pagos adicionales (no reemplazar los existentes)
         const paymentData = servicePayment.payments.map(payment => ({
           type: payment.type as any,
           amount: payment.amount,
@@ -711,12 +752,12 @@ export class OrderService {
         }));
         
         const createdPayments = await this.paymentService.createPayments(paymentData);
-        console.log('✅ Pagos de servicio creados:', createdPayments.length);
+        console.log('✅ Pagos adicionales de servicio creados:', createdPayments.length);
         
-        // Crear movimientos de caja para pagos en efectivo
+        // Crear movimientos de caja para pagos en efectivo adicionales
         const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
         if (cashPayments.length > 0) {
-          console.log('💰 Creando movimientos de caja para pagos en efectivo de servicios');
+          console.log('💰 Creando movimientos de caja adicionales para pagos en efectivo');
           
           for (const cashPayment of cashPayments) {
             try {
@@ -729,9 +770,9 @@ export class OrderService {
                 clientEmail: order.client?.email || undefined
               }, false, user?.userId); // isRefund: false para ingresos
               
-              console.log('✅ Movimiento de caja creado para servicio:', cashPayment.amount);
+              console.log('✅ Movimiento de caja adicional creado para servicio:', cashPayment.amount);
             } catch (error) {
-              console.error('❌ Error al crear movimiento de caja para servicio:', error.message);
+              console.error('❌ Error al crear movimiento de caja adicional para servicio:', error.message);
               // No fallar la completación si falla el movimiento
             }
           }
