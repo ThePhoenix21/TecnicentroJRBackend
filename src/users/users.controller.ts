@@ -488,6 +488,144 @@ export class UsersController {
     }
   }
 
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Obtener usuario por ID',
+    description: 'Obtiene los datos de un usuario específico por su ID. Requiere autenticación JWT pero no requiere rol específico.'
+  })
+  @ApiParam({ 
+    name: 'id', 
+    description: 'ID del usuario a consultar',
+    example: '550e8400-e29b-41d4-a716-446655440001'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Usuario encontrado exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+        email: { type: 'string', example: 'usuario@ejemplo.com' },
+        name: { type: 'string', example: 'Nombre del Usuario' },
+        role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
+        status: { 
+          type: 'string', 
+          enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DELETED'], 
+          example: 'ACTIVE',
+          description: 'Estado actual del usuario'
+        },
+        phone: { type: 'string', example: '+123456789' },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        stores: {
+          type: 'array',
+          description: 'Tiendas asociadas al usuario (para ADMIN: todas las tiendas, para USER: tiendas asignadas)',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+              name: { type: 'string', example: 'Tienda Principal' },
+              address: { type: 'string', example: 'Av. Principal 123' },
+              phone: { type: 'string', example: '+123456789' },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
+              createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
+            }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 404, 
+    description: 'Usuario no encontrado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Usuario no encontrado' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 401, 
+    description: 'No autorizado - Se requiere autenticación JWT',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 401 },
+        message: { type: 'string', example: 'Unauthorized' }
+      }
+    }
+  })
+  async findOne(@Param('id') id: string) {
+    this.logger.debug(`Buscando usuario con ID: ${id}`);
+    
+    try {
+      const user = await this.usersService.findById(id);
+      
+      if (!user) {
+        this.logger.warn(`Usuario no encontrado con ID: ${id}`);
+        throw new NotFoundException('Usuario no encontrado');
+      }
+
+      // Obtener tiendas asociadas al usuario
+      let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
+      
+      if (user.role === 'ADMIN') {
+        // ADMIN: obtener todas las tiendas
+        stores = await this.prisma.store.findMany({
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+            createdAt: true,
+            updatedAt: true,
+            createdById: true
+          }
+        });
+      } else {
+        // USER: obtener tiendas asignadas
+        const userStores = await this.prisma.storeUsers.findMany({
+          where: { userId: id },
+          include: {
+            store: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+                createdAt: true,
+                updatedAt: true,
+                createdById: true
+              }
+            }
+          }
+        });
+        stores = userStores.map(us => us.store);
+      }
+
+      // Excluir campos sensibles de la respuesta
+      const { password, passwordResetToken, passwordResetTokenExpires, verifyToken, verifyTokenExpires, ...userResponse } = user;
+      
+      this.logger.log(`Usuario con ID ${id} encontrado exitosamente con ${stores.length} tiendas`);
+      return {
+        ...userResponse,
+        stores
+      };
+    } catch (error) {
+      this.logger.error(`Error al buscar usuario ${id}: ${error.message}`);
+      
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new InternalServerErrorException('Error al obtener el usuario');
+    }
+  }
+
   @Put('update/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.USER)
