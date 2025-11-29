@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "public"."Order" ADD COLUMN     "isPriceModified" BOOLEAN NOT NULL DEFAULT false,
+ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;

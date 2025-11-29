@@ -2,15 +2,17 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException,
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, PrismaClient, SessionStatus, PaymentType, MovementType } from '@prisma/client';
+import { Prisma, SaleStatus, PrismaClient, SessionStatus, PaymentType, MovementType, PaymentSourceType } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
+import { PaymentService } from '../payment/payment.service';
 
 @Injectable()
 export class OrderService {
   constructor(
     private prisma: PrismaService,
-    private cashMovementService: CashMovementService
+    private cashMovementService: CashMovementService,
+    private paymentService: PaymentService
   ) {}
 
   // Función para generar el número de orden secuencial
@@ -31,6 +33,9 @@ export class OrderService {
     if (!cashSessionId) {
       throw new BadRequestException('El ID de la sesión de caja es obligatorio');
     }
+
+    // Determinar si es ADMIN
+    const isAdmin = user?.role === 'ADMIN';
 
     return this.prisma.$transaction(async (prisma) => {
       // 0. Validar la sesión de caja
@@ -103,66 +108,50 @@ export class OrderService {
               code: 'EMAIL_ALREADY_EXISTS'
             });
           }
-          
-          // Usar el cliente existente
-          clientIdToUse = existingClient.id;
+          clientIdToUse = existingClient.id; // Usar el ID del cliente existente
         } else {
-          try {
-            // Crear un nuevo cliente solo si no existe
-            const newClient = await prisma.client.create({
-              data: {
-                ...clientInfo,
-                userId: userId,
-              },
-              select: { id: true }
-            });
-            clientIdToUse = newClient.id;
-          } catch (error) {
-            // Capturar error de violación de restricción única
-            if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
-              throw new BadRequestException({
-                statusCode: 400,
-                message: 'El correo electrónico ya está registrado',
-                error: 'Bad Request',
-                code: 'EMAIL_ALREADY_EXISTS'
-              });
+          // Crear nuevo cliente
+          const newClient = await prisma.client.create({
+            data: {
+              ...clientInfo,
+              userId: userId!
             }
-            throw error; // Relanzar otros errores
-          }
+          });
+          clientIdToUse = newClient.id;
         }
-      } else if (!clientId) {
-        throw new BadRequestException('Se requiere el ID del cliente o la información del cliente');
+      } else {
+        throw new BadRequestException('Se requiere información del cliente');
       }
 
-      if (!clientIdToUse) {
-        throw new BadRequestException('No se pudo determinar el ID del cliente');
-      }
-
-      if (!userId) {
-        throw new BadRequestException('Se requiere el ID de usuario para crear la orden');
-      }
-
-      // 2. Verificar que los productos existan y tengan suficiente stock
-      let existingStoreProducts: any[] = [];
-      if (products && products.length > 0) {
-        const productIds = products.map(p => p.productId);
-        existingStoreProducts = await prisma.storeProduct.findMany({
-          where: {
-            id: { in: productIds },
-          },
-          include: {
-            product: true,
-          },
-        });
-
-        if (existingStoreProducts.length !== products.length) {
-          const foundIds = new Set(existingStoreProducts.map(p => p.id));
-          const missingIds = productIds.filter(id => !foundIds.has(id));
-          throw new NotFoundException(`Los siguientes productos en tienda no existen: ${missingIds.join(', ')}`);
+      // 2. Verificar productos y calcular totales
+      const productIds = products?.map(p => p.productId) || [];
+      console.log('🔍 Buscando StoreProducts con IDs:', productIds);
+      console.log('🔍 Para el userId:', userId);
+      console.log('🔍 Es ADMIN:', isAdmin);
+      
+      // Si es ADMIN, puede ver todos los productos, sino solo los suyos
+      const productWhere = isAdmin 
+        ? { id: { in: productIds } }  // ADMIN: busca todos los productos con esos IDs
+        : { id: { in: productIds }, userId }; // USER: solo busca sus productos
+      
+      const existingStoreProducts = await prisma.storeProduct.findMany({
+        where: productWhere,
+        include: {
+          product: true
         }
+      });
+
+      console.log('🔍 StoreProducts encontrados:', existingStoreProducts.length);
+      console.log('🔍 IDs encontrados:', existingStoreProducts.map(sp => sp.id));
+
+      if (existingStoreProducts.length !== productIds.length) {
+        const foundIds = existingStoreProducts.map(sp => sp.id);
+        const missingIds = productIds.filter(id => !foundIds.includes(id));
+        console.log('❌ IDs no encontrados:', missingIds);
+        throw new NotFoundException(`Productos no encontrados: ${missingIds.join(', ')}`);
       }
 
-      // 3. Calcular el monto total y verificar stock
+      // 3. Procesar productos
       console.log('Products recibidos en service:', JSON.stringify(products, null, 2));
       let productMap = new Map();
       if (products && products.length > 0) {
@@ -183,6 +172,8 @@ export class OrderService {
       }> = [];
 
       // Verificar stock y calcular total
+      let isPriceModified = false;
+      
       for (const storeProduct of existingStoreProducts) {
         const productData = productMap.get(storeProduct.id);
         if (!productData) continue;
@@ -197,6 +188,12 @@ export class OrderService {
         // Si no se proporcionó un precio personalizado, usar el precio del StoreProduct
         const finalPrice: number = price !== undefined ? price : (storeProduct.price || 0);
         console.log(`Precio final para producto ${storeProduct.id}:`, finalPrice);
+        
+        // Verificar si el precio fue modificado
+        if (price !== undefined && price !== storeProduct.price) {
+          console.log(`⚠️ Precio modificado para producto ${storeProduct.id}: ${storeProduct.price} -> ${price}`);
+          isPriceModified = true;
+        }
         
         totalAmount += finalPrice * quantity;
         
@@ -228,7 +225,7 @@ export class OrderService {
         ? SaleStatus.PENDING 
         : SaleStatus.COMPLETED;
 
-          // 5. Generar número de orden
+      // 5. Generar número de orden
       const orderNumber = await this.generateOrderNumber();
 
       // 6. Crear la orden
@@ -236,6 +233,7 @@ export class OrderService {
         orderNumber,
         totalAmount,
         status: orderStatus,
+        isPriceModified,
         cashSession: {
           connect: { id: cashSessionId }
         },
@@ -261,7 +259,7 @@ export class OrderService {
         },
       });
 
-      // 5. Actualizar el stock de los productos en tienda
+      // 7. Actualizar el stock de los productos en tienda
       await Promise.all(
         existingStoreProducts.map(storeProduct => {
           const productData = productMap.get(storeProduct.id);
@@ -276,7 +274,116 @@ export class OrderService {
         }).filter(Boolean) // Filtrar posibles valores nulos
       );
 
-      return order as unknown as Order;
+      // Retornar la orden para procesar pagos fuera de la transacción
+      return {
+        order: order as unknown as Order,
+        orderProductsData: order.orderProducts,
+        servicesData: order.services,
+        productsDto: products,
+        servicesDto: services,
+        clientIdToUse
+      };
+    }).then(async (result) => {
+      // 8. Crear pagos y movimientos de caja FUERA de la transacción
+      const { order, orderProductsData, servicesData, productsDto, servicesDto, clientIdToUse } = result;
+      
+      console.log('💰 Creando pagos y movimientos de caja para la orden:', order.id);
+      
+      // Crear pagos de productos
+      if (productsDto && productsDto.length > 0) {
+        for (let i = 0; i < orderProductsData.length; i++) {
+          const orderProduct = orderProductsData[i];
+          const productDto = productsDto[i];
+          
+          if (productDto.payments && productDto.payments.length > 0) {
+            console.log('📦 Creando pagos para producto:', orderProduct.id);
+            
+            // Crear pagos
+            const paymentData = productDto.payments.map(payment => ({
+              type: payment.type as any, // Convertir a tipo de Prisma
+              amount: payment.amount,
+              sourceType: 'ORDERPRODUCT' as PaymentSourceType,
+              sourceId: orderProduct.id
+            }));
+            
+            const createdPayments = await this.paymentService.createPayments(paymentData);
+            console.log('✅ Pagos de producto creados:', createdPayments.length);
+            
+            // Crear movimientos de caja para pagos en efectivo
+            const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
+            if (cashPayments.length > 0) {
+              console.log('💰 Creando movimientos de caja para pagos en efectivo');
+              
+              for (const cashPayment of cashPayments) {
+                try {
+                  await this.cashMovementService.createFromOrder({
+                    cashSessionId: cashSessionId,
+                    amount: cashPayment.amount,
+                    orderId: order.id,
+                    clientId: clientIdToUse,
+                    clientName: clientInfo?.name,
+                    clientEmail: clientInfo?.email
+                  }, false, userId); // isRefund: false para ingresos, pasar userId
+                  
+                  console.log('✅ Movimiento de caja creado:', cashPayment.amount);
+                } catch (error) {
+                  console.error('❌ Error al crear movimiento de caja:', error.message);
+                  // No fallar la creación de la orden si falla el movimiento
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Crear pagos de servicios
+      if (servicesDto && servicesDto.length > 0) {
+        for (let i = 0; i < servicesData.length; i++) {
+          const service = servicesData[i];
+          const serviceDto = servicesDto[i];
+          
+          if (serviceDto.payments && serviceDto.payments.length > 0) {
+            console.log('🔧 Creando pagos para servicio:', service.id);
+            
+            // Crear pagos
+            const paymentData = serviceDto.payments.map(payment => ({
+              type: payment.type as any, // Convertir a tipo de Prisma
+              amount: payment.amount,
+              sourceType: 'SERVICE' as PaymentSourceType,
+              sourceId: service.id
+            }));
+            
+            const createdPayments = await this.paymentService.createPayments(paymentData);
+            console.log('✅ Pagos de servicio creados:', createdPayments.length);
+            
+            // Crear movimientos de caja para pagos en efectivo
+            const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
+            if (cashPayments.length > 0) {
+              console.log('💰 Creando movimientos de caja para pagos en efectivo de servicios');
+              
+              for (const cashPayment of cashPayments) {
+                try {
+                  await this.cashMovementService.createFromOrder({
+                    cashSessionId: cashSessionId,
+                    amount: cashPayment.amount,
+                    orderId: order.id,
+                    clientId: clientIdToUse,
+                    clientName: clientInfo?.name,
+                    clientEmail: clientInfo?.email
+                  }, false, userId); // isRefund: false para ingresos, pasar userId
+                  
+                  console.log('✅ Movimiento de caja creado para servicio:', cashPayment.amount);
+                } catch (error) {
+                  console.error('❌ Error al crear movimiento de caja para servicio:', error.message);
+                  // No fallar la creación de la orden si falla el movimiento
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return order;
     });
   }
 

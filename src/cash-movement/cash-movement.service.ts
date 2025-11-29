@@ -115,7 +115,7 @@ export class CashMovementService {
   }
 
   // 2. Crear movimiento desde orden (uso interno)
-  async createFromOrder(createOrderCashMovementDto: CreateOrderCashMovementDto, isRefund: boolean = false) {
+  async createFromOrder(createOrderCashMovementDto: CreateOrderCashMovementDto, isRefund: boolean = false, userId?: string) {
     const { cashSessionId, amount, orderId, clientId, clientName, clientEmail } = createOrderCashMovementDto;
     
     console.log('🔄 [CashMovementService] Creando movimiento desde orden:', {
@@ -125,7 +125,8 @@ export class CashMovementService {
       clientId,
       clientName,
       clientEmail,
-      isRefund
+      isRefund,
+      userId
     });
 
     try {
@@ -154,6 +155,7 @@ export class CashMovementService {
       }
 
       console.log('✅ [CashMovementService] Sesión validada, usuario de sesión:', cashSession.User?.id);
+      console.log('🔍 [CashMovementService] UserId a usar:', userId || cashSession.openedById);
 
       // Determinar el tipo y descripción según si es reembolso o pago
       const movementType = isRefund ? MovementType.EXPENSE : MovementType.INCOME;
@@ -162,6 +164,23 @@ export class CashMovementService {
         : `Pago en efectivo - Orden ${orderId}`;
 
       // Crear el movimiento
+      const finalUserId = userId || cashSession.openedById;
+      console.log('🔍 [CashMovementService] UserId final para CashMovement:', finalUserId);
+      
+      // Verificar que la orden exista antes de crear el movimiento
+      if (orderId) {
+        console.log('🔍 [CashMovementService] Verificando existencia de orden:', orderId);
+        const orderExists = await this.prisma.order.findUnique({
+          where: { id: orderId },
+          select: { id: true }
+        });
+        console.log('🔍 [CashMovementService] Orden existe:', !!orderExists);
+        if (!orderExists) {
+          console.error('❌ [CashMovementService] La orden no existe:', orderId);
+          throw new NotFoundException(`La orden ${orderId} no existe`);
+        }
+      }
+      
       const cashMovement = await this.prisma.cashMovement.create({
         data: {
           sessionId: cashSessionId,        // Campo sessionId
@@ -170,7 +189,7 @@ export class CashMovementService {
           description: description,
           relatedOrderId: orderId,         // Campo relacionado con orden
           CashSessionId: cashSessionId,    // FK para CashSession
-          UserId: cashSession.openedById   // FK para User - usar el usuario que abrió la sesión
+          UserId: finalUserId   // FK para User - usar userId proporcionado o el que abrió la sesión
         },
         include: {
           CashSession: {

@@ -123,8 +123,9 @@ model Order {
   orderNumber   String         @unique @default("ORD-0000")
   totalAmount   Float
   status        SaleStatus     @default(PENDING)
+  isPriceModified Boolean       @default(false)
   createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  updatedAt     DateTime       @default(now()) @updatedAt
   
   userId        String
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)

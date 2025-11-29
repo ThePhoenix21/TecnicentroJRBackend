@@ -47,6 +47,20 @@ export class OrderController {
     // Validaciones adicionales
     await this.validateOrderData(createOrderDto);
 
+    // Procesar precios personalizados de productos
+    if (createOrderDto.products) {
+      createOrderDto.products = createOrderDto.products.map(product => {
+        // Si hay price, lo usamos como customPrice
+        if (product.price !== undefined) {
+          return {
+            ...product,
+            customPrice: product.price
+          };
+        }
+        return product;
+      });
+    }
+
     // Asignar el ID del usuario
     createOrderDto.userId = userId;
 

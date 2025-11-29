@@ -4,6 +4,7 @@ export class Order implements PrismaOrder {
   id: string;
   totalAmount: number;
   status: SaleStatus;
+  isPriceModified: boolean;
   createdAt: Date;
   updatedAt: Date;
   userId: string;
