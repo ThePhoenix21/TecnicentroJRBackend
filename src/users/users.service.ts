@@ -190,9 +190,19 @@ export class UsersService {
         });
     }
 
-    // Elimina un usuario de la base de datos por su ID
+    // Elimina un usuario de la base de datos por su ID (soft delete)
     async deleteUserById(id: string) {
-        return this.prisma.user.delete({ where: { id } });
+        // Verificar que el usuario exista
+        const user = await this.prisma.user.findUnique({ where: { id } });
+        if (!user) {
+            throw new NotFoundException('Usuario no encontrado');
+        }
+
+        // Realizar soft delete cambiando el status a DELETED
+        return this.prisma.user.update({
+            where: { id },
+            data: { status: 'DELETED' }
+        });
     }
 
     async findByEmail(email: string) {
@@ -292,6 +302,7 @@ export class UsersService {
                 email: true,
                 name: true,
                 role: true,
+                status: true,
                 phone: true,
                 createdAt: true,
                 updatedAt: true,

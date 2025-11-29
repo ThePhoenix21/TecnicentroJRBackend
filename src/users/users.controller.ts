@@ -39,6 +39,7 @@ import { generateUsername } from 'src/common/utility/usernameGenerator';
 import { supabase } from '../supabase.client';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('Users')
 @Controller('users')
@@ -49,7 +50,8 @@ export class UsersController {
 
   constructor(
     private readonly usersService: UsersService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
+    private readonly prisma: PrismaService
   ) {
     // Asegurarse de que el bucket exista al iniciar
     this.initializeBucket();
@@ -335,6 +337,12 @@ export class UsersController {
           email: { type: 'string', example: 'usuario@ejemplo.com' },
           name: { type: 'string', example: 'Nombre del Usuario' },
           role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
+          status: { 
+            type: 'string', 
+            enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DELETED'], 
+            example: 'ACTIVE',
+            description: 'Estado actual del usuario'
+          },
           phone: { type: 'string', example: '+123456789' },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
@@ -482,31 +490,34 @@ export class UsersController {
 
   @Put('update/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({
     summary: 'Actualizar perfil de usuario',
-    description: 'Actualiza los datos del perfil de un usuario existente (nombre, email, teléfono, etc.) incluyendo el estado. Requiere rol de ADMIN. No permite cambiar rol ni contraseña.'
+    description: 'Actualiza los datos del perfil de un usuario existente. ADMIN puede editar cualquier usuario, USER solo puede editar sus propios datos. No permite cambiar rol ni contraseña.'
   })
   @ApiParam({ 
     name: 'id', 
-    description: 'ID del usuario a actualizar',
+    description: 'ID del usuario a actualizar (USER solo puede usar su propio ID)',
     example: '550e8400-e29b-41d4-a716-446655440001'
   })
   @ApiBody({
     description: 'Datos del usuario a actualizar (sin rol ni contraseña). Todos los campos son opcionales.',
     type: UpdateUserDto,
     examples: {
-      ejemplo_actualizacion_parcial: {
-        summary: 'Actualización parcial de datos básicos',
-        description: 'Ejemplo para actualizar nombre y teléfono del usuario',
+      ejemplo_actualizacion_user: {
+        summary: 'Actualización de usuario normal (USER)',
+        description: 'Ejemplo de lo que un USER puede editar de su propio perfil (campos restringidos no permitidos)',
         value: {
           name: 'Juan Pérez Actualizado',
-          phone: '+346987654321'
+          phone: '+346987654321',
+          language: 'es',
+          timezone: 'Europe/Madrid',
+          birthdate: '1990-01-01'
         }
       },
-      ejemplo_actualizacion_completa: {
-        summary: 'Actualización completa del perfil',
-        description: 'Ejemplo para actualizar todos los campos permitidos',
+      ejemplo_actualizacion_admin: {
+        summary: 'Actualización completa por ADMIN',
+        description: 'Ejemplo de lo que un ADMIN puede editar de cualquier usuario (incluyendo campos restringidos)',
         value: {
           name: 'María García López',
           email: 'maria.garcia@ejemplo.com',
@@ -517,7 +528,15 @@ export class UsersController {
           timezone: 'Europe/Madrid',
           status: 'ACTIVE',
           avatarUrl: 'https://example.com/avatars/maria.jpg',
-          verified: true
+          verified: true,
+          storeId: '550e8400-e29b-41d4-a716-446655440003'
+        }
+      },
+      ejemplo_cambio_tienda: {
+        summary: 'Cambiar tienda asignada al usuario',
+        description: 'Ejemplo para cambiar la tienda a la que pertenece un usuario (solo para USER)',
+        value: {
+          storeId: '550e8400-e29b-41d4-a716-446655440003'
         }
       },
       ejemplo_cambio_estado: {
@@ -615,9 +634,10 @@ export class UsersController {
       }
     }
   })
-  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Request() req: Request & { user: { userId: string; email: string; role: Role } }) {
     this.logger.debug(`Iniciando actualización de usuario con ID: ${id}`);
     this.logger.debug(`Datos recibidos: ${JSON.stringify(updateUserDto)}`);
+    this.logger.debug(`Usuario solicitante: ${req.user.userId}, Rol: ${req.user.role}`);
 
     try {
       // Verificar que el usuario exista
@@ -627,12 +647,157 @@ export class UsersController {
         throw new NotFoundException('Usuario no encontrado');
       }
 
-      // Actualizar usuario directamente con los datos del DTO
-      const updatedUser = await this.usersService.updateUser(id, updateUserDto);
+      // Validar permisos: USER solo puede editar sus propios datos, ADMIN puede editar cualquiera
+      if (req.user.role === Role.USER && req.user.userId !== id) {
+        this.logger.warn(`USER ${req.user.userId} intentando editar datos de otro usuario ${id}`);
+        throw new ForbiddenException('No tienes permisos para editar este usuario');
+      }
 
-      this.logger.log(`Usuario actualizado exitosamente con ID: ${id}`);
+      // Para USER, restringir algunos campos que solo ADMIN puede modificar
+      if (req.user.role === Role.USER) {
+        const { storeId, status, verified, ...allowedUpdateData } = updateUserDto;
+        
+        // Si USER intenta modificar campos restringidos, lanzar error
+        if (storeId || status !== undefined || verified !== undefined) {
+          this.logger.warn(`USER ${req.user.userId} intentando modificar campos restringidos`);
+          throw new ForbiddenException('No tienes permisos para modificar estos campos. Solo ADMIN puede modificar storeId, status y verified.');
+        }
+        
+        updateUserDto = allowedUpdateData;
+      }
 
-      return updatedUser;
+      // Si se incluye storeId, validar que exista y manejar el cambio
+      if (updateUserDto.storeId) {
+        // Verificar que la tienda exista
+        const store = await this.prisma.store.findUnique({
+          where: { id: updateUserDto.storeId }
+        });
+
+        if (!store) {
+          this.logger.warn(`Tienda no encontrada con ID: ${updateUserDto.storeId}`);
+          throw new BadRequestException(`Tienda no encontrada con ID: ${updateUserDto.storeId}`);
+        }
+
+        // Eliminar asignaciones actuales del usuario a tiendas
+        await this.prisma.storeUsers.deleteMany({
+          where: { userId: id }
+        });
+
+        // Crear nueva asignación a la tienda especificada
+        await this.prisma.storeUsers.create({
+          data: {
+            userId: id,
+            storeId: updateUserDto.storeId
+          }
+        });
+
+        this.logger.log(`Usuario ${id} asignado a la tienda ${updateUserDto.storeId}`);
+
+        // Eliminar storeId del DTO para no intentar actualizarlo directamente en el usuario
+        const { storeId, ...userUpdateData } = updateUserDto;
+        
+        // Actualizar otros datos del usuario
+        const updatedUser = await this.usersService.updateUser(id, userUpdateData);
+        
+        // Obtener el usuario actualizado con su nueva tienda
+        const userWithNewStore = await this.prisma.user.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            phone: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        });
+
+        // Obtener la nueva tienda asignada
+        let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
+        if (userWithNewStore?.role === 'ADMIN') {
+          stores = await this.prisma.store.findMany({
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+              createdAt: true,
+              updatedAt: true,
+              createdById: true
+            }
+          });
+        } else {
+          const userStores = await this.prisma.storeUsers.findMany({
+            where: { userId: id },
+            include: {
+              store: {
+                select: {
+                  id: true,
+                  name: true,
+                  address: true,
+                  phone: true,
+                  createdAt: true,
+                  updatedAt: true,
+                  createdById: true
+                }
+              }
+            }
+          });
+          stores = userStores.map(us => us.store);
+        }
+
+        this.logger.log(`Usuario actualizado exitosamente con ID: ${id} por ${req.user.userId}`);
+
+        return {
+          ...userWithNewStore,
+          stores
+        };
+      } else {
+        // Actualizar usuario sin cambiar tienda
+        const updatedUser = await this.usersService.updateUser(id, updateUserDto);
+
+        // Obtener tiendas actuales del usuario para mantener consistencia
+        let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
+        if (updatedUser.role === 'ADMIN') {
+          stores = await this.prisma.store.findMany({
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+              createdAt: true,
+              updatedAt: true,
+              createdById: true
+            }
+          });
+        } else {
+          const userStores = await this.prisma.storeUsers.findMany({
+            where: { userId: id },
+            include: {
+              store: {
+                select: {
+                  id: true,
+                  name: true,
+                  address: true,
+                  phone: true,
+                  createdAt: true,
+                  updatedAt: true,
+                  createdById: true
+                }
+              }
+            }
+          });
+          stores = userStores.map(us => us.store);
+        }
+
+        this.logger.log(`Usuario actualizado exitosamente con ID: ${id} por ${req.user.userId}`);
+
+        return {
+          ...updatedUser,
+          stores
+        };
+      }
     } catch (error) {
       this.logger.error(`Error al actualizar usuario: ${error.message}`, error.stack);
 
@@ -765,16 +930,62 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({ 
-    summary: 'Eliminar usuario',
-    description: 'Elimina un usuario del sistema. Requiere rol de ADMIN'
+    summary: 'Eliminar usuario (Soft Delete)',
+    description: 'Realiza un soft delete de un usuario cambiando su status a DELETED. El usuario no se elimina físicamente de la base de datos. Requiere rol de ADMIN.'
   })
-  @ApiParam({ name: 'id', description: 'ID del usuario a eliminar' })
+  @ApiParam({ 
+    name: 'id', 
+    description: 'ID del usuario a eliminar (soft delete)',
+    example: '550e8400-e29b-41d4-a716-446655440001'
+  })
   @ApiResponse({ 
     status: 200, 
-    description: 'Usuario eliminado exitosamente'
+    description: 'Usuario eliminado exitosamente (soft delete)',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+        email: { type: 'string', example: 'usuario@ejemplo.com' },
+        name: { type: 'string', example: 'Nombre del Usuario' },
+        role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
+        status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DELETED'], example: 'DELETED' },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' }
+      }
+    }
   })
-  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  @ApiResponse({ 
+    status: 404, 
+    description: 'Usuario no encontrado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Usuario no encontrado' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 403, 
+    description: 'No autorizado - Requiere rol de ADMIN',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'No autorizado' }
+      }
+    }
+  })
   async remove(@Param('id') id: string) {
-    return this.usersService.deleteUserById(id);
+    this.logger.debug(`Iniciando soft delete del usuario con ID: ${id}`);
+    
+    try {
+      const result = await this.usersService.deleteUserById(id);
+      this.logger.log(`Usuario con ID ${id} marcado como DELETED exitosamente`);
+      return result;
+    } catch (error) {
+      this.logger.error(`Error al realizar soft delete del usuario ${id}: ${error.message}`);
+      throw error;
+    }
   }
 }

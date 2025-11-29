@@ -6,6 +6,7 @@ import {
   IsDateString, 
   IsEnum, 
   IsBoolean,
+  IsUUID
 } from 'class-validator';
 import { UserStatus } from '@prisma/client';
 
@@ -49,4 +50,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   verified?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  storeId?: string;
 }
