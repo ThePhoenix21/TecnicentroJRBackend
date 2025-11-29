@@ -3,10 +3,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateStoreProductDto } from './dto/create-store-product.dto';
 import { UpdateStoreProductDto } from './dto/update-store-product.dto';
 import { StoreProduct } from './entities/store-product.entity';
+import { ProductService } from './product.service';
+import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 
 @Injectable()
 export class StoreProductService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private productService: ProductService
+  ) {}
 
   async create(userId: string, createStoreProductDto: CreateStoreProductDto): Promise<StoreProduct> {
     if (!userId) {
@@ -14,13 +19,43 @@ export class StoreProductService {
     }
 
     try {
-      // Verificar que el producto del catálogo exista
-      const catalogProduct = await this.prisma.product.findUnique({
-        where: { id: createStoreProductDto.productId }
-      });
+      let productId: string;
 
-      if (!catalogProduct) {
-        throw new NotFoundException(`Producto del catálogo con ID ${createStoreProductDto.productId} no encontrado`);
+      // Caso 1: Crear nuevo producto en el catálogo
+      if (createStoreProductDto.createNewProduct) {
+        // Validar que se proporcionen los campos necesarios para el nuevo producto
+        if (!createStoreProductDto.name) {
+          throw new Error('El nombre del producto es requerido cuando createNewProduct es true');
+        }
+
+        // Crear el producto en el catálogo
+        const createCatalogProductDto: CreateCatalogProductDto = {
+          name: createStoreProductDto.name,
+          description: createStoreProductDto.description,
+          basePrice: createStoreProductDto.basePrice,
+          buyCost: createStoreProductDto.buyCost,
+          createdById: userId
+        };
+
+        const newProduct = await this.productService.create(createCatalogProductDto);
+        productId = newProduct.id;
+      } 
+      // Caso 2: Usar producto existente del catálogo
+      else {
+        if (!createStoreProductDto.productId) {
+          throw new Error('El productId es requerido cuando createNewProduct es false');
+        }
+
+        // Verificar que el producto del catálogo exista
+        const catalogProduct = await this.prisma.product.findUnique({
+          where: { id: createStoreProductDto.productId }
+        });
+
+        if (!catalogProduct) {
+          throw new NotFoundException(`Producto del catálogo con ID ${createStoreProductDto.productId} no encontrado`);
+        }
+
+        productId = createStoreProductDto.productId;
       }
 
       // Verificar que la tienda exista
@@ -47,7 +82,7 @@ export class StoreProductService {
       // Verificar si ya existe este producto en esta tienda
       const existingStoreProduct = await this.prisma.storeProduct.findFirst({
         where: {
-          productId: createStoreProductDto.productId,
+          productId: productId,
           storeId: createStoreProductDto.storeId
         }
       });
@@ -59,7 +94,7 @@ export class StoreProductService {
       // Crear el StoreProduct
       const storeProduct = await this.prisma.storeProduct.create({
         data: {
-          productId: createStoreProductDto.productId,
+          productId: productId,
           storeId: createStoreProductDto.storeId,
           userId: userId,
           price: createStoreProductDto.price,
@@ -101,10 +136,92 @@ export class StoreProductService {
     }
   }
 
-  async findByStore(storeId: string): Promise<StoreProduct[]> {
-    return this.prisma.storeProduct.findMany({
-      where: { storeId: storeId },
-      orderBy: { createdAt: 'desc' },
+  async findByStore(storeId: string, page: number = 1, limit: number = 20, search: string = ''): Promise<any> {
+    const skip = (page - 1) * limit;
+    
+    // Construir where clause para búsqueda
+    let whereCondition: any = { storeId };
+    
+    if (search) {
+      whereCondition.product = {
+        name: {
+          contains: search,
+          mode: 'insensitive' // Búsqueda case-insensitive
+        }
+      };
+    }
+    
+    // Obtener el total de productos para paginación
+    const total = await this.prisma.storeProduct.count({
+      where: whereCondition
+    });
+
+    // Obtener los productos con paginación
+    const storeProducts = await this.prisma.storeProduct.findMany({
+      where: whereCondition,
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            basePrice: true,
+            buyCost: true,
+          },
+        },
+        store: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      skip,
+      take: limit
+    });
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data: storeProducts,
+      total,
+      page,
+      limit,
+      totalPages
+    };
+  }
+
+  async updateStock(userId: string, id: string, stock: number, isAdmin: boolean = false): Promise<StoreProduct> {
+    // Verificar que el StoreProduct existe
+    const storeProduct = await this.prisma.storeProduct.findUnique({
+      where: { id },
+    });
+
+    if (!storeProduct) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
+    }
+
+    // Si no es admin, verificar que el producto pertenece al usuario
+    if (!isAdmin && storeProduct.userId !== userId) {
+      throw new ForbiddenException('No tienes permiso para actualizar este producto');
+    }
+
+    // Actualizar el stock
+    return this.prisma.storeProduct.update({
+      where: { id },
+      data: { stock },
       include: {
         product: {
           select: {
@@ -275,43 +392,6 @@ export class StoreProductService {
     // Eliminar el StoreProduct
     await this.prisma.storeProduct.delete({
       where: { id },
-    });
-  }
-
-  async updateStock(id: string, quantity: number): Promise<StoreProduct> {
-    return this.prisma.storeProduct.update({
-      where: { id },
-      data: {
-        stock: {
-          increment: quantity,
-        },
-      },
-      include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            basePrice: true,
-            buyCost: true,
-          },
-        },
-        store: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-            phone: true,
-          },
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
     });
   }
 }

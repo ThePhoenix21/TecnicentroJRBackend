@@ -11,6 +11,7 @@ import {
   HttpStatus,
   HttpCode,
   ParseUUIDPipe,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -19,6 +20,7 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -61,30 +63,37 @@ export class StoreProductController {
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
-    summary: 'Agregar un producto del catálogo a una tienda',
-    description: 'Agrega un producto existente del catálogo maestro al inventario de una tienda específica. Cada tienda puede tener diferentes precios, stock y umbrales de alerta para el mismo producto.'
+    summary: 'Agregar producto a tienda (existente o nuevo)',
+    description: 'Agrega un producto al inventario de una tienda. Puede usar un producto existente del catálogo o crear uno nuevo. Requiere que el usuario tenga acceso a la tienda.'
   })
   @ApiBody({
     type: CreateStoreProductDto,
-    description: 'Datos para agregar el producto a la tienda',
+    description: 'Datos para agregar producto a tienda (existente o nuevo)',
     examples: {
-      ejemploTienda1: {
-        summary: 'Agregar producto con precio estándar',
+      productoExistente: {
+        summary: 'Agregar producto existente del catálogo',
+        description: 'Usa un producto que ya existe en el catálogo maestro',
         value: {
           productId: '123e4567-e89b-12d3-a456-426614174000',
+          createNewProduct: false,
           storeId: '456e7890-e12b-34d5-a678-426614174000',
           price: 29.99,
           stock: 50,
           stockThreshold: 5
         }
       },
-      ejemploTienda2: {
-        summary: 'Agregar mismo producto con precio diferente',
+      productoNuevo: {
+        summary: 'Crear nuevo producto y agregar a tienda',
+        description: 'Crea un nuevo producto en el catálogo y lo agrega directamente a la tienda',
         value: {
-          productId: '123e4567-e89b-12d3-a456-426614174000',
-          storeId: '789e0123-e45b-67c8-a901-426614174000',
-          price: 32.99,
-          stock: 30,
+          createNewProduct: true,
+          name: 'Filtro de Aceite Premium',
+          description: 'Filtro de aceite de alta eficiencia para vehículos modernos',
+          basePrice: 15.99,
+          buyCost: 8.75,
+          storeId: '456e7890-e12b-34d5-a678-426614174000',
+          price: 18.99,
+          stock: 25,
           stockThreshold: 3
         }
       }
@@ -257,58 +266,85 @@ export class StoreProductController {
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
     summary: 'Obtener todos los productos de una tienda específica',
-    description: 'Retorna una lista completa de todos los productos disponibles en el inventario de una tienda específica. Incluye información del producto del catálogo y datos específicos de la tienda como precio y stock.'
+    description: 'Retorna una lista paginada de todos los productos disponibles en el inventario de una tienda específica. Incluye información del producto del catálogo y datos específicos de la tienda como precio y stock. Soporta búsqueda por nombre de producto.'
   })
   @ApiParam({ 
     name: 'storeId', 
     description: 'UUID de la tienda a consultar',
     example: '456e7890-e12b-34d5-a678-426614174000'
   })
+  @ApiQuery({ 
+    name: 'page', 
+    required: false, 
+    description: 'Número de página (default: 1)', 
+    example: 1 
+  })
+  @ApiQuery({ 
+    name: 'limit', 
+    required: false, 
+    description: 'Cantidad de resultados por página (default: 20)', 
+    example: 20 
+  })
+  @ApiQuery({ 
+    name: 'search', 
+    required: false, 
+    description: 'Buscar productos por nombre', 
+    example: 'aceite' 
+  })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Lista de productos de la tienda obtenida exitosamente',
     schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', example: 'store-product-id-123' },
-          price: { type: 'number', example: 29.99 },
-          stock: { type: 'number', example: 50 },
-          stockThreshold: { type: 'number', example: 5 },
-          createdAt: { type: 'string', format: 'date-time' },
-          updatedAt: { type: 'string', format: 'date-time' },
-          productId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
-          product: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
             type: 'object',
             properties: {
-              id: { type: 'string' },
-              name: { type: 'string', example: 'Aceite de Motor 10W40' },
-              description: { type: 'string', nullable: true },
-              basePrice: { type: 'number', nullable: true },
-              buyCost: { type: 'number', nullable: true }
-            }
-          },
-          storeId: { type: 'string', example: '456e7890-e12b-34d5-a678-426614174000' },
-          store: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              name: { type: 'string', example: 'Tecnicentro JR - Sucursal Central' },
-              address: { type: 'string', nullable: true },
-              phone: { type: 'string', nullable: true }
-            }
-          },
-          userId: { type: 'string', example: 'user-id-123' },
-          user: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              name: { type: 'string', example: 'Juan Pérez' },
-              email: { type: 'string', example: 'juan@ejemplo.com' }
+              id: { type: 'string', example: 'store-product-id-123' },
+              price: { type: 'number', example: 29.99 },
+              stock: { type: 'number', example: 50 },
+              stockThreshold: { type: 'number', example: 5 },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
+              productId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
+              product: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string', example: 'Aceite de Motor 10W40' },
+                  description: { type: 'string', nullable: true },
+                  basePrice: { type: 'number', nullable: true },
+                  buyCost: { type: 'number', nullable: true }
+                }
+              },
+              storeId: { type: 'string', example: '456e7890-e12b-34d5-a678-426614174000' },
+              store: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string', example: 'Tecnicentro JR - Sucursal Central' },
+                  address: { type: 'string', nullable: true },
+                  phone: { type: 'string', nullable: true }
+                }
+              },
+              userId: { type: 'string', example: 'user-id-123' },
+              user: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string', example: 'Juan Pérez' },
+                  email: { type: 'string', example: 'juan@ejemplo.com' }
+                }
+              }
             }
           }
-        }
+        },
+        total: { type: 'number', example: 45, description: 'Total de productos' },
+        page: { type: 'number', example: 1, description: 'Página actual' },
+        limit: { type: 'number', example: 20, description: 'Resultados por página' },
+        totalPages: { type: 'number', example: 3, description: 'Total de páginas' }
       }
     }
   })
@@ -335,8 +371,152 @@ export class StoreProductController {
     status: HttpStatus.FORBIDDEN,
     description: 'No tiene permisos para ver productos de esta tienda'
   })
-  async findByStore(@Param('storeId') storeId: string): Promise<StoreProduct[]> {
-    return this.storeProductService.findByStore(storeId);
+  async findByStore(
+    @Param('storeId') storeId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+    @Query('search') search: string = ''
+  ): Promise<any> {
+    return this.storeProductService.findByStore(storeId, page, limit, search);
+  }
+
+  @Patch(':id/stock')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ 
+    summary: 'Actualizar stock de un producto en tienda',
+    description: 'Actualiza únicamente el stock de un producto específico en una tienda. Permite reabastecer inventario rápidamente. Requiere permisos de administrador o ser el propietario del producto.'
+  })
+  @ApiParam({ 
+    name: 'id', 
+    description: 'UUID del producto en tienda a actualizar stock',
+    example: 'store-product-id-123'
+  })
+  @ApiBody({ 
+    description: 'Nuevo stock del producto',
+    examples: {
+      reabastecer: {
+        summary: 'Reabastecer inventario',
+        value: {
+          stock: 100
+        }
+      },
+      reducirStock: {
+        summary: 'Reducir stock por venta',
+        value: {
+          stock: 25
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Stock actualizado exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: 'store-product-id-123' },
+        price: { type: 'number', example: 29.99 },
+        stock: { type: 'number', example: 100 },
+        stockThreshold: { type: 'number', example: 5 },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        productId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
+        product: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string', example: 'Aceite de Motor 10W40' },
+            description: { type: 'string', nullable: true },
+            basePrice: { type: 'number', nullable: true },
+            buyCost: { type: 'number', nullable: true }
+          }
+        },
+        storeId: { type: 'string', example: '456e7890-e12b-34d5-a678-426614174000' },
+        store: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string', example: 'Tecnicentro JR - Sucursal Central' },
+            address: { type: 'string', nullable: true },
+            phone: { type: 'string', nullable: true }
+          }
+        },
+        userId: { type: 'string', example: 'user-id-123' },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string', example: 'Juan Pérez' },
+            email: { type: 'string', example: 'juan@ejemplo.com' }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Producto en tienda no encontrado',
+    schema: {
+      example: {
+        statusCode: 404,
+        message: 'Producto en tienda con ID store-product-id-123 no encontrado',
+        error: 'Not Found'
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Datos de entrada inválidos o stock negativo',
+    schema: {
+      examples: {
+        stockNegativo: {
+          summary: 'Stock negativo no permitido',
+          value: {
+            statusCode: 400,
+            message: 'El stock no puede ser negativo',
+            error: 'Bad Request'
+          }
+        },
+        datosInvalidos: {
+          summary: 'Datos inválidos',
+          value: {
+            statusCode: 400,
+            message: 'El stock debe ser un número válido',
+            error: 'Bad Request'
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'No autorizado - Token JWT inválido o ausente'
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'No tiene permisos para actualizar este producto',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'No tienes permisos para actualizar este producto',
+        error: 'Forbidden'
+      }
+    }
+  })
+  async updateStock(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('stock') stock: number
+  ): Promise<StoreProduct> {
+    const userId = req.user?.userId || req.user?.id;
+    const isAdmin = req.user?.role === Role.ADMIN;
+    
+    // Validar que el stock no sea negativo
+    if (stock < 0) {
+      throw new Error('El stock no puede ser negativo');
+    }
+    
+    return this.storeProductService.updateStock(userId, id, stock, isAdmin);
   }
 
   @Get('findOne/:id')
@@ -425,10 +605,10 @@ export class StoreProductController {
   }
 
   @Patch('update/:id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
     summary: 'Actualizar un producto en tienda',
-    description: 'Actualiza la información de un producto existente en una tienda. Solo los administradores pueden realizar esta operación. Permite modificar precio, stock y umbrales de alerta del producto en esa tienda específica.'
+    description: 'Actualiza la información de un producto existente en una tienda. Los usuarios pueden actualizar sus propios productos y los administradores pueden actualizar cualquier producto. Permite modificar precio, stock y umbrales de alerta del producto en esa tienda específica.'
   })
   @ApiParam({ 
     name: 'id', 
@@ -536,11 +716,11 @@ export class StoreProductController {
   }
 
   @Delete('remove/:id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ 
     summary: 'Eliminar un producto de una tienda',
-    description: 'Elimina permanentemente un producto del inventario de una tienda. Esta operación solo puede realizarla un administrador. **ADVERTENCIA**: Si existen órdenes que referencian este producto en tienda, estas referencias se volverán inválidas.'
+    description: 'Elimina permanentemente un producto del inventario de una tienda. Los usuarios pueden eliminar sus propios productos y los administradores pueden eliminar cualquier producto. **ADVERTENCIA**: Si existen órdenes que referencian este producto en tienda, estas referencias se volverán inválidas.'
   })
   @ApiParam({ 
     name: 'id', 
