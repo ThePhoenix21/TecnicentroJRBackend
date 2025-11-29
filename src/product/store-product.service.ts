@@ -328,6 +328,12 @@ export class StoreProductService {
     updateData: UpdateStoreProductDto,
     isAdmin: boolean = false
   ): Promise<StoreProduct> {
+    console.log('=== DEBUG UPDATE STORE PRODUCT ===');
+    console.log('userId:', userId);
+    console.log('id:', id);
+    console.log('isAdmin:', isAdmin);
+    console.log('updateData recibido:', JSON.stringify(updateData, null, 2));
+    
     // Verificar que el StoreProduct existe
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
@@ -340,6 +346,8 @@ export class StoreProductService {
       throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
 
+    console.log('StoreProduct encontrado:', JSON.stringify(storeProduct, null, 2));
+
     // Si no es admin, verificar que el producto pertenece al usuario
     if (!isAdmin && storeProduct.userId !== userId) {
       throw new ForbiddenException('No tienes permiso para actualizar este producto');
@@ -350,17 +358,41 @@ export class StoreProductService {
     const productFields: any = {};
 
     // Campos que siempre se pueden modificar (StoreProduct)
-    if (updateData.price !== undefined) storeProductFields.price = updateData.price;
-    if (updateData.stock !== undefined) storeProductFields.stock = updateData.stock;
-    if (updateData.stockThreshold !== undefined) storeProductFields.stockThreshold = updateData.stockThreshold;
+    if (updateData.price !== undefined) {
+      console.log('Agregando price a storeProductFields:', updateData.price);
+      storeProductFields.price = updateData.price;
+    }
+    if (updateData.stock !== undefined) {
+      console.log('Agregando stock a storeProductFields:', updateData.stock);
+      storeProductFields.stock = updateData.stock;
+    }
+    if (updateData.stockThreshold !== undefined) {
+      console.log('Agregando stockThreshold a storeProductFields:', updateData.stockThreshold);
+      storeProductFields.stockThreshold = updateData.stockThreshold;
+    }
 
     // Campos que solo los administradores pueden modificar (Product)
     if (isAdmin) {
-      if (updateData.name !== undefined) productFields.name = updateData.name;
-      if (updateData.description !== undefined) productFields.description = updateData.description;
-      if (updateData.buyCost !== undefined) productFields.buyCost = updateData.buyCost;
-      if (updateData.basePrice !== undefined) productFields.basePrice = updateData.basePrice;
+      if (updateData.name !== undefined) {
+        console.log('Agregando name a productFields:', updateData.name);
+        productFields.name = updateData.name;
+      }
+      if (updateData.description !== undefined) {
+        console.log('Agregando description a productFields:', updateData.description);
+        productFields.description = updateData.description;
+      }
+      if (updateData.buyCost !== undefined) {
+        console.log('Agregando buyCost a productFields:', updateData.buyCost);
+        productFields.buyCost = updateData.buyCost;
+      }
+      if (updateData.basePrice !== undefined) {
+        console.log('Agregando basePrice a productFields:', updateData.basePrice);
+        productFields.basePrice = updateData.basePrice;
+      }
     }
+
+    console.log('storeProductFields finales:', JSON.stringify(storeProductFields, null, 2));
+    console.log('productFields finales:', JSON.stringify(productFields, null, 2));
 
     // Validar que un usuario normal no intente modificar campos de administrador
     if (!isAdmin) {

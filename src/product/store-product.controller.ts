@@ -12,6 +12,7 @@ import {
   HttpCode,
   ParseUUIDPipe,
   Query,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -753,11 +754,14 @@ export class StoreProductController {
   async update(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateData: UpdateStoreProductDto,
+    @Body(new ValidationPipe({ 
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true 
+    })) updateData: UpdateStoreProductDto,
   ): Promise<StoreProduct> {
     const userId = req.user?.userId || req.user?.id;
-    const isAdmin = req.user?.role === Role.ADMIN;
-    
+    const isAdmin = req.user?.role === Role.ADMIN;    
     return this.storeProductService.update(userId, id, updateData, isAdmin);
   }
 
