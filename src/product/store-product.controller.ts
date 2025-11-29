@@ -608,7 +608,7 @@ export class StoreProductController {
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
     summary: 'Actualizar un producto en tienda',
-    description: 'Actualiza la información de un producto existente en una tienda. Los usuarios pueden actualizar sus propios productos y los administradores pueden actualizar cualquier producto. Permite modificar precio, stock y umbrales de alerta del producto en esa tienda específica.'
+    description: 'Actualiza la información de un producto existente en una tienda. Los usuarios pueden actualizar sus propios productos (solo campos de tienda) y los administradores pueden actualizar cualquier producto (incluyendo campos del catálogo). **Permisos:**\n\n**Usuarios (USER):** Solo pueden modificar:\n- price: Precio de venta en la tienda\n- stock: Cantidad en inventario\n- stockThreshold: Umbral de alerta\n\n**Administradores (ADMIN):** Pueden modificar todo lo anterior más:\n- name: Nombre del producto (catálogo)\n- description: Descripción del producto (catálogo)\n- buyCost: Costo de compra (catálogo)\n- basePrice: Precio base de referencia (catálogo)'
   })
   @ApiParam({ 
     name: 'id', 
@@ -619,19 +619,45 @@ export class StoreProductController {
     type: UpdateStoreProductDto,
     description: 'Datos del producto en tienda a actualizar',
     examples: {
-      actualizarPrecio: {
-        summary: 'Actualizar precio y stock',
+      usuarioNormal: {
+        summary: 'Usuario actualizando campos de tienda',
+        description: 'Un usuario normal solo puede modificar precio, stock y umbral de alerta',
         value: {
           price: 32.99,
           stock: 75,
           stockThreshold: 10
         }
       },
-      reabastecer: {
-        summary: 'Reabastecer inventario',
+      administradorTienda: {
+        summary: 'Administrador actualizando campos de tienda',
+        description: 'Un administrador puede modificar los campos de la tienda',
         value: {
+          price: 35.99,
           stock: 100,
-          stockThreshold: 5
+          stockThreshold: 15
+        }
+      },
+      administradorCatalogo: {
+        summary: 'Administrador actualizando catálogo y tienda',
+        description: 'Un administrador puede modificar tanto el catálogo como los campos de la tienda',
+        value: {
+          name: 'Aceite de Motor 10W40 Premium',
+          description: 'Aceite sintético de alta calidad con aditivos de protección',
+          buyCost: 22.75,
+          basePrice: 32.99,
+          price: 35.99,
+          stock: 100,
+          stockThreshold: 15
+        }
+      },
+      soloCatalogo: {
+        summary: 'Administrador actualizando solo catálogo',
+        description: 'Un administrador puede modificar solo los campos del catálogo',
+        value: {
+          name: 'Filtro de Aceite Premium Plus',
+          description: 'Filtro de aceite de mayor duración y eficiencia',
+          buyCost: 12.50,
+          basePrice: 18.99
         }
       }
     }
@@ -702,7 +728,27 @@ export class StoreProductController {
   })
   @ApiResponse({
     status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos de administrador o no es el propietario del producto'
+    description: 'No tiene permisos de administrador o no es el propietario del producto',
+    schema: {
+      examples: {
+        noPropietario: {
+          summary: 'Usuario no es propietario del producto',
+          value: {
+            statusCode: 403,
+            message: 'No tienes permiso para actualizar este producto',
+            error: 'Forbidden'
+          }
+        },
+        camposAdmin: {
+          summary: 'Usuario intentando modificar campos de administrador',
+          value: {
+            statusCode: 403,
+            message: 'Solo los administradores pueden modificar los campos: name, description',
+            error: 'Forbidden'
+          }
+        }
+      }
+    }
   })
   async update(
     @Req() req: any,

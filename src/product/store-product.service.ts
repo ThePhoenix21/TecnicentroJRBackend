@@ -331,6 +331,9 @@ export class StoreProductService {
     // Verificar que el StoreProduct existe
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
+      include: {
+        product: true
+      }
     });
 
     if (!storeProduct) {
@@ -342,9 +345,116 @@ export class StoreProductService {
       throw new ForbiddenException('No tienes permiso para actualizar este producto');
     }
 
-    return this.prisma.storeProduct.update({
+    // Separar los campos de StoreProduct y los campos de Product
+    const storeProductFields: any = {};
+    const productFields: any = {};
+
+    // Campos que siempre se pueden modificar (StoreProduct)
+    if (updateData.price !== undefined) storeProductFields.price = updateData.price;
+    if (updateData.stock !== undefined) storeProductFields.stock = updateData.stock;
+    if (updateData.stockThreshold !== undefined) storeProductFields.stockThreshold = updateData.stockThreshold;
+
+    // Campos que solo los administradores pueden modificar (Product)
+    if (isAdmin) {
+      if (updateData.name !== undefined) productFields.name = updateData.name;
+      if (updateData.description !== undefined) productFields.description = updateData.description;
+      if (updateData.buyCost !== undefined) productFields.buyCost = updateData.buyCost;
+      if (updateData.basePrice !== undefined) productFields.basePrice = updateData.basePrice;
+    }
+
+    // Validar que un usuario normal no intente modificar campos de administrador
+    if (!isAdmin) {
+      const adminFields = ['name', 'description', 'buyCost', 'basePrice'];
+      const attemptedAdminFields = adminFields.filter(field => updateData[field] !== undefined);
+      if (attemptedAdminFields.length > 0) {
+        throw new ForbiddenException(`Solo los administradores pueden modificar los campos: ${attemptedAdminFields.join(', ')}`);
+      }
+    }
+
+    // Actualizar el producto del catálogo si hay cambios y es administrador
+    if (Object.keys(productFields).length > 0 && isAdmin) {
+      await this.prisma.product.update({
+        where: { id: storeProduct.productId },
+        data: productFields
+      });
+    }
+
+    // Actualizar el StoreProduct si hay cambios
+    if (Object.keys(storeProductFields).length > 0) {
+      return this.prisma.storeProduct.update({
+        where: { id },
+        data: storeProductFields,
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              basePrice: true,
+              buyCost: true,
+            },
+          },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+    }
+
+    // Si no hay cambios en StoreProduct pero sí en Product, retornar el producto actualizado
+    if (Object.keys(storeProductFields).length === 0 && Object.keys(productFields).length > 0) {
+      const updatedStoreProduct = await this.prisma.storeProduct.findUnique({
+        where: { id },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              basePrice: true,
+              buyCost: true,
+            },
+          },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+      
+      if (!updatedStoreProduct) {
+        throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado después de la actualización`);
+      }
+      
+      return updatedStoreProduct as unknown as StoreProduct;
+    }
+
+    // Si no hay cambios en ningún campo, retornar el producto actual
+    const currentStoreProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
-      data: updateData,
       include: {
         product: {
           select: {
@@ -372,6 +482,12 @@ export class StoreProductService {
         },
       },
     });
+
+    if (!currentStoreProduct) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
+    }
+
+    return currentStoreProduct as unknown as StoreProduct;
   }
 
   async remove(userId: string, id: string, isAdmin: boolean = false): Promise<void> {

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, IsOptional, Min, IsPositive, IsUUID } from 'class-validator';
+import { IsNumber, IsOptional, Min, IsPositive, IsUUID, IsString } from 'class-validator';
 
 export class UpdateStoreProductDto {
   @ApiProperty({
@@ -34,6 +34,46 @@ export class UpdateStoreProductDto {
   @IsOptional()
   @IsPositive()
   stockThreshold?: number;
+
+  @ApiProperty({
+    description: 'Nombre del producto (solo administradores)',
+    example: 'Aceite de Motor 10W40',
+    required: false
+  })
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @ApiProperty({
+    description: 'Descripción del producto (solo administradores)',
+    example: 'Aceite sintético de alta calidad para motores modernos',
+    required: false
+  })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiProperty({
+    description: 'Costo de compra del producto (solo administradores)',
+    example: 20.50,
+    minimum: 0,
+    required: false
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  buyCost?: number;
+
+  @ApiProperty({
+    description: 'Precio base de referencia del producto (solo administradores)',
+    example: 29.99,
+    minimum: 0,
+    required: false
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  basePrice?: number;
 
   @ApiProperty({
     description: 'ID del producto del catálogo maestro',
