@@ -143,29 +143,35 @@ export class OrderService {
       }
 
       // 2. Verificar que los productos existan y tengan suficiente stock
-      const productIds = products.map(p => p.productId);
-      const existingStoreProducts = await prisma.storeProduct.findMany({
-        where: {
-          id: { in: productIds },
-        },
-        include: {
-          product: true,
-        },
-      });
+      let existingStoreProducts: any[] = [];
+      if (products && products.length > 0) {
+        const productIds = products.map(p => p.productId);
+        existingStoreProducts = await prisma.storeProduct.findMany({
+          where: {
+            id: { in: productIds },
+          },
+          include: {
+            product: true,
+          },
+        });
 
-      if (existingStoreProducts.length !== products.length) {
-        const foundIds = new Set(existingStoreProducts.map(p => p.id));
-        const missingIds = productIds.filter(id => !foundIds.has(id));
-        throw new NotFoundException(`Los siguientes productos en tienda no existen: ${missingIds.join(', ')}`);
+        if (existingStoreProducts.length !== products.length) {
+          const foundIds = new Set(existingStoreProducts.map(p => p.id));
+          const missingIds = productIds.filter(id => !foundIds.has(id));
+          throw new NotFoundException(`Los siguientes productos en tienda no existen: ${missingIds.join(', ')}`);
+        }
       }
 
       // 3. Calcular el monto total y verificar stock
       console.log('Products recibidos en service:', JSON.stringify(products, null, 2));
-      const productMap = new Map(products.map(p => [p.productId, { 
-        quantity: p.quantity, 
-        // Si hay customPrice, lo usamos, de lo contrario usamos el precio del StoreProduct
-        price: ('customPrice' in p && p.customPrice !== undefined) ? Number(p.customPrice) : undefined
-      }]));
+      let productMap = new Map();
+      if (products && products.length > 0) {
+        productMap = new Map(products.map(p => [p.productId, { 
+          quantity: p.quantity, 
+          // Si hay customPrice, lo usamos, de lo contrario usamos el precio del StoreProduct
+          price: ('customPrice' in p && p.customPrice !== undefined) ? Number(p.customPrice) : undefined
+        }]));
+      }
       
       console.log('ProductMap:', Array.from(productMap.entries()));
       
@@ -202,16 +208,19 @@ export class OrderService {
       }
 
       // Sumar el costo de los servicios
-      const servicesData = services.map(service => ({
-        name: service.name,
-        description: service.description || 'Sin descripción',
-        price: service.price,
-        type: service.type,
-        photoUrls: service.photoUrls || [],
-        status: 'IN_PROGRESS' as const,
-      }));
-      
-      totalAmount += servicesData.reduce((sum, service) => sum + service.price, 0);
+      let servicesData: any[] = [];
+      if (services && services.length > 0) {
+        servicesData = services.map(service => ({
+          name: service.name,
+          description: service.description || 'Sin descripción',
+          price: service.price,
+          type: service.type,
+          photoUrls: service.photoUrls || [],
+          status: 'IN_PROGRESS' as const,
+        }));
+        
+        totalAmount += servicesData.reduce((sum, service) => sum + service.price, 0);
+      }
 
       // 4. Determinar el estado de la orden
       // Si hay servicios, el estado es PENDING, de lo contrario es COMPLETED

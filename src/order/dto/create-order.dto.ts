@@ -1,73 +1,19 @@
-import { 
-  IsArray, 
-  IsNotEmpty, 
-  IsNumber, 
-  IsOptional, 
-  IsString, 
-  IsUUID, 
-  ValidateNested, 
-  IsObject, 
-  Min, 
-  IsPositive, 
-  IsEnum,
-  registerDecorator,
-  ValidationOptions,
-  ValidationArguments,
-  ValidatorConstraint,
-  ValidatorConstraintInterface
-} from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, IsArray, IsUUID, ValidateNested, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ServiceType, SaleStatus, PaymentType } from '@prisma/client';
+import { PaymentType } from '../enums/payment-type.enum';
+import { OrderStatus } from '../enums/order-status.enum';
+import { ServiceType } from '../enums/service-type.enum';
 
-@ValidatorConstraint({ name: 'clientInfoOrId', async: false })
-class ClientInfoOrIdConstraint implements ValidatorConstraintInterface {
-  validate(value: any, args: ValidationArguments) {
-    const object = args.object as any;
-    return !(!object.clientId && !object.clientInfo);
-  }
+export class PaymentDto {
+  @IsEnum(PaymentType)
+  type: PaymentType;
 
-  defaultMessage(args: ValidationArguments) {
-    return 'Se requiere el ID del cliente o la información del cliente';
-  }
+  @IsNumber()
+  @Min(0)
+  amount: number;
 }
 
-function ClientInfoOrId(validationOptions?: ValidationOptions) {
-  return function (object: Object, propertyName: string) {
-    registerDecorator({
-      target: object.constructor,
-      propertyName: propertyName,
-      options: validationOptions,
-      constraints: [],
-      validator: ClientInfoOrIdConstraint,
-    });
-  };
-}
-
-@ValidatorConstraint({ name: 'notBothClientInfoAndId', async: false })
-class NotBothClientInfoAndIdConstraint implements ValidatorConstraintInterface {
-  validate(value: any, args: ValidationArguments) {
-    const object = args.object as any;
-    return !(object.clientId && object.clientInfo);
-  }
-
-  defaultMessage(args: ValidationArguments) {
-    return 'Solo se debe proporcionar el ID del cliente o la información del cliente, no ambos';
-  }
-}
-
-function NotBothClientInfoAndId(validationOptions?: ValidationOptions) {
-  return function (object: Object, propertyName: string) {
-    registerDecorator({
-      target: object.constructor,
-      propertyName: propertyName,
-      options: validationOptions,
-      constraints: [],
-      validator: NotBothClientInfoAndIdConstraint,
-    });
-  };
-}
-
-class ClientInfoDto {
+export class ClientInfoDto {
   @IsString()
   @IsOptional()
   name?: string;
@@ -85,37 +31,28 @@ class ClientInfoDto {
   address?: string;
 
   @IsString()
+  dni: string;
+
+  @IsString()
   @IsOptional()
   ruc?: string;
-
-  @IsString()
-  @IsNotEmpty()
-  dni: string;
 }
 
-class PaymentDto {
-  @IsEnum(PaymentType)
-  type: PaymentType;
-
-  @IsNumber()
-  @IsPositive()
-  amount: number;
-}
-
-class OrderProductDto {
-  @IsString()
+export class ProductDto {
   @IsUUID()
   productId: string;
 
   @IsNumber()
-  @IsPositive()
   @Min(1)
   quantity: number;
 
   @IsNumber()
-  @IsPositive()
   @IsOptional()
   price?: number;
+
+  @IsNumber()
+  @IsOptional()
+  customPrice?: number;
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -124,9 +61,8 @@ class OrderProductDto {
   payments?: PaymentDto[];
 }
 
-class ServiceDto {
+export class ServiceDto {
   @IsString()
-  @IsNotEmpty()
   name: string;
 
   @IsString()
@@ -134,7 +70,7 @@ class ServiceDto {
   description?: string;
 
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   price: number;
 
   @IsEnum(ServiceType)
@@ -153,55 +89,35 @@ class ServiceDto {
 }
 
 export class CreateOrderDto {
-  @IsObject()
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => ClientInfoDto)
-  @NotBothClientInfoAndId({
-    message: 'No se puede proporcionar tanto clientId como clientInfo',
-  })
-  clientInfo?: ClientInfoDto;
-
-  @IsString()
   @IsUUID()
   @IsOptional()
-  @NotBothClientInfoAndId({
-    message: 'No se puede proporcionar tanto clientId como clientInfo',
-  })
   clientId?: string;
+
+  @ValidateNested()
+  @Type(() => ClientInfoDto)
+  @IsOptional()
+  clientInfo?: ClientInfoDto;
 
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => OrderProductDto)
+  @Type(() => ProductDto)
   @IsOptional()
-  products: OrderProductDto[] = [];
+  products?: ProductDto[];
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ServiceDto)
   @IsOptional()
-  services: ServiceDto[] = [];
+  services?: ServiceDto[];
 
-  @IsString()
   @IsUUID()
-  @IsNotEmpty({ message: 'El ID de la sesión de caja es obligatorio' })
   cashSessionId: string;
 
-  @IsString()
+  @IsEnum(OrderStatus)
+  @IsOptional()
+  status?: OrderStatus;
+
   @IsUUID()
-  @IsOptional() // Hacemos que userId sea opcional en el DTO, se asignará desde el token
+  @IsOptional()
   userId?: string;
-
-  @IsString()
-  @IsOptional()
-  orderNumber?: string;
-
-  @IsEnum(SaleStatus)
-  @IsOptional()
-  status?: SaleStatus;
-
-  @ClientInfoOrId({
-    message: 'Se requiere el ID del cliente o la información del cliente',
-  })
-  requireClientInfoOrId: boolean = true;
 }

@@ -1,0 +1,12 @@
+export enum PaymentType {
+  EFECTIVO = 'EFECTIVO',
+  TARJETA = 'TARJETA',
+  TRANSFERENCIA = 'TRANSFERENCIA',
+  YAPE = 'YAPE',
+  PLIN = 'PLIN',
+  CASH = 'CASH',
+  CARD = 'CARD',
+  TRANSFER = 'TRANSFER',
+  DEBIT = 'DEBIT',
+  CREDIT = 'CREDIT'
+}
