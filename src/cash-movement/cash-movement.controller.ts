@@ -231,31 +231,52 @@ export class CashMovementController {
   @Roles(Role.USER, Role.ADMIN)
   @ApiOperation({
     summary: 'Obtener movimientos por sesión',
-    description: 'Obtiene todos los movimientos de una sesión de caja específica. Requiere rol USER o ADMIN'
+    description: 'Obtiene todos los movimientos de una sesión de caja específica con paginación opcional. Requiere rol USER o ADMIN'
   })
   @ApiParam({ 
     name: 'sessionId', 
     description: 'ID de la sesión de caja para obtener sus movimientos',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
   })
+  @ApiQuery({ 
+    name: 'page', 
+    required: false, 
+    description: 'Número de página (default: 1)', 
+    example: 1 
+  })
+  @ApiQuery({ 
+    name: 'limit', 
+    required: false, 
+    description: 'Cantidad de resultados por página (default: 50)', 
+    example: 50 
+  })
   @ApiResponse({ 
     status: 200, 
     description: 'Movimientos obtenidos exitosamente',
     schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', example: 'd4e5f6a7-b8c9-0123-def0-456789012345' },
-          cashSessionId: { type: 'string', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
-          amount: { type: 'number', example: 100.50 },
-          type: { type: 'string', enum: ['INCOME', 'EXPENSE'], example: 'INCOME' },
-          description: { type: 'string', example: 'Venta de productos varios' },
-          orderId: { type: 'string', example: 'b2c3d4e5-f6a7-8901-bcde-f23456789012', nullable: true },
-          clientId: { type: 'string', example: 'c3d4e5f6-a7b8-9012-cdef-345678901234', nullable: true },
-          createdAt: { type: 'string', format: 'date-time' },
-          updatedAt: { type: 'string', format: 'date-time' }
-        }
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: 'd4e5f6a7-b8c9-0123-def0-456789012345' },
+              cashSessionId: { type: 'string', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
+              amount: { type: 'number', example: 100.50 },
+              type: { type: 'string', enum: ['INCOME', 'EXPENSE'], example: 'INCOME' },
+              description: { type: 'string', example: 'Venta de productos varios' },
+              orderId: { type: 'string', example: 'b2c3d4e5-f6a7-8901-bcde-f23456789012', nullable: true },
+              clientId: { type: 'string', example: 'c3d4e5f6-a7b8-9012-cdef-345678901234', nullable: true },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' }
+            }
+          }
+        },
+        total: { type: 'number', example: 125, description: 'Total de movimientos' },
+        page: { type: 'number', example: 1, description: 'Página actual' },
+        limit: { type: 'number', example: 50, description: 'Resultados por página' },
+        totalPages: { type: 'number', example: 3, description: 'Total de páginas' }
       }
     }
   })
@@ -292,8 +313,12 @@ export class CashMovementController {
       }
     }
   })
-  findBySession(@Param('sessionId') sessionId: string) {
-    return this.cashMovementService.findBySession(sessionId);
+  async findBySession(
+    @Param('sessionId') sessionId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 50
+  ) {
+    return this.cashMovementService.findBySession(sessionId, page, limit);
   }
 
   @Get()

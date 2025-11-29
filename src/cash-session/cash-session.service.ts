@@ -218,9 +218,17 @@ export class CashSessionService {
     });
   }
 
-  // Método adicional para obtener sesiones por tienda
-  async findByStore(storeId: string) {
-    return this.prisma.cashSession.findMany({
+  // Método adicional para obtener sesiones por tienda con paginación
+  async findByStore(storeId: string, page: number = 1, limit: number = 20) {
+    const skip = (page - 1) * limit;
+    
+    // Obtener el total de sesiones para paginación
+    const total = await this.prisma.cashSession.count({
+      where: { StoreId: storeId }
+    });
+
+    // Obtener las sesiones con paginación
+    const sessions = await this.prisma.cashSession.findMany({
       where: { StoreId: storeId },
       include: {
         Store: {
@@ -235,15 +243,24 @@ export class CashSessionService {
           select: {
             id: true,
             name: true,
-            email: true,
-            username: true
+            email: true
           }
         }
       },
-      orderBy: {
-        openedAt: 'desc'
-      }
+      orderBy: { openedAt: 'desc' },
+      skip,
+      take: limit
     });
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data: sessions,
+      total,
+      page,
+      limit,
+      totalPages
+    };
   }
 
   // Método para obtener la sesión abierta actual de una tienda

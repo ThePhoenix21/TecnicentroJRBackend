@@ -448,9 +448,17 @@ export class CashMovementService {
     });
   }
 
-  // Método adicional: Obtener movimientos por sesión
-  findBySession(sessionId: string) {
-    return this.prisma.cashMovement.findMany({
+  // Método adicional: Obtener movimientos por sesión con paginación
+  async findBySession(sessionId: string, page: number = 1, limit: number = 50) {
+    const skip = (page - 1) * limit;
+    
+    // Obtener el total de movimientos para paginación
+    const total = await this.prisma.cashMovement.count({
+      where: { sessionId }
+    });
+
+    // Obtener los movimientos con paginación
+    const movements = await this.prisma.cashMovement.findMany({
       where: { sessionId },
       include: {
         CashSession: {
@@ -467,9 +475,19 @@ export class CashMovementService {
           }
         }
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit
     });
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data: movements,
+      total,
+      page,
+      limit,
+      totalPages
+    };
   }
 }

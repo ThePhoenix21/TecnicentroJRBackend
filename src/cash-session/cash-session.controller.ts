@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Req, UnauthorizedException, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Req, UnauthorizedException, BadRequestException, NotFoundException, ForbiddenException, Query } from '@nestjs/common';
 import { CashSessionService } from './cash-session.service';
 import { CreateCashSessionDto } from './dto/create-cash-session.dto';
 import { UpdateCashSessionDto } from './dto/update-cash-session.dto';
@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { AuthService } from '../auth/auth.service';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
@@ -115,17 +115,144 @@ export class CashSessionController {
     return this.cashSessionService.findAll();
   }
 
+  @Get('current/:storeId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Obtener sesión de caja actual de una tienda',
+    description: 'Obtiene la sesión de caja actualmente abierta para una tienda específica. Requiere rol USER o ADMIN'
+  })
+  @ApiParam({ 
+    name: 'storeId', 
+    description: 'ID de la tienda para obtener la sesión actual',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Sesión actual obtenida exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: 'b2c3d4e5-f6a7-8901-bcde-f23456789012' },
+        storeId: { type: 'string', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
+        openedAt: { type: 'string', format: 'date-time' },
+        closedAt: { type: 'string', format: 'date-time', nullable: true },
+        openedById: { type: 'string', example: 'c3d4e5f6-a7b8-9012-cdef-345678901234' },
+        closedById: { type: 'string', nullable: true },
+        status: { type: 'string', enum: ['OPEN', 'CLOSED'], example: 'OPEN' },
+        openingAmount: { type: 'number', example: 100.50 },
+        closingAmount: { type: 'number', nullable: true }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 404, 
+    description: 'No hay sesión abierta para esta tienda',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'No hay sesión abierta para esta tienda' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 403, 
+    description: 'No autorizado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'No autorizado' }
+      }
+    }
+  })
+  findCurrentSessionByStore(@Param('storeId') storeId: string) {
+    return this.cashSessionService.findOpenSessionByStore(storeId);
+  }
+
   @Get('store/:storeId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER, Role.ADMIN)
   @ApiOperation({
     summary: 'Obtener sesiones de caja por tienda',
-    description: 'Obtiene todas las sesiones de caja de una tienda específica. Requiere rol USER o ADMIN'
+    description: 'Obtiene todas las sesiones de caja de una tienda específica con paginación opcional. Requiere rol USER o ADMIN'
   })
-  @ApiResponse({ status: 200, description: 'Sesiones de caja obtenidas exitosamente' })
-  @ApiResponse({ status: 403, description: 'No autorizado' })
-  findByStore(@Param('storeId') storeId: string) {
-    return this.cashSessionService.findByStore(storeId);
+  @ApiParam({ 
+    name: 'storeId', 
+    description: 'ID de la tienda para obtener las sesiones',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+  })
+  @ApiQuery({ 
+    name: 'page', 
+    required: false, 
+    description: 'Número de página (default: 1)', 
+    example: 1 
+  })
+  @ApiQuery({ 
+    name: 'limit', 
+    required: false, 
+    description: 'Cantidad de resultados por página (default: 20)', 
+    example: 20 
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Sesiones de caja obtenidas exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: 'b2c3d4e5-f6a7-8901-bcde-f23456789012' },
+              storeId: { type: 'string', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
+              openedAt: { type: 'string', format: 'date-time' },
+              closedAt: { type: 'string', format: 'date-time', nullable: true },
+              openedById: { type: 'string', example: 'c3d4e5f6-a7b8-9012-cdef-345678901234' },
+              closedById: { type: 'string', nullable: true },
+              status: { type: 'string', enum: ['OPEN', 'CLOSED'], example: 'CLOSED' },
+              openingAmount: { type: 'number', example: 100.50 },
+              closingAmount: { type: 'number', example: 250.75 }
+            }
+          }
+        },
+        total: { type: 'number', example: 45, description: 'Total de sesiones' },
+        page: { type: 'number', example: 1, description: 'Página actual' },
+        limit: { type: 'number', example: 20, description: 'Resultados por página' },
+        totalPages: { type: 'number', example: 3, description: 'Total de páginas' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 403, 
+    description: 'No autorizado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'No autorizado' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 404, 
+    description: 'Tienda no encontrada',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Tienda no encontrada' }
+      }
+    }
+  })
+  async findByStore(
+    @Param('storeId') storeId: string, 
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20
+  ) {
+    return this.cashSessionService.findByStore(storeId, page, limit);
   }
 
   @Get('store/:storeId/open')
