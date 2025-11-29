@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { CompleteOrderDto } from './dto/complete-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, PrismaClient, SessionStatus, PaymentType, MovementType, PaymentSourceType } from '@prisma/client';
+import { Prisma, SaleStatus, PrismaClient, SessionStatus, PaymentType, MovementType, PaymentSourceType, ServiceStatus } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
 import { PaymentService } from '../payment/payment.service';
@@ -289,7 +290,7 @@ export class OrderService {
       
       console.log('💰 Creando pagos y movimientos de caja para la orden:', order.id);
       
-      // Crear pagos de productos
+      // Crear pagos de productos (siempre se procesan)
       if (productsDto && productsDto.length > 0) {
         for (let i = 0; i < orderProductsData.length; i++) {
           const orderProduct = orderProductsData[i];
@@ -336,51 +337,11 @@ export class OrderService {
         }
       }
       
-      // Crear pagos de servicios
+      // NOTA: Los servicios NO generan pagos al crear la orden
+      // Los pagos de servicios se generan al completar la orden
       if (servicesDto && servicesDto.length > 0) {
-        for (let i = 0; i < servicesData.length; i++) {
-          const service = servicesData[i];
-          const serviceDto = servicesDto[i];
-          
-          if (serviceDto.payments && serviceDto.payments.length > 0) {
-            console.log('🔧 Creando pagos para servicio:', service.id);
-            
-            // Crear pagos
-            const paymentData = serviceDto.payments.map(payment => ({
-              type: payment.type as any, // Convertir a tipo de Prisma
-              amount: payment.amount,
-              sourceType: 'SERVICE' as PaymentSourceType,
-              sourceId: service.id
-            }));
-            
-            const createdPayments = await this.paymentService.createPayments(paymentData);
-            console.log('✅ Pagos de servicio creados:', createdPayments.length);
-            
-            // Crear movimientos de caja para pagos en efectivo
-            const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
-            if (cashPayments.length > 0) {
-              console.log('💰 Creando movimientos de caja para pagos en efectivo de servicios');
-              
-              for (const cashPayment of cashPayments) {
-                try {
-                  await this.cashMovementService.createFromOrder({
-                    cashSessionId: cashSessionId,
-                    amount: cashPayment.amount,
-                    orderId: order.id,
-                    clientId: clientIdToUse,
-                    clientName: clientInfo?.name,
-                    clientEmail: clientInfo?.email
-                  }, false, userId); // isRefund: false para ingresos, pasar userId
-                  
-                  console.log('✅ Movimiento de caja creado para servicio:', cashPayment.amount);
-                } catch (error) {
-                  console.error('❌ Error al crear movimiento de caja para servicio:', error.message);
-                  // No fallar la creación de la orden si falla el movimiento
-                }
-              }
-            }
-          }
-        }
+        console.log('🔧 Servicios creados en IN_PROGRESS - sin generar pagos iniciales');
+        console.log('🔍 Los pagos de servicios se procesarán cuando la orden se complete');
       }
 
       return order;
@@ -676,6 +637,135 @@ export class OrderService {
           status
         },
         include: { orderProducts: true, services: true, client: true }
+      });
+
+      return updatedOrder as unknown as Order;
+    });
+  }
+
+  async completeOrder(completeOrderDto: CompleteOrderDto, user?: { userId: string; email: string; role: string }): Promise<Order> {
+    const { orderId, services } = completeOrderDto;
+
+    return this.prisma.$transaction(async (prisma) => {
+      // 1. Obtener la orden con todos sus datos
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+          services: true,
+          orderProducts: true,
+          client: true,
+          cashSession: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true
+            }
+          }
+        }
+      });
+
+      if (!order) {
+        throw new NotFoundException('La orden especificada no existe');
+      }
+
+      // 2. Validar que la orden esté en estado PENDING
+      if (order.status !== SaleStatus.PENDING) {
+        throw new BadRequestException('La orden ya está completada o cancelada');
+      }
+
+      // 3. Validar que todos los servicios estén COMPLETED o ANNULLATED
+      const servicesMap = new Map(order.services.map(s => [s.id, s]));
+      
+      for (const servicePayment of services) {
+        const service = servicesMap.get(servicePayment.serviceId);
+        if (!service) {
+          throw new NotFoundException(`El servicio ${servicePayment.serviceId} no existe en la orden`);
+        }
+        
+        if (service.status !== ServiceStatus.COMPLETED && service.status !== ServiceStatus.ANNULLATED) {
+          throw new BadRequestException(`El servicio ${servicePayment.serviceId} debe estar en estado COMPLETED o ANNULLATED`);
+        }
+      }
+
+      // 4. Procesar pagos de servicios completados
+      const completedServices = services.filter(sp => {
+        const service = servicesMap.get(sp.serviceId);
+        return service && service.status === ServiceStatus.COMPLETED;
+      });
+
+      console.log('💰 Procesando pagos para servicios completados:', completedServices.length);
+
+      for (const servicePayment of completedServices) {
+        const service = servicesMap.get(servicePayment.serviceId);
+        if (!service) continue; // Skip if service not found
+        
+        console.log('🔧 Creando pagos para servicio completado:', service.id);
+        
+        // Crear pagos
+        const paymentData = servicePayment.payments.map(payment => ({
+          type: payment.type as any,
+          amount: payment.amount,
+          sourceType: 'SERVICE' as PaymentSourceType,
+          sourceId: service.id
+        }));
+        
+        const createdPayments = await this.paymentService.createPayments(paymentData);
+        console.log('✅ Pagos de servicio creados:', createdPayments.length);
+        
+        // Crear movimientos de caja para pagos en efectivo
+        const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
+        if (cashPayments.length > 0) {
+          console.log('💰 Creando movimientos de caja para pagos en efectivo de servicios');
+          
+          for (const cashPayment of cashPayments) {
+            try {
+              await this.cashMovementService.createFromOrder({
+                cashSessionId: order.cashSession?.id || '',
+                amount: cashPayment.amount,
+                orderId: order.id,
+                clientId: order.clientId,
+                clientName: order.client?.name || undefined,
+                clientEmail: order.client?.email || undefined
+              }, false, user?.userId); // isRefund: false para ingresos
+              
+              console.log('✅ Movimiento de caja creado para servicio:', cashPayment.amount);
+            } catch (error) {
+              console.error('❌ Error al crear movimiento de caja para servicio:', error.message);
+              // No fallar la completación si falla el movimiento
+            }
+          }
+        }
+      }
+
+      // 5. Actualizar el estado de la orden a COMPLETED
+      const updatedOrder = await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: SaleStatus.COMPLETED,
+          updatedAt: new Date()
+        },
+        include: {
+          orderProducts: {
+            include: {
+              product: {
+                include: {
+                  product: true,
+                },
+              },
+            },
+          },
+          services: true,
+          client: true,
+          cashSession: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+        },
       });
 
       return updatedOrder as unknown as Order;

@@ -1,6 +1,8 @@
 import {
   Controller,
   Post,
+  Patch,
+  Get,
   Body,
   Req,
   UseGuards,
@@ -13,6 +15,7 @@ import {
 import { Request } from 'express';
 import { OrderService } from './order.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { CompleteOrderDto } from './dto/complete-order.dto';
 import { plainToInstance } from 'class-transformer';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -70,6 +73,39 @@ export class OrderController {
     } catch (error) {
       throw new BadRequestException(`Error al crear la orden: ${error.message}`);
     }
+  }
+
+  @Patch('complete')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async completeOrder(
+    @Req() req: Request & { user: { userId: string; email: string; role: Role } },
+    @Body(new ValidationPipe({ 
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true 
+    })) completeOrderDto: CompleteOrderDto,
+  ) {
+    try {
+      const completedOrder = await this.orderService.completeOrder(completeOrderDto, req.user);
+      return completedOrder;
+    } catch (error) {
+      throw new BadRequestException(`Error al completar la orden: ${error.message}`);
+    }
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  async findMe(@Req() req: Request & { user: { userId: string; email: string; role: Role } }) {
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      throw new UnauthorizedException('No se pudo autenticar al usuario');
+    }
+
+    return this.orderService.findMe(userId);
   }
 
   private async validateOrderData(orderData: CreateOrderDto): Promise<void> {
