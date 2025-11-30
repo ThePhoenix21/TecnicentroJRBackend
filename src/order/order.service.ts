@@ -480,7 +480,7 @@ export class OrderService {
       }
 
       // 3. Verificar si la orden ya está anulada
-      if (order.status === 'CANCELLED') {
+      if (order.status === SaleStatus.CANCELLED) {
         throw new BadRequestException('La orden ya está anulada');
       }
 
@@ -590,7 +590,7 @@ export class OrderService {
       const updatedOrder = await prisma.order.update({
         where: { id },
         data: { 
-          status: 'CANCELLED',
+          status: SaleStatus.CANCELLED,
           // Auditoría de anulación
           canceledAt: new Date(),
           canceledById: userId, // ID del usuario que está anulando
@@ -628,7 +628,7 @@ export class OrderService {
             prisma.service.update({
               where: { id: service.id },
               data: { 
-                status: 'ANNULLATED',
+                status: ServiceStatus.ANNULLATED,
                 updatedAt: new Date()
               }
             })

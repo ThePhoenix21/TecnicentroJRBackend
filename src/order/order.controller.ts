@@ -3,6 +3,7 @@ import {
   Post,
   Patch,
   Get,
+  Param,
   Body,
   Req,
   UseGuards,
@@ -106,6 +107,59 @@ export class OrderController {
     }
 
     return this.orderService.findMe(userId);
+  }
+
+  @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async getOrders() {
+    return this.orderService.findAll();
+  }
+
+  @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  async getOrderById(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { userId: string; email: string; role: Role } }
+  ) {
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      throw new UnauthorizedException('No se pudo autenticar al usuario');
+    }
+
+    return this.orderService.findOne(id, userId);
+  }
+
+  @Get('user/:userId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async getUserOrders(@Param('userId') userId: string) {
+    return this.orderService.findMe(userId);
+  }
+
+  @Patch(':id/cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async cancelOrder(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { userId: string; email: string; role: Role } }
+  ) {
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+    
+    if (!userId) {
+      throw new UnauthorizedException('No se pudo autenticar al usuario');
+    }
+
+    try {
+      const cancelledOrder = await this.orderService.cancelOrder(id, userId, userRole, req.user);
+      return cancelledOrder;
+    } catch (error) {
+      throw new BadRequestException(`Error al cancelar la orden: ${error.message}`);
+    }
   }
 
   private async validateOrderData(orderData: CreateOrderDto): Promise<void> {
