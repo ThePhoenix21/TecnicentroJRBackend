@@ -265,7 +265,8 @@ export class CashSessionService {
 
   // Método para obtener la sesión abierta actual de una tienda
   async findOpenSessionByStore(storeId: string) {
-    return this.prisma.cashSession.findFirst({
+    
+    const session = await this.prisma.cashSession.findFirst({
       where: {
         StoreId: storeId,
         status: SessionStatus.OPEN
@@ -289,6 +290,7 @@ export class CashSessionService {
         }
       }
     });
+    return session;
   }
 
   // Método para cerrar una sesión de caja
