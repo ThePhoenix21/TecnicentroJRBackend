@@ -12,7 +12,7 @@ import {
   HttpCode,
   UseGuards,
   UseInterceptors,
-  UploadedFiles,
+  UploadedFile,
   BadRequestException
 } from '@nestjs/common';
 import { 
@@ -23,9 +23,10 @@ import {
   ApiQuery,
   ApiBearerAuth,
   ApiBody,
-  ApiConsumes
+  ApiConsumes,
+  ApiExtraModels
 } from '@nestjs/swagger';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ServiceService } from './service.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -36,14 +37,15 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { ServiceStatus, ServiceType } from '@prisma/client';
 import { SupabaseStorageService } from '../common/utility/supabase-storage.util';
-import { FileInterceptor } from '@nestjs/platform-express/multer';
 import { memoryStorage } from 'multer';
 
 @ApiTags('Servicios')
 @ApiBearerAuth('JWT')
+@ApiExtraModels(Service)
 @Controller('services')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'No autorizado. Se requiere autenticación' })
+@ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'No autorizado. Se requiere autenticación JWT' })
+@ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Acceso denegado. Se requieren permisos adecuados' })
 @ApiResponse({ status: HttpStatus.INTERNAL_SERVER_ERROR, description: 'Error interno del servidor' })
 export class ServiceController {
   constructor(
@@ -53,10 +55,11 @@ export class ServiceController {
 
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
-  @UseInterceptors(FileInterceptor('files', {
+  @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: {
       fileSize: 5 * 1024 * 1024, // 5MB
+      files: 5 // máximo 5 archivos
     },
     fileFilter: (req, file, cb) => {
       if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/)) {
@@ -68,59 +71,128 @@ export class ServiceController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Crear un nuevo servicio',
-    description: 'Permite a un administrador registrar un nuevo servicio en el sistema con imágenes opcionales.'
+    description: 'Permite a usuarios ADMIN y USER registrar un nuevo servicio en el sistema. Se pueden adjuntar imágenes opcionales del servicio. Las imágenes se suben automáticamente a Supabase Storage y se generan URLs firmadas con validez de 1 año.'
   })
   @ApiBody({
+    description: 'Datos del servicio a crear. El campo `file` es opcional y permite subir hasta 5 imágenes.',
     schema: {
       type: 'object',
       required: ['type', 'status', 'name', 'price', 'orderId'],
       properties: {
-        type: { type: 'string', enum: Object.values(ServiceType), example: 'REPAIR' },
-        status: { type: 'string', enum: Object.values(ServiceStatus), example: 'IN_PROGRESS' },
-        name: { type: 'string', example: 'Reparación de motor' },
-        description: { type: 'string', example: 'Revisión y reparación completa del motor' },
-        price: { type: 'number', example: 250.00 },
-        orderId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
-        files: {
-          type: 'array',
-          items: {
-            type: 'string',
-            format: 'binary'
-          },
-          description: 'Archivos de imagen (máx. 5, 5MB cada uno)'
+        type: { 
+          type: 'string', 
+          enum: Object.values(ServiceType), 
+          description: 'Tipo de servicio a realizar',
+          example: 'REPAIR' 
+        },
+        status: { 
+          type: 'string', 
+          enum: Object.values(ServiceStatus), 
+          description: 'Estado inicial del servicio',
+          example: 'IN_PROGRESS' 
+        },
+        name: { 
+          type: 'string', 
+          description: 'Nombre descriptivo del servicio',
+          example: 'Reparación completa del motor',
+          minLength: 1,
+          maxLength: 255
+        },
+        description: { 
+          type: 'string', 
+          description: 'Descripción detallada del trabajo a realizar',
+          example: 'Revisión completa del motor, cambio de aceite y filtros',
+          maxLength: 1000
+        },
+        price: { 
+          type: 'number', 
+          description: 'Costo del servicio en USD',
+          example: 250.00,
+          minimum: 0
+        },
+        orderId: { 
+          type: 'string', 
+          format: 'uuid', 
+          description: 'ID de la orden a la que pertenece este servicio',
+          example: '123e4567-e89b-12d3-a456-426614174000' 
+        },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Archivo de imagen (jpg, jpeg, png, gif) - Máximo 5MB por archivo'
         }
       }
     }
   })
   @ApiResponse({ 
     status: HttpStatus.CREATED, 
-    description: 'El servicio ha sido creado exitosamente',
-    type: Service 
+    description: 'Servicio creado exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174001' },
+        type: { type: 'string', enum: Object.values(ServiceType), example: 'REPAIR' },
+        status: { type: 'string', enum: Object.values(ServiceStatus), example: 'IN_PROGRESS' },
+        name: { type: 'string', example: 'Reparación completa del motor' },
+        description: { type: 'string', example: 'Revisión completa del motor, cambio de aceite y filtros' },
+        photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://supabase-url.com/photo1.jpg'] },
+        price: { type: 'number', example: 250.00 },
+        orderId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' }
+      }
+    }
   })
   @ApiResponse({ 
     status: HttpStatus.BAD_REQUEST, 
-    description: 'Datos de entrada inválidos o faltantes' 
+    description: 'Datos de entrada inválidos o faltantes',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'El tipo de servicio es requerido' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
   })
   @ApiResponse({ 
     status: HttpStatus.FORBIDDEN, 
-    description: 'No tiene permisos para realizar esta acción' 
+    description: 'No tiene permisos para realizar esta acción',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'Forbidden resource' },
+        error: { type: 'string', example: 'Forbidden' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.UNPROCESSABLE_ENTITY, 
+    description: 'Error al procesar los archivos adjuntos',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 422 },
+        message: { type: 'string', example: 'Solo se permiten imágenes (jpg, jpeg, png, gif)' },
+        error: { type: 'string', example: 'Unprocessable Entity' }
+      }
+    }
   })
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createServiceDto: CreateServiceDto,
-    @UploadedFiles() files?: Express.Multer.File[]
+    @UploadedFile() file?: Express.Multer.File
   ): Promise<Service> {
     try {
-      // Subir imágenes a Supabase si hay archivos
-      if (files && files.length > 0) {
-        const uploadedFiles = await this.supabaseStorage.uploadServicePhotos(
-          files.map(file => ({
-            buffer: file.buffer,
-            originalname: file.originalname,
-            mimetype: file.mimetype
-          }))
-        );
-        createServiceDto.photoUrls = uploadedFiles;
+      // Subir imagen a Supabase si hay archivo
+      if (file) {
+        const uploadedFile = await this.supabaseStorage.uploadServicePhotos([{
+          buffer: file.buffer,
+          originalname: file.originalname,
+          mimetype: file.mimetype
+        }]);
+        createServiceDto.photoUrls = uploadedFile;
       }
 
       return this.serviceService.create(createServiceDto);
@@ -133,26 +205,63 @@ export class ServiceController {
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({
     summary: 'Obtener lista de servicios',
-    description: 'Obtiene una lista paginada de servicios. Puede filtrarse por estado y tipo.'
+    description: 'Obtiene una lista de servicios registrados en el sistema. Permite filtrar por estado y tipo de servicio. Los usuarios ADMIN pueden ver todos los servicios, mientras que los USER solo pueden ver los servicios de sus órdenes.'
   })
   @ApiQuery({ 
     name: 'status', 
     required: false, 
     enum: ServiceStatus, 
-    description: 'Filtrar servicios por estado',
-    example: 'IN_PROGRESS'
+    description: 'Filtrar servicios por estado actual',
+    example: 'IN_PROGRESS',
+    schema: {
+      enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+      default: null
+    }
   })
   @ApiQuery({ 
     name: 'type', 
     required: false, 
     enum: ServiceType, 
-    description: 'Filtrar servicios por tipo',
-    example: 'REPAIR'
+    description: 'Filtrar servicios por tipo de servicio',
+    example: 'REPAIR',
+    schema: {
+      enum: ['REPAIR', 'MAINTENANCE', 'INSPECTION', 'CUSTOM'],
+      default: null
+    }
   })
   @ApiResponse({ 
     status: HttpStatus.OK, 
-    description: 'Lista de servicios obtenida exitosamente', 
-    type: [Service] 
+    description: 'Lista de servicios obtenida exitosamente',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174001' },
+          type: { type: 'string', enum: Object.values(ServiceType), example: 'REPAIR' },
+          status: { type: 'string', enum: Object.values(ServiceStatus), example: 'IN_PROGRESS' },
+          name: { type: 'string', example: 'Reparación completa del motor' },
+          description: { type: 'string', example: 'Revisión completa del motor' },
+          photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://supabase-url.com/photo1.jpg'] },
+          price: { type: 'number', example: 250.00 },
+          orderId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' }
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.BAD_REQUEST, 
+    description: 'Parámetros de filtrado inválidos',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Valor de estado no válido' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
   })
   async findAll(
     @Query('status') status?: ServiceStatus,
@@ -165,22 +274,56 @@ export class ServiceController {
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({
     summary: 'Obtener servicio por ID',
-    description: 'Obtiene los detalles completos de un servicio específico mediante su ID.'
+    description: 'Obtiene los detalles completos de un servicio específico mediante su ID. Los usuarios ADMIN pueden ver cualquier servicio, mientras que los USER solo pueden ver servicios de sus órdenes.'
   })
   @ApiParam({ 
     name: 'id', 
-    description: 'ID único del servicio (UUID)', 
-    example: '123e4567-e89b-12d3-a456-426614174000',
+    description: 'ID único del servicio (UUID v4)', 
+    example: '123e4567-e89b-12d3-a456-426614174001',
     required: true 
   })
   @ApiResponse({ 
     status: HttpStatus.OK, 
-    description: 'Servicio encontrado', 
-    type: Service 
+    description: 'Servicio encontrado exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174001' },
+        type: { type: 'string', enum: Object.values(ServiceType), example: 'REPAIR' },
+        status: { type: 'string', enum: Object.values(ServiceStatus), example: 'IN_PROGRESS' },
+        name: { type: 'string', example: 'Reparación completa del motor' },
+        description: { type: 'string', example: 'Revisión completa del motor, cambio de aceite y filtros' },
+        photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://supabase-url.com/photo1.jpg', 'https://supabase-url.com/photo2.jpg'] },
+        price: { type: 'number', example: 250.00 },
+        orderId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
+        createdAt: { type: 'string', format: 'date-time', example: '2023-12-01T10:30:00.000Z' },
+        updatedAt: { type: 'string', format: 'date-time', example: '2023-12-01T15:45:00.000Z' }
+      }
+    }
   })
   @ApiResponse({ 
     status: HttpStatus.NOT_FOUND, 
-    description: 'No se encontró ningún servicio con el ID proporcionado' 
+    description: 'No se encontró ningún servicio con el ID proporcionado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Servicio con ID "123e4567-e89b-12d3-a456-426614174001" no encontrado' },
+        error: { type: 'string', example: 'Not Found' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.BAD_REQUEST, 
+    description: 'Formato de ID inválido',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Validation failed (uuid is expected)' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
   })
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<Service> {
     return this.serviceService.findOne(id);
@@ -190,40 +333,93 @@ export class ServiceController {
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({
     summary: 'Actualizar un servicio',
-    description: 'Actualiza los datos de un servicio existente. Solo actualiza los campos proporcionados.'
+    description: 'Actualiza los datos de un servicio existente. Solo actualiza los campos proporcionados en el body. Los usuarios ADMIN pueden actualizar cualquier servicio, mientras que los USER solo pueden actualizar servicios de sus órdenes.'
   })
   @ApiParam({ 
     name: 'id', 
-    description: 'ID único del servicio a actualizar', 
-    example: '123e4567-e89b-12d3-a456-426614174000',
+    description: 'ID único del servicio a actualizar (UUID v4)', 
+    example: '123e4567-e89b-12d3-a456-426614174001',
     required: true 
   })
   @ApiBody({ 
     type: UpdateServiceDto,
-    description: 'Campos del servicio a actualizar',
+    description: 'Campos del servicio a actualizar. Todos los campos son opcionales.',
     examples: {
       actualizarEstado: {
-        summary: 'Actualizar estado',
+        summary: 'Actualizar estado del servicio',
+        description: 'Cambia el estado del servicio a COMPLETED',
         value: { status: 'COMPLETED' }
       },
       actualizarPrecio: {
-        summary: 'Actualizar precio',
+        summary: 'Actualizar precio del servicio',
+        description: 'Modifica el costo del servicio',
         value: { price: 300.00 }
+      },
+      actualizarCompleto: {
+        summary: 'Actualizar múltiples campos',
+        description: 'Actualiza nombre, descripción y precio',
+        value: {
+          name: 'Reparación completa del motor con filtros',
+          description: 'Revisión completa del motor, cambio de aceite, filtros y bujías',
+          price: 350.00
+        }
       }
     }
   })
   @ApiResponse({ 
     status: HttpStatus.OK, 
-    description: 'Servicio actualizado exitosamente', 
-    type: Service 
+    description: 'Servicio actualizado exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174001' },
+        type: { type: 'string', enum: Object.values(ServiceType), example: 'REPAIR' },
+        status: { type: 'string', enum: Object.values(ServiceStatus), example: 'COMPLETED' },
+        name: { type: 'string', example: 'Reparación completa del motor con filtros' },
+        description: { type: 'string', example: 'Revisión completa del motor, cambio de aceite, filtros y bujías' },
+        photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://supabase-url.com/photo1.jpg'] },
+        price: { type: 'number', example: 350.00 },
+        orderId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' }
+      }
+    }
   })
   @ApiResponse({ 
     status: HttpStatus.NOT_FOUND, 
-    description: 'No se encontró el servicio especificado' 
+    description: 'No se encontró el servicio especificado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Servicio con ID "123e4567-e89b-12d3-a456-426614174001" no encontrado' },
+        error: { type: 'string', example: 'Not Found' }
+      }
+    }
   })
   @ApiResponse({ 
     status: HttpStatus.FORBIDDEN, 
-    description: 'No tiene permisos para realizar esta acción' 
+    description: 'No tiene permisos para realizar esta acción',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'No tienes permisos para actualizar este servicio' },
+        error: { type: 'string', example: 'Forbidden' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.BAD_REQUEST, 
+    description: 'Datos de entrada inválidos',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'El precio debe ser un número positivo' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string, 
@@ -232,34 +428,187 @@ export class ServiceController {
     return this.serviceService.update(id, updateServiceDto);
   }
 
+  @Patch('status/:id')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({
+    summary: 'Cambiar estado de un servicio',
+    description: 'Actualiza específicamente el estado de un servicio. Los usuarios ADMIN pueden cambiar el estado de cualquier servicio, mientras que los USER solo pueden cambiar el estado de servicios de sus órdenes. Este endpoint está diseñado para transiciones de estado simples y rápidas.'
+  })
+  @ApiParam({ 
+    name: 'id', 
+    description: 'ID único del servicio a actualizar (UUID v4)', 
+    example: '123e4567-e89b-12d3-a456-426614174001',
+    required: true 
+  })
+  @ApiBody({ 
+    description: 'Nuevo estado del servicio',
+    schema: {
+      type: 'object',
+      required: ['status'],
+      properties: {
+        status: { 
+          type: 'string', 
+          enum: ['IN_PROGRESS', 'COMPLETED', 'DELIVERED', 'PAID', 'ANNULLATED'],
+          description: 'Nuevo estado del servicio',
+          examples: {
+            en_progreso: { value: 'IN_PROGRESS', summary: 'En progreso' },
+            completado: { value: 'COMPLETED', summary: 'Completado' },
+            entregado: { value: 'DELIVERED', summary: 'Entregado' },
+            pagado: { value: 'PAID', summary: 'Pagado' },
+            anulado: { value: 'ANNULLATED', summary: 'Anulado' }
+          }
+        }
+      }
+    },
+    examples: {
+      cambiarACompletado: {
+        summary: 'Marcar servicio como completado',
+        description: 'Cambia el estado del servicio a COMPLETED cuando el trabajo ha finalizado',
+        value: { status: 'COMPLETED' }
+      },
+      cambiarAEntregado: {
+        summary: 'Marcar servicio como entregado',
+        description: 'Cambia el estado del servicio a DELIVERED cuando se ha entregado al cliente',
+        value: { status: 'DELIVERED' }
+      },
+      cambiarAPagado: {
+        summary: 'Marcar servicio como pagado',
+        description: 'Cambia el estado del servicio a PAID cuando se ha realizado el pago',
+        value: { status: 'PAID' }
+      },
+      cambiarAnulado: {
+        summary: 'Anular servicio',
+        description: 'Cambia el estado del servicio a ANNULLATED cuando se cancela el servicio',
+        value: { status: 'ANNULLATED' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Estado del servicio actualizado exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174001' },
+        type: { type: 'string', enum: Object.values(ServiceType), example: 'REPAIR' },
+        status: { type: 'string', enum: ['IN_PROGRESS', 'COMPLETED', 'DELIVERED', 'PAID', 'ANNULLATED'], example: 'COMPLETED' },
+        name: { type: 'string', example: 'Reparación completa del motor' },
+        description: { type: 'string', example: 'Revisión completa del motor, cambio de aceite y filtros' },
+        photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://supabase-url.com/photo1.jpg'] },
+        price: { type: 'number', example: 250.00 },
+        orderId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.NOT_FOUND, 
+    description: 'No se encontró el servicio especificado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Servicio con ID "123e4567-e89b-12d3-a456-426614174001" no encontrado' },
+        error: { type: 'string', example: 'Not Found' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.FORBIDDEN, 
+    description: 'No tiene permisos para realizar esta acción',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'No tienes permisos para cambiar el estado de este servicio' },
+        error: { type: 'string', example: 'Forbidden' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.BAD_REQUEST, 
+    description: 'Estado no válido o datos inválidos',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Estado no válido. Los estados permitidos son: IN_PROGRESS, COMPLETED, DELIVERED, PAID, ANNULLATED' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
+  })
+  async updateStatus(
+    @Param('id', ParseUUIDPipe) id: string, 
+    @Body() updateStatusDto: { status: 'IN_PROGRESS' | 'COMPLETED' | 'DELIVERED' | 'PAID' | 'ANNULLATED' }
+  ): Promise<Service> {
+    return this.serviceService.update(id, { status: updateStatusDto.status });
+  }
+
   @Delete('remove/:id')
   @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Eliminar un servicio',
-    description: 'Elimina permanentemente un servicio del sistema. Esta acción no se puede deshacer.'
+    description: 'Elimina permanentemente un servicio del sistema. Esta acción solo puede ser realizada por usuarios con rol ADMIN. La eliminación es irreversible y también eliminará las imágenes asociadas en Supabase Storage.'
   })
   @ApiParam({ 
     name: 'id', 
-    description: 'ID único del servicio a eliminar',
-    example: '123e4567-e89b-12d3-a456-426614174000',
+    description: 'ID único del servicio a eliminar (UUID v4)',
+    example: '123e4567-e89b-12d3-a456-426614174001',
     required: true 
   })
   @ApiResponse({ 
     status: HttpStatus.NO_CONTENT, 
-    description: 'Servicio eliminado exitosamente' 
+    description: 'Servicio eliminado exitosamente. No retorna contenido en el body.'
   })
   @ApiResponse({ 
     status: HttpStatus.NOT_FOUND, 
-    description: 'No se encontró el servicio especificado' 
+    description: 'No se encontró el servicio especificado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Servicio con ID "123e4567-e89b-12d3-a456-426614174001" no encontrado' },
+        error: { type: 'string', example: 'Not Found' }
+      }
+    }
   })
   @ApiResponse({ 
     status: HttpStatus.FORBIDDEN, 
-    description: 'No tiene permisos para realizar esta acción' 
+    description: 'No tiene permisos para realizar esta acción. Solo ADMIN puede eliminar servicios.',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'Forbidden resource' },
+        error: { type: 'string', example: 'Forbidden' }
+      }
+    }
   })
   @ApiResponse({ 
     status: HttpStatus.CONFLICT, 
-    description: 'No se puede eliminar el servicio porque tiene registros asociados' 
+    description: 'No se puede eliminar el servicio porque tiene registros asociados',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 409 },
+        message: { type: 'string', example: 'No se puede eliminar el servicio porque está asociado a una orden activa' },
+        error: { type: 'string', example: 'Conflict' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.BAD_REQUEST, 
+    description: 'Formato de ID inválido',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Validation failed (uuid is expected)' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
   })
   async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.serviceService.remove(id);

@@ -715,7 +715,7 @@ export class OrderService {
         throw new BadRequestException('La orden ya está completada o cancelada');
       }
 
-      // 3. Validar que todos los servicios estén COMPLETED o ANNULLATED
+      // 3. Validar que los servicios existan en la orden
       const servicesMap = new Map(order.services.map(s => [s.id, s]));
       
       for (const servicePayment of services) {
@@ -723,25 +723,16 @@ export class OrderService {
         if (!service) {
           throw new NotFoundException(`El servicio ${servicePayment.serviceId} no existe en la orden`);
         }
-        
-        if (service.status !== ServiceStatus.COMPLETED && service.status !== ServiceStatus.ANNULLATED) {
-          throw new BadRequestException(`El servicio ${servicePayment.serviceId} debe estar en estado COMPLETED o ANNULLATED`);
-        }
       }
 
-      // 4. Procesar pagos de servicios completados
-      const completedServices = services.filter(sp => {
-        const service = servicesMap.get(sp.serviceId);
-        return service && service.status === ServiceStatus.COMPLETED;
-      });
+      // 4. Procesar pagos (permite pagos parciales sin validar estado de servicios)
+      console.log('💰 Procesando pagos para servicios:', services.length);
 
-      console.log('💰 Procesando pagos adicionales para servicios completados:', completedServices.length);
-
-      for (const servicePayment of completedServices) {
+      for (const servicePayment of services) {
         const service = servicesMap.get(servicePayment.serviceId);
         if (!service) continue; // Skip if service not found
         
-        console.log('🔧 Creando pagos adicionales para servicio completado:', service.id);
+        console.log('🔧 Creando pagos para servicio:', service.id);
         
         // Crear pagos adicionales (no reemplazar los existentes)
         const paymentData = servicePayment.payments.map(payment => ({
@@ -752,12 +743,12 @@ export class OrderService {
         }));
         
         const createdPayments = await this.paymentService.createPayments(paymentData);
-        console.log('✅ Pagos adicionales de servicio creados:', createdPayments.length);
+        console.log('✅ Pagos de servicio creados:', createdPayments.length);
         
-        // Crear movimientos de caja para pagos en efectivo adicionales
+        // Crear movimientos de caja para pagos en efectivo
         const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
         if (cashPayments.length > 0) {
-          console.log('💰 Creando movimientos de caja adicionales para pagos en efectivo');
+          console.log('💰 Creando movimientos de caja para pagos en efectivo');
           
           for (const cashPayment of cashPayments) {
             try {
@@ -770,46 +761,146 @@ export class OrderService {
                 clientEmail: order.client?.email || undefined
               }, false, user?.userId); // isRefund: false para ingresos
               
-              console.log('✅ Movimiento de caja adicional creado para servicio:', cashPayment.amount);
+              console.log('✅ Movimiento de caja creado para servicio:', cashPayment.amount);
             } catch (error) {
-              console.error('❌ Error al crear movimiento de caja adicional para servicio:', error.message);
-              // No fallar la completación si falla el movimiento
+              console.error('❌ Error al crear movimiento de caja para servicio:', error.message);
+              // No fallar el proceso si falla el movimiento
             }
           }
         }
       }
 
-      // 5. Actualizar el estado de la orden a COMPLETED
-      const updatedOrder = await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: SaleStatus.COMPLETED,
-          updatedAt: new Date()
-        },
-        include: {
-          orderProducts: {
-            include: {
-              product: {
-                include: {
-                  product: true,
+      // 5. Calcular totales para determinar si la orden puede completarse
+      const totalOwed = await this.calculateTotalOwed(orderId);
+      const totalPaid = await this.calculateTotalPaid(orderId);
+      
+      console.log('💰 Estado financiero:', { totalOwed, totalPaid, balance: totalPaid - totalOwed });
+
+      // 6. Evaluar estados de servicios para determinar estado final de la orden
+      const allServicesCompleted = order.services.every(s => s.status === ServiceStatus.COMPLETED);
+      const allServicesAnnulled = order.services.every(s => s.status === ServiceStatus.ANNULLATED);
+      const hasSomeCompletedServices = order.services.some(s => s.status === ServiceStatus.COMPLETED);
+      
+      let newStatus: SaleStatus = SaleStatus.PENDING; // Valor por defecto
+      let shouldUpdateStatus = false;
+
+      // 7. Lógica de estados combinada (pagos + servicios)
+      if (allServicesAnnulled) {
+        // Si todos los servicios están anulados, cancelar la orden
+        newStatus = SaleStatus.CANCELLED;
+        shouldUpdateStatus = true;
+        console.log('🚫 Todos los servicios anulados → Orden CANCELLED');
+      } else if (totalPaid >= totalOwed && allServicesCompleted) {
+        // Si está todo pagado Y todos los servicios completados, completar la orden
+        newStatus = SaleStatus.COMPLETED;
+        shouldUpdateStatus = true;
+        console.log('✅ Todo pagado y servicios completados → Orden COMPLETED');
+      } else if (totalPaid >= totalOwed && hasSomeCompletedServices) {
+        // Si está todo pagado pero hay servicios mixtos, completar de todos modos
+        newStatus = SaleStatus.COMPLETED;
+        shouldUpdateStatus = true;
+        console.log('✅ Todo pagado con servicios mixtos → Orden COMPLETED');
+      } else {
+        // Mantener en PENDING si aún falta pago o hay servicios en progreso
+        console.log('⏳ Aún faltan pagos o servicios → Orden mantiene PENDING');
+      }
+
+      // 8. Actualizar estado de la orden si es necesario
+      let updatedOrder = order;
+      if (shouldUpdateStatus) {
+        updatedOrder = await prisma.order.update({
+          where: { id: orderId },
+          data: {
+            status: newStatus,
+            ...(newStatus === SaleStatus.CANCELLED && {
+              canceledAt: new Date(),
+              canceledById: user?.userId || null
+            }),
+            updatedAt: new Date()
+          },
+          include: {
+            orderProducts: {
+              include: {
+                product: {
+                  include: {
+                    product: true,
+                  },
                 },
               },
             },
-          },
-          services: true,
-          client: true,
-          cashSession: true,
-          user: {
-            select: {
-              id: true,
-              email: true,
-              name: true,
+            services: true,
+            client: true,
+            cashSession: true,
+            user: {
+              select: {
+                id: true,
+                email: true,
+                name: true,
+              },
             },
           },
-        },
-      });
+        });
+        
+        console.log(`📈 Orden actualizada a estado: ${newStatus}`);
+      }
 
       return updatedOrder as unknown as Order;
     });
+  }
+
+  // Método auxiliar para calcular el total adeudado de una orden
+  private async calculateTotalOwed(orderId: string): Promise<number> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        services: true,
+        orderProducts: true
+      }
+    });
+
+    if (!order) return 0;
+
+    const servicesTotal = order.services.reduce((sum, service) => sum + service.price, 0);
+    const productsTotal = order.orderProducts.reduce((sum, product) => sum + (product.price * product.quantity), 0);
+    
+    return servicesTotal + productsTotal;
+  }
+
+  // Método auxiliar para calcular el total pagado de una orden
+  private async calculateTotalPaid(orderId: string): Promise<number> {
+    // Obtener todos los pagos relacionados con esta orden
+    const services = await this.prisma.service.findMany({
+      where: { orderId },
+      select: { id: true }
+    });
+
+    const orderProducts = await this.prisma.orderProduct.findMany({
+      where: { orderId },
+      select: { id: true }
+    });
+
+    const serviceIds = services.map(s => s.id);
+    const orderProductIds = orderProducts.map(op => op.id);
+
+    // Sumar pagos de servicios
+    const servicePayments = await this.prisma.payment.findMany({
+      where: {
+        sourceType: 'SERVICE',
+        sourceId: { in: serviceIds }
+      }
+    });
+
+    // Sumar pagos de productos
+    const productPayments = await this.prisma.payment.findMany({
+      where: {
+        sourceType: 'ORDERPRODUCT',
+        sourceId: { in: orderProductIds }
+      }
+    });
+
+    const servicePaymentsTotal = servicePayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const productPaymentsTotal = productPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    
+    return servicePaymentsTotal + productPaymentsTotal;
   }
 }
