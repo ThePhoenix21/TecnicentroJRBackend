@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
-import { Service, ServiceStatus, ServiceType } from '@prisma/client';
+import { Service, ServiceStatus, ServiceType, PaymentSourceType } from '@prisma/client';
 
 @Injectable()
 export class ServiceService {
@@ -71,5 +71,61 @@ export class ServiceService {
     await this.prisma.service.delete({
       where: { id },
     });
+  }
+
+  async getPendingPayment(id: string): Promise<{
+    serviceId: string;
+    serviceName: string;
+    servicePrice: number;
+    totalPaid: number;
+    pendingAmount: number;
+    isFullyPaid: boolean;
+    paymentBreakdown: Array<{
+      id: string;
+      type: string;
+      amount: number;
+      createdAt: string;
+    }>;
+  }> {
+    // 1. Obtener el servicio
+    const service = await this.prisma.service.findUnique({
+      where: { id },
+    });
+
+    if (!service) {
+      throw new NotFoundException(`Servicio con ID ${id} no encontrado`);
+    }
+
+    // 2. Obtener todos los pagos de este servicio
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        sourceType: PaymentSourceType.SERVICE,
+        sourceId: id,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // 3. Calcular totales
+    const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const pendingAmount = service.price - totalPaid;
+    const isFullyPaid = pendingAmount <= 0;
+
+    // 4. Formatear respuesta
+    return {
+      serviceId: service.id,
+      serviceName: service.name,
+      servicePrice: service.price,
+      totalPaid,
+      pendingAmount: Math.max(0, pendingAmount), // Evitar negativos
+      isFullyPaid,
+      paymentBreakdown: payments.map(payment => ({
+        id: payment.id,
+        type: payment.type,
+        amount: payment.amount,
+        createdAt: payment.createdAt.toISOString(),
+      })),
+    };
   }
 }

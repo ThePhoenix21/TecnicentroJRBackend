@@ -613,4 +613,97 @@ export class ServiceController {
   async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.serviceService.remove(id);
   }
+
+  @Get(':id/pending-payment')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({
+    summary: 'Obtener monto pendiente de pago de un servicio',
+    description: 'Calcula el monto restante por pagar de un servicio específico. Revisa todos los pagos registrados para el servicio y resta el total del precio del servicio. Disponible para usuarios ADMIN y USER.'
+  })
+  @ApiParam({ 
+    name: 'id', 
+    description: 'ID único del servicio (UUID v4)', 
+    example: '123e4567-e89b-12d3-a456-426614174001',
+    required: true 
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Monto pendiente calculado exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        serviceId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174001' },
+        serviceName: { type: 'string', example: 'Reparación de motor' },
+        servicePrice: { type: 'number', example: 350.00 },
+        totalPaid: { type: 'number', example: 120.00 },
+        pendingAmount: { type: 'number', example: 230.00 },
+        isFullyPaid: { type: 'boolean', example: false },
+        paymentBreakdown: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid', example: 'pay-123-456' },
+              type: { type: 'string', enum: ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'YAPE', 'PLIN', 'OTRO'], example: 'EFECTIVO' },
+              amount: { type: 'number', example: 120.00 },
+              createdAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00Z' }
+            }
+          },
+          description: 'Lista de pagos realizados para este servicio'
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.NOT_FOUND, 
+    description: 'No se encontró el servicio especificado',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 404 },
+        message: { type: 'string', example: 'Servicio con ID "123e4567-e89b-12d3-a456-426614174001" no encontrado' },
+        error: { type: 'string', example: 'Not Found' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.FORBIDDEN, 
+    description: 'No tiene permisos para realizar esta acción',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'No tienes permisos para ver el estado de pago de este servicio' },
+        error: { type: 'string', example: 'Forbidden' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.BAD_REQUEST, 
+    description: 'Formato de ID inválido',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Validation failed (uuid is expected)' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
+  })
+  async getPendingPayment(@Param('id', ParseUUIDPipe) id: string): Promise<{
+    serviceId: string;
+    serviceName: string;
+    servicePrice: number;
+    totalPaid: number;
+    pendingAmount: number;
+    isFullyPaid: boolean;
+    paymentBreakdown: Array<{
+      id: string;
+      type: string;
+      amount: number;
+      createdAt: string;
+    }>;
+  }> {
+    return this.serviceService.getPendingPayment(id);
+  }
 }

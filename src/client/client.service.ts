@@ -139,6 +139,13 @@ export class ClientService {
     `;
   }
 
+  // ✅ NUEVO: Buscar cliente por DNI
+  async findByDni(dni: string): Promise<Client | null> {
+    return await this.prisma.client.findUnique({
+      where: { dni },
+    });
+  }
+
   private async checkExistingClient(
     clientData: { email?: string | null; ruc?: string | null; dni?: string | null },
     excludeId?: string
