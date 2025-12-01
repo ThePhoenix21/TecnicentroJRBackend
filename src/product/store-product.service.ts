@@ -13,7 +13,7 @@ export class StoreProductService {
     private productService: ProductService
   ) {}
 
-  async create(userId: string, createStoreProductDto: CreateStoreProductDto): Promise<StoreProduct> {
+  async create(userId: string, createStoreProductDto: CreateStoreProductDto): Promise<StoreProduct[]> {
     if (!userId) {
       throw new Error('Se requiere un ID de usuario válido para crear un producto en tienda');
     }
@@ -79,57 +79,78 @@ export class StoreProductService {
         throw new ForbiddenException('No tienes permisos para agregar productos a esta tienda');
       }
 
-      // Verificar si ya existe este producto en esta tienda
-      const existingStoreProduct = await this.prisma.storeProduct.findFirst({
-        where: {
-          productId: productId,
-          storeId: createStoreProductDto.storeId
-        }
+      // Obtener todas las tiendas disponibles
+      const allStores = await this.prisma.store.findMany({
+        select: { id: true, name: true }
       });
 
-      if (existingStoreProduct) {
-        throw new ForbiddenException('Este producto ya está registrado en esta tienda');
+      // Verificar si el producto ya existe en alguna tienda
+      const existingStoreProducts = await this.prisma.storeProduct.findMany({
+        where: { productId: productId },
+        select: { storeId: true }
+      });
+
+      const existingStoreIds = new Set(existingStoreProducts.map(sp => sp.storeId));
+
+      // Determinar en qué tiendas se deben crear los storeProducts
+      const storesToCreate = allStores.filter(store => !existingStoreIds.has(store.id));
+
+      if (storesToCreate.length === 0) {
+        throw new ForbiddenException('Este producto ya está registrado en todas las tiendas');
       }
 
-      // Crear el StoreProduct
-      const storeProduct = await this.prisma.storeProduct.create({
-        data: {
-          productId: productId,
-          storeId: createStoreProductDto.storeId,
-          userId: userId,
-          price: createStoreProductDto.price,
-          stock: createStoreProductDto.stock,
-          stockThreshold: createStoreProductDto.stockThreshold,
-        },
-        include: {
-          product: {
-            select: {
-              id: true,
-              name: true,
-              description: true,
-              basePrice: true,
-              buyCost: true,
-            },
-          },
-          store: {
-            select: {
-              id: true,
-              name: true,
-              address: true,
-              phone: true,
-            },
-          },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-      });
+      // Crear los StoreProducts en todas las tiendas necesarias
+      const storeProductsToCreate = storesToCreate.map(store => ({
+        productId: productId,
+        storeId: store.id,
+        userId: userId,
+        price: store.id === createStoreProductDto.storeId 
+          ? createStoreProductDto.price 
+          : 0, // Precio 0 para otras tiendas
+        stock: store.id === createStoreProductDto.storeId 
+          ? createStoreProductDto.stock 
+          : 0, // Stock 0 para otras tiendas
+        stockThreshold: store.id === createStoreProductDto.storeId 
+          ? createStoreProductDto.stockThreshold 
+          : undefined, // Threshold undefined para otras tiendas
+      }));
 
-      return storeProduct as unknown as StoreProduct;
+      // Crear todos los storeProducts en una transacción
+      const createdStoreProducts = await this.prisma.$transaction(
+        storeProductsToCreate.map(data => 
+          this.prisma.storeProduct.create({
+            data,
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                  basePrice: true,
+                  buyCost: true,
+                },
+              },
+              store: {
+                select: {
+                  id: true,
+                  name: true,
+                  address: true,
+                  phone: true,
+                },
+              },
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          })
+        )
+      );
+
+      return createdStoreProducts as unknown as StoreProduct[];
     } catch (error) {
       console.error('Error al crear producto en tienda:', error);
       throw new Error('No se pudo crear el producto en tienda: ' + (error as Error).message);

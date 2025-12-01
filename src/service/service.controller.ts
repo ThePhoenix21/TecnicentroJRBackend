@@ -706,4 +706,102 @@ export class ServiceController {
   }> {
     return this.serviceService.getPendingPayment(id);
   }
+
+  @Get('findAllWithClients')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({
+    summary: 'Obtener servicios con información de clientes',
+    description: 'Obtiene una lista de servicios con información adicional de clientes y órdenes. Permite filtrar por estado, tipo de servicio y tienda. Los usuarios ADMIN pueden ver todos los servicios, mientras que los USER solo pueden ver los servicios de sus órdenes.'
+  })
+  @ApiQuery({ 
+    name: 'status', 
+    required: false, 
+    enum: ServiceStatus, 
+    description: 'Filtrar servicios por estado actual',
+    example: 'IN_PROGRESS',
+    schema: {
+      enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+      default: null
+    }
+  })
+  @ApiQuery({ 
+    name: 'type', 
+    required: false, 
+    enum: ServiceType, 
+    description: 'Filtrar servicios por tipo de servicio',
+    example: 'REPAIR',
+    schema: {
+      enum: ['REPAIR', 'MAINTENANCE', 'INSPECTION', 'CUSTOM'],
+      default: null
+    }
+  })
+  @ApiQuery({ 
+    name: 'storeId', 
+    required: false, 
+    type: 'string',
+    format: 'uuid',
+    description: 'Filtrar servicios por tienda específica',
+    example: '123e4567-e89b-12d3-a456-426614174000'
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Lista de servicios con clientes obtenida exitosamente',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174001' },
+          type: { type: 'string', enum: Object.values(ServiceType), example: 'REPAIR' },
+          status: { type: 'string', enum: Object.values(ServiceStatus), example: 'IN_PROGRESS' },
+          name: { type: 'string', example: 'Reparación completa del motor' },
+          description: { type: 'string', example: 'Revisión completa del motor' },
+          photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://supabase-url.com/photo1.jpg'] },
+          price: { type: 'number', example: 250.00 },
+          orderId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+          client: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid', example: 'client-123' },
+              name: { type: 'string', example: 'Juan Pérez' },
+              email: { type: 'string', example: 'juan@ejemplo.com' },
+              phone: { type: 'string', example: '+1234567890' },
+              address: { type: 'string', example: 'Av. Principal 123' }
+            }
+          },
+          order: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
+              clientId: { type: 'string', format: 'uuid', example: 'client-123' },
+              totalAmount: { type: 'number', example: 500.00 },
+              status: { type: 'string', example: 'PENDING' },
+              createdAt: { type: 'string', format: 'date-time' }
+            }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.BAD_REQUEST, 
+    description: 'Parámetros de filtrado inválidos',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Valor de estado no válido' },
+        error: { type: 'string', example: 'Bad Request' }
+      }
+    }
+  })
+  async findAllWithClients(
+    @Query('status') status?: ServiceStatus,
+    @Query('type') type?: ServiceType,
+    @Query('storeId') storeId?: string,
+  ): Promise<any[]> {
+    return this.serviceService.findAllWithClients(status, type, storeId);
+  }
 }

@@ -64,8 +64,8 @@ export class StoreProductController {
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
-    summary: 'Agregar producto a tienda (existente o nuevo)',
-    description: 'Agrega un producto al inventario de una tienda. Puede usar un producto existente del catálogo o crear uno nuevo. Requiere que el usuario tenga acceso a la tienda.'
+    summary: 'Agregar producto a todas las tiendas',
+    description: 'Agrega un producto al inventario de todas las tiendas del sistema. La tienda especificada recibirá el producto con el precio y stock indicados, mientras que las demás tiendas recibirán el mismo producto con precio=0 y stock=0. Puede usar un producto existente del catálogo o crear uno nuevo. Requiere que el usuario tenga acceso a la tienda especificada.'
   })
   @ApiBody({
     type: CreateStoreProductDto,
@@ -102,44 +102,47 @@ export class StoreProductController {
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'Producto agregado a la tienda exitosamente',
+    description: 'Producto agregado a todas las tiendas exitosamente',
     schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: 'store-product-id-123' },
-        price: { type: 'number', example: 29.99 },
-        stock: { type: 'number', example: 50 },
-        stockThreshold: { type: 'number', example: 5 },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
-        productId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
-        product: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string', example: 'Aceite de Motor 10W40' },
-            description: { type: 'string', nullable: true },
-            basePrice: { type: 'number', nullable: true },
-            buyCost: { type: 'number', nullable: true }
-          }
-        },
-        storeId: { type: 'string', example: '456e7890-e12b-34d5-a678-426614174000' },
-        store: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string', example: 'Tecnicentro JR - Sucursal Central' },
-            address: { type: 'string', nullable: true },
-            phone: { type: 'string', nullable: true }
-          }
-        },
-        userId: { type: 'string', example: 'user-id-123' },
-        user: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string', example: 'Juan Pérez' },
-            email: { type: 'string', example: 'juan@ejemplo.com' }
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: 'store-product-id-123' },
+          price: { type: 'number', example: 29.99 },
+          stock: { type: 'number', example: 50 },
+          stockThreshold: { type: 'number', example: 5 },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+          productId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
+          product: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string', example: 'Aceite de Motor 10W40' },
+              description: { type: 'string', nullable: true },
+              basePrice: { type: 'number', nullable: true },
+              buyCost: { type: 'number', nullable: true }
+            }
+          },
+          storeId: { type: 'string', example: '456e7890-e12b-34d5-a678-426614174000' },
+          store: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string', example: 'Tecnicentro JR - Sucursal Central' },
+              address: { type: 'string', nullable: true },
+              phone: { type: 'string', nullable: true }
+            }
+          },
+          userId: { type: 'string', example: 'user-id-123' },
+          user: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string', example: 'Juan Pérez' },
+              email: { type: 'string', example: 'juan@ejemplo.com' }
+            }
           }
         }
       }
@@ -147,14 +150,14 @@ export class StoreProductController {
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'Datos de entrada inválidos o producto ya existe en la tienda',
+    description: 'Datos de entrada inválidos o producto ya existe en todas las tiendas',
     schema: {
       examples: {
-        productoExistente: {
-          summary: 'Producto ya existe en la tienda',
+        productoExistenteTodasTiendas: {
+          summary: 'Producto ya existe en todas las tiendas',
           value: {
             statusCode: 403,
-            message: 'Este producto ya está registrado en esta tienda',
+            message: 'Este producto ya está registrado en todas las tiendas',
             error: 'Forbidden'
           }
         },
@@ -187,7 +190,7 @@ export class StoreProductController {
   async create(
     @Req() req: any,
     @Body() createStoreProductDto: CreateStoreProductDto,
-  ): Promise<StoreProduct> {
+  ): Promise<StoreProduct[]> {
     const userId = req.user?.userId || req.user?.id;
     
     if (!userId) {

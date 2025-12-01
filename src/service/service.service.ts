@@ -128,4 +128,51 @@ export class ServiceService {
       })),
     };
   }
+
+  async findAllWithClients(
+    status?: ServiceStatus,
+    type?: ServiceType,
+    storeId?: string
+  ): Promise<any[]> {
+    const services = await this.prisma.service.findMany({
+      where: {
+        ...(status && { status }),
+        ...(type && { type }),
+        ...(storeId && { 
+          order: { 
+            cashSession: {
+              StoreId: storeId
+            }
+          } 
+        }) // Filtrar por tienda si se proporciona
+      },
+      include: {
+        order: {
+          include: {
+            client: true,
+            cashSession: {
+              include: {
+                Store: true
+              }
+            }
+          }
+        },
+      },
+    });
+
+    // Formatear la respuesta para incluir cliente, tienda y orden
+    return services.map((service: any) => ({
+      ...service,
+      client: service.order?.client || null,
+      store: service.order?.cashSession?.Store || null,
+      order: service.order ? {
+        id: service.order.id,
+        clientId: service.order.clientId,
+        storeId: service.order.cashSession?.StoreId,
+        totalAmount: service.order.totalAmount,
+        status: service.order.status,
+        createdAt: service.order.createdAt
+      } : null
+    }));
+  }
 }

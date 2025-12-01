@@ -419,6 +419,42 @@ export class OrderService {
     }) as unknown as Promise<Order[]>;
   }
 
+  async findByStore(storeId: string): Promise<Order[]> {
+    return this.prisma.order.findMany({
+      where: {
+        cashSession: {
+          StoreId: storeId
+        }
+      },
+      include: {
+        orderProducts: {
+          include: {
+            product: {
+              include: {
+                product: true, // Incluir el producto del catálogo
+              },
+            },
+          },
+        },
+        services: true,
+        client: true,
+        cashSession: {
+          include: {
+            Store: true
+          }
+        },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    }) as unknown as Promise<Order[]>;
+  }
+
   async findOne(id: string, userId: string): Promise<Order> {
     const order = await this.prisma.order.findUnique({
       where: { id },

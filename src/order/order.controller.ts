@@ -116,6 +116,13 @@ export class OrderController {
     return this.orderService.findAll();
   }
 
+  @Get('store/:storeId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  async getOrdersByStore(@Param('storeId') storeId: string) {
+    return this.orderService.findByStore(storeId);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER, Role.ADMIN)
