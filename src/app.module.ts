@@ -13,6 +13,7 @@ import { MaintenanceModule } from './maintenance/maintenance.module';
 import { StoreModule } from './store/store.module';
 import { CashSessionModule } from './cash-session/cash-session.module';
 import { CashMovementModule } from './cash-movement/cash-movement.module';
+import { ReceiptModule } from './receipt/receipt.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { CashMovementModule } from './cash-movement/cash-movement.module';
     StoreModule,
     CashSessionModule,
     CashMovementModule,
+    ReceiptModule,
   ],
   controllers: [],
   providers: [],
