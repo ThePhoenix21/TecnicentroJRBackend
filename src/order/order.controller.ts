@@ -70,7 +70,96 @@ export class OrderController {
 
     try {
       const createdOrder = await this.orderService.create(createOrderDto, req.user);
-      return createdOrder;
+      // Procesar la respuesta según si tiene servicios o solo productos
+      const { pdfInfo, orderProducts, services, client, user } = createdOrder as any;
+      const tieneServicios = services && services.length > 0;
+
+      // Datos del negocio
+      const businessName = pdfInfo?.businessName || 'Tecnicentro JR';
+      const address = pdfInfo?.address || '';
+      const phone = pdfInfo?.phone || '';
+      const issueDate = pdfInfo?.currentDate || '';
+      const issueTime = pdfInfo?.currentTime || '';
+      const vendedor = pdfInfo?.sellerName || user?.name || '';
+      const cliente = {
+        nombre: client?.name || pdfInfo?.clientName || '',
+        documento: client?.dni || '',
+        telefono: client?.phone || '',
+        email: client?.email || '',
+        direccion: client?.address || '',
+      };
+      // Productos
+      const productos = (orderProducts || []).map((op: any) => {
+        // Pagos por producto
+        const metodosPago = (op.payments || []).map((p: any) => ({
+          tipo: p.type,
+          monto: p.amount,
+        }));
+        // Precio de tienda (storeProduct)
+        const precioTienda = op.product?.price ?? 0;
+        // Descuento: diferencia entre precio tienda y precio pagado
+        const sumaPagos = (op.payments || []).reduce((sum: number, p: any) => sum + p.amount, 0);
+        const descuento = (precioTienda * op.quantity) - sumaPagos;
+        return {
+          nombre: op.product?.product?.name || '',
+          cantidad: op.quantity,
+          precioUnitario: precioTienda,
+          descuento: descuento > 0 ? descuento : 0,
+          metodosPago,
+        };
+      });
+
+      // Subtotal y descuentos de productos
+      const subtotalProductos = productos.reduce((sum: number, p: any) => sum + (p.precioUnitario * p.cantidad), 0);
+      const descuentos = productos.reduce((sum: number, p: any) => sum + p.descuento, 0);
+      // Servicios y adelantos
+      let servicios = [];
+      let adelantos = 0;
+      let subtotalServicios = 0;
+      if (tieneServicios) {
+        servicios = (services || []).map((s: any) => ({
+          nombre: s.name,
+          descripcion: s.description,
+          precio: s.price,
+          adelantos: (s.payments || []).map((p: any) => ({ tipo: p.type, monto: p.amount }))
+        }));
+        subtotalServicios = (services || []).reduce((sum: number, s: any) => sum + (s.price || 0), 0);
+        adelantos = (services || []).reduce((sum: number, s: any) => sum + ((s.payments || []).reduce((a: number, ad: any) => a + ad.amount, 0)), 0);
+      }
+      // Subtotal global
+      const subtotal = subtotalProductos + subtotalServicios;
+      // Pagos de productos
+      const pagosProductos = productos.reduce((sum: number, p: any) => sum + ((p.metodosPago ?? []).reduce((a: number, mp: any) => a + mp.monto, 0) || 0), 0);
+      // Total a pagar (lo que falta por pagar)
+      let total = subtotal - descuentos - adelantos - pagosProductos;
+      if (!tieneServicios) {
+        total = subtotal - descuentos;
+      }
+      // Si no hay productos, productos debe ser []
+      const productosFinal = productos || [];
+
+
+      // Construir respuesta
+      const response: any = {
+        orderId: createdOrder.id,
+        orderNumber: createdOrder.orderNumber,
+        businessName,
+        address,
+        phone,
+        issueDate,
+        client: cliente,
+        productos: productosFinal,
+        descuentos,
+        vendedor,
+        subtotal,
+        total,
+      };
+      if (tieneServicios) {
+        response.issueTime = issueTime;
+        response.servicios = servicios;
+        response.adelantos = adelantos;
+      }
+      return response;
     } catch (error) {
       throw new BadRequestException(`Error al crear la orden: ${error.message}`);
     }
