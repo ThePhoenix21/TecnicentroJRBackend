@@ -343,7 +343,7 @@ export class CashMovementService {
                 clientInfo = {
                   name: order.client.name || 'Cliente sin nombre',
                   email: order.client.email || '',
-                  description: `Orden ${order.orderNumber} - ${movement.description || 'Sin descripción'}`
+                  description: `Orden ${order.orderNumber} - ${movement.description || ''}`
                 };
               }
             } catch (error) {

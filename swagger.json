@@ -2168,6 +2168,163 @@
         ]
       }
     },
+    "/clientes/dni/{dni}": {
+      "get": {
+        "description": "Busca un cliente específico mediante su número de DNI. Disponible para usuarios ADMIN y USER. Ambos roles pueden ver cualquier cliente del sistema.",
+        "operationId": "ClientController_findByDni",
+        "parameters": [
+          {
+            "name": "dni",
+            "required": true,
+            "in": "path",
+            "description": "Número de DNI del cliente a buscar",
+            "schema": {
+              "example": "76543210",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cliente encontrado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174001"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "Juan Pérez"
+                    },
+                    "email": {
+                      "type": "string",
+                      "example": "juan.perez@email.com"
+                    },
+                    "phone": {
+                      "type": "string",
+                      "example": "987654321"
+                    },
+                    "address": {
+                      "type": "string",
+                      "example": "Av. Principal 123"
+                    },
+                    "ruc": {
+                      "type": "string",
+                      "example": "20123456789"
+                    },
+                    "dni": {
+                      "type": "string",
+                      "example": "76543210"
+                    },
+                    "userId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "example": "2024-01-15T10:30:00Z"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "example": "2024-01-15T10:30:00Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de DNI inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "El DNI debe ser un número de 8 dígitos"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No autorizado - Se requiere autenticación JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "No autorizado"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No se encontró ningún cliente con el DNI proporcionado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "No se encontró cliente con DNI 76543210"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Obtener cliente por DNI",
+        "tags": [
+          "clientes"
+        ]
+      }
+    },
     "/orders/create": {
       "post": {
         "operationId": "OrderController_create",
@@ -2184,6 +2341,150 @@
         },
         "responses": {
           "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders/complete": {
+      "patch": {
+        "operationId": "OrderController_completeOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders/me": {
+      "get": {
+        "operationId": "OrderController_findMe",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders": {
+      "get": {
+        "operationId": "OrderController_getOrders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders/store/{storeId}": {
+      "get": {
+        "operationId": "OrderController_getOrdersByStore",
+        "parameters": [
+          {
+            "name": "storeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "operationId": "OrderController_getOrderById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders/user/{userId}": {
+      "get": {
+        "operationId": "OrderController_getUserOrders",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders/{id}/cancel": {
+      "patch": {
+        "operationId": "OrderController_cancelOrder",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         },
@@ -4067,7 +4368,7 @@
     },
     "/store/products/create": {
       "post": {
-        "description": "Agrega un producto al inventario de una tienda. Puede usar un producto existente del catálogo o crear uno nuevo. Requiere que el usuario tenga acceso a la tienda.",
+        "description": "Agrega un producto al inventario de todas las tiendas del sistema. La tienda especificada recibirá el producto con el precio y stock indicados, mientras que las demás tiendas recibirán el mismo producto con precio=0 y stock=0. Puede usar un producto existente del catálogo o crear uno nuevo. Requiere que el usuario tenga acceso a la tienda especificada.",
         "operationId": "StoreProductController_create",
         "parameters": [],
         "requestBody": {
@@ -4112,105 +4413,108 @@
         },
         "responses": {
           "201": {
-            "description": "Producto agregado a la tienda exitosamente",
+            "description": "Producto agregado a todas las tiendas exitosamente",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "example": "store-product-id-123"
-                    },
-                    "price": {
-                      "type": "number",
-                      "example": 29.99
-                    },
-                    "stock": {
-                      "type": "number",
-                      "example": 50
-                    },
-                    "stockThreshold": {
-                      "type": "number",
-                      "example": 5
-                    },
-                    "createdAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "productId": {
-                      "type": "string",
-                      "example": "123e4567-e89b-12d3-a456-426614174000"
-                    },
-                    "product": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string"
-                        },
-                        "name": {
-                          "type": "string",
-                          "example": "Aceite de Motor 10W40"
-                        },
-                        "description": {
-                          "type": "string",
-                          "nullable": true
-                        },
-                        "basePrice": {
-                          "type": "number",
-                          "nullable": true
-                        },
-                        "buyCost": {
-                          "type": "number",
-                          "nullable": true
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "example": "store-product-id-123"
+                      },
+                      "price": {
+                        "type": "number",
+                        "example": 29.99
+                      },
+                      "stock": {
+                        "type": "number",
+                        "example": 50
+                      },
+                      "stockThreshold": {
+                        "type": "number",
+                        "example": 5
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "productId": {
+                        "type": "string",
+                        "example": "123e4567-e89b-12d3-a456-426614174000"
+                      },
+                      "product": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "Aceite de Motor 10W40"
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "basePrice": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "buyCost": {
+                            "type": "number",
+                            "nullable": true
+                          }
                         }
-                      }
-                    },
-                    "storeId": {
-                      "type": "string",
-                      "example": "456e7890-e12b-34d5-a678-426614174000"
-                    },
-                    "store": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string"
-                        },
-                        "name": {
-                          "type": "string",
-                          "example": "Tecnicentro JR - Sucursal Central"
-                        },
-                        "address": {
-                          "type": "string",
-                          "nullable": true
-                        },
-                        "phone": {
-                          "type": "string",
-                          "nullable": true
+                      },
+                      "storeId": {
+                        "type": "string",
+                        "example": "456e7890-e12b-34d5-a678-426614174000"
+                      },
+                      "store": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "Tecnicentro JR - Sucursal Central"
+                          },
+                          "address": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "phone": {
+                            "type": "string",
+                            "nullable": true
+                          }
                         }
-                      }
-                    },
-                    "userId": {
-                      "type": "string",
-                      "example": "user-id-123"
-                    },
-                    "user": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string"
-                        },
-                        "name": {
-                          "type": "string",
-                          "example": "Juan Pérez"
-                        },
-                        "email": {
-                          "type": "string",
-                          "example": "juan@ejemplo.com"
+                      },
+                      "userId": {
+                        "type": "string",
+                        "example": "user-id-123"
+                      },
+                      "user": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "Juan Pérez"
+                          },
+                          "email": {
+                            "type": "string",
+                            "example": "juan@ejemplo.com"
+                          }
                         }
                       }
                     }
@@ -4220,16 +4524,16 @@
             }
           },
           "400": {
-            "description": "Datos de entrada inválidos o producto ya existe en la tienda",
+            "description": "Datos de entrada inválidos o producto ya existe en todas las tiendas",
             "content": {
               "application/json": {
                 "schema": {
                   "examples": {
-                    "productoExistente": {
-                      "summary": "Producto ya existe en la tienda",
+                    "productoExistenteTodasTiendas": {
+                      "summary": "Producto ya existe en todas las tiendas",
                       "value": {
                         "statusCode": 403,
-                        "message": "Este producto ya está registrado en esta tienda",
+                        "message": "Este producto ya está registrado en todas las tiendas",
                         "error": "Forbidden"
                       }
                     },
@@ -4283,7 +4587,7 @@
             "JWT": []
           }
         ],
-        "summary": "Agregar producto a tienda (existente o nuevo)",
+        "summary": "Agregar producto a todas las tiendas",
         "tags": [
           "Productos en Tienda"
         ]
@@ -5342,11 +5646,12 @@
     },
     "/services/create": {
       "post": {
-        "description": "Permite a un administrador registrar un nuevo servicio en el sistema con imágenes opcionales.",
+        "description": "Permite a usuarios ADMIN y USER registrar un nuevo servicio en el sistema. Se pueden adjuntar imágenes opcionales del servicio. Las imágenes se suben automáticamente a Supabase Storage y se generan URLs firmadas con validez de 1 año.",
         "operationId": "ServiceController_create",
         "parameters": [],
         "requestBody": {
           "required": true,
+          "description": "Datos del servicio a crear. El campo `file` es opcional y permite subir hasta 5 imágenes.",
           "content": {
             "multipart/form-data": {
               "schema": {
@@ -5365,6 +5670,7 @@
                       "REPAIR",
                       "WARRANTY"
                     ],
+                    "description": "Tipo de servicio a realizar",
                     "example": "REPAIR"
                   },
                   "status": {
@@ -5376,32 +5682,38 @@
                       "PAID",
                       "ANNULLATED"
                     ],
+                    "description": "Estado inicial del servicio",
                     "example": "IN_PROGRESS"
                   },
                   "name": {
                     "type": "string",
-                    "example": "Reparación de motor"
+                    "description": "Nombre descriptivo del servicio",
+                    "example": "Reparación completa del motor",
+                    "minLength": 1,
+                    "maxLength": 255
                   },
                   "description": {
                     "type": "string",
-                    "example": "Revisión y reparación completa del motor"
+                    "description": "Descripción detallada del trabajo a realizar",
+                    "example": "Revisión completa del motor, cambio de aceite y filtros",
+                    "maxLength": 1000
                   },
                   "price": {
                     "type": "number",
-                    "example": 250
+                    "description": "Costo del servicio en USD",
+                    "example": 250,
+                    "minimum": 0
                   },
                   "orderId": {
                     "type": "string",
                     "format": "uuid",
+                    "description": "ID de la orden a la que pertenece este servicio",
                     "example": "123e4567-e89b-12d3-a456-426614174000"
                   },
-                  "files": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "format": "binary"
-                    },
-                    "description": "Archivos de imagen (máx. 5, 5MB cada uno)"
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Archivo de imagen (jpg, jpeg, png, gif) - Máximo 5MB por archivo"
                   }
                 }
               }
@@ -5410,23 +5722,149 @@
         },
         "responses": {
           "201": {
-            "description": "El servicio ha sido creado exitosamente",
+            "description": "Servicio creado exitosamente",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Service"
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174001"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "REPAIR",
+                        "WARRANTY"
+                      ],
+                      "example": "REPAIR"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "IN_PROGRESS",
+                        "COMPLETED",
+                        "DELIVERED",
+                        "PAID",
+                        "ANNULLATED"
+                      ],
+                      "example": "IN_PROGRESS"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "Reparación completa del motor"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Revisión completa del motor, cambio de aceite y filtros"
+                    },
+                    "photoUrls": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "https://supabase-url.com/photo1.jpg"
+                      ]
+                    },
+                    "price": {
+                      "type": "number",
+                      "example": 250
+                    },
+                    "orderId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
                 }
               }
             }
           },
           "400": {
-            "description": "Datos de entrada inválidos o faltantes"
+            "description": "Datos de entrada inválidos o faltantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "El tipo de servicio es requerido"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
-            "description": "No autorizado. Se requiere autenticación"
+            "description": "No autorizado. Se requiere autenticación JWT"
           },
           "403": {
-            "description": "No tiene permisos para realizar esta acción"
+            "description": "No tiene permisos para realizar esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error al procesar los archivos adjuntos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 422
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solo se permiten imágenes (jpg, jpeg, png, gif)"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unprocessable Entity"
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "description": "Error interno del servidor"
@@ -5445,14 +5883,14 @@
     },
     "/services/findAll": {
       "get": {
-        "description": "Obtiene una lista paginada de servicios. Puede filtrarse por estado y tipo.",
+        "description": "Obtiene una lista de servicios registrados en el sistema. Permite filtrar por estado y tipo de servicio. Los usuarios ADMIN pueden ver todos los servicios, mientras que los USER solo pueden ver los servicios de sus órdenes.",
         "operationId": "ServiceController_findAll",
         "parameters": [
           {
             "name": "status",
             "required": false,
             "in": "query",
-            "description": "Filtrar servicios por estado",
+            "description": "Filtrar servicios por estado actual",
             "schema": {
               "enum": [
                 "IN_PROGRESS",
@@ -5461,6 +5899,7 @@
                 "PAID",
                 "ANNULLATED"
               ],
+              "default": null,
               "type": "string"
             }
           },
@@ -5468,12 +5907,13 @@
             "name": "type",
             "required": false,
             "in": "query",
-            "description": "Filtrar servicios por tipo",
+            "description": "Filtrar servicios por tipo de servicio",
             "schema": {
               "enum": [
                 "REPAIR",
                 "WARRANTY"
               ],
+              "default": null,
               "type": "string"
             }
           }
@@ -5486,14 +5926,101 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Service"
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "123e4567-e89b-12d3-a456-426614174001"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "REPAIR",
+                          "WARRANTY"
+                        ],
+                        "example": "REPAIR"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "IN_PROGRESS",
+                          "COMPLETED",
+                          "DELIVERED",
+                          "PAID",
+                          "ANNULLATED"
+                        ],
+                        "example": "IN_PROGRESS"
+                      },
+                      "name": {
+                        "type": "string",
+                        "example": "Reparación completa del motor"
+                      },
+                      "description": {
+                        "type": "string",
+                        "example": "Revisión completa del motor"
+                      },
+                      "photoUrls": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "example": [
+                          "https://supabase-url.com/photo1.jpg"
+                        ]
+                      },
+                      "price": {
+                        "type": "number",
+                        "example": 250
+                      },
+                      "orderId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "123e4567-e89b-12d3-a456-426614174000"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de filtrado inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Valor de estado no válido"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
                   }
                 }
               }
             }
           },
           "401": {
-            "description": "No autorizado. Se requiere autenticación"
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "Acceso denegado. Se requieren permisos adecuados"
           },
           "500": {
             "description": "Error interno del servidor"
@@ -5512,36 +6039,147 @@
     },
     "/services/findOne/{id}": {
       "get": {
-        "description": "Obtiene los detalles completos de un servicio específico mediante su ID.",
+        "description": "Obtiene los detalles completos de un servicio específico mediante su ID. Los usuarios ADMIN pueden ver cualquier servicio, mientras que los USER solo pueden ver servicios de sus órdenes.",
         "operationId": "ServiceController_findOne",
         "parameters": [
           {
             "name": "id",
             "required": true,
             "in": "path",
-            "description": "ID único del servicio (UUID)",
+            "description": "ID único del servicio (UUID v4)",
             "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "example": "123e4567-e89b-12d3-a456-426614174001",
               "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Servicio encontrado",
+            "description": "Servicio encontrado exitosamente",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Service"
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174001"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "REPAIR",
+                        "WARRANTY"
+                      ],
+                      "example": "REPAIR"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "IN_PROGRESS",
+                        "COMPLETED",
+                        "DELIVERED",
+                        "PAID",
+                        "ANNULLATED"
+                      ],
+                      "example": "IN_PROGRESS"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "Reparación completa del motor"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Revisión completa del motor, cambio de aceite y filtros"
+                    },
+                    "photoUrls": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "https://supabase-url.com/photo1.jpg",
+                        "https://supabase-url.com/photo2.jpg"
+                      ]
+                    },
+                    "price": {
+                      "type": "number",
+                      "example": 250
+                    },
+                    "orderId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "example": "2023-12-01T10:30:00.000Z"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "example": "2023-12-01T15:45:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de ID inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Validation failed (uuid is expected)"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
                 }
               }
             }
           },
           "401": {
-            "description": "No autorizado. Se requiere autenticación"
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "Acceso denegado. Se requieren permisos adecuados"
           },
           "404": {
-            "description": "No se encontró ningún servicio con el ID proporcionado"
+            "description": "No se encontró ningún servicio con el ID proporcionado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Servicio con ID \"123e4567-e89b-12d3-a456-426614174001\" no encontrado"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "description": "Error interno del servidor"
@@ -5560,23 +6198,23 @@
     },
     "/services/update/{id}": {
       "patch": {
-        "description": "Actualiza los datos de un servicio existente. Solo actualiza los campos proporcionados.",
+        "description": "Actualiza los datos de un servicio existente. Solo actualiza los campos proporcionados en el body. Los usuarios ADMIN pueden actualizar cualquier servicio, mientras que los USER solo pueden actualizar servicios de sus órdenes.",
         "operationId": "ServiceController_update",
         "parameters": [
           {
             "name": "id",
             "required": true,
             "in": "path",
-            "description": "ID único del servicio a actualizar",
+            "description": "ID único del servicio a actualizar (UUID v4)",
             "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "example": "123e4567-e89b-12d3-a456-426614174001",
               "type": "string"
             }
           }
         ],
         "requestBody": {
           "required": true,
-          "description": "Campos del servicio a actualizar",
+          "description": "Campos del servicio a actualizar. Todos los campos son opcionales.",
           "content": {
             "application/json": {
               "schema": {
@@ -5584,15 +6222,26 @@
               },
               "examples": {
                 "actualizarEstado": {
-                  "summary": "Actualizar estado",
+                  "summary": "Actualizar estado del servicio",
+                  "description": "Cambia el estado del servicio a COMPLETED",
                   "value": {
                     "status": "COMPLETED"
                   }
                 },
                 "actualizarPrecio": {
-                  "summary": "Actualizar precio",
+                  "summary": "Actualizar precio del servicio",
+                  "description": "Modifica el costo del servicio",
                   "value": {
                     "price": 300
+                  }
+                },
+                "actualizarCompleto": {
+                  "summary": "Actualizar múltiples campos",
+                  "description": "Actualiza nombre, descripción y precio",
+                  "value": {
+                    "name": "Reparación completa del motor con filtros",
+                    "description": "Revisión completa del motor, cambio de aceite, filtros y bujías",
+                    "price": 350
                   }
                 }
               }
@@ -5605,19 +6254,145 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Service"
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174001"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "REPAIR",
+                        "WARRANTY"
+                      ],
+                      "example": "REPAIR"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "IN_PROGRESS",
+                        "COMPLETED",
+                        "DELIVERED",
+                        "PAID",
+                        "ANNULLATED"
+                      ],
+                      "example": "COMPLETED"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "Reparación completa del motor con filtros"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Revisión completa del motor, cambio de aceite, filtros y bujías"
+                    },
+                    "photoUrls": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "https://supabase-url.com/photo1.jpg"
+                      ]
+                    },
+                    "price": {
+                      "type": "number",
+                      "example": 350
+                    },
+                    "orderId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de entrada inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "El precio debe ser un número positivo"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
                 }
               }
             }
           },
           "401": {
-            "description": "No autorizado. Se requiere autenticación"
+            "description": "No autorizado. Se requiere autenticación JWT"
           },
           "403": {
-            "description": "No tiene permisos para realizar esta acción"
+            "description": "No tiene permisos para realizar esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "No tienes permisos para actualizar este servicio"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
           },
           "404": {
-            "description": "No se encontró el servicio especificado"
+            "description": "No se encontró el servicio especificado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Servicio con ID \"123e4567-e89b-12d3-a456-426614174001\" no encontrado"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "description": "Error interno del servidor"
@@ -5634,37 +6409,380 @@
         ]
       }
     },
+    "/services/status/{id}": {
+      "patch": {
+        "description": "Actualiza específicamente el estado de un servicio. Los usuarios ADMIN pueden cambiar el estado de cualquier servicio, mientras que los USER solo pueden cambiar el estado de servicios de sus órdenes. Este endpoint está diseñado para transiciones de estado simples y rápidas.",
+        "operationId": "ServiceController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del servicio a actualizar (UUID v4)",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174001",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Nuevo estado del servicio",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "IN_PROGRESS",
+                      "COMPLETED",
+                      "DELIVERED",
+                      "PAID",
+                      "ANNULLATED"
+                    ],
+                    "description": "Nuevo estado del servicio",
+                    "examples": {
+                      "en_progreso": {
+                        "value": "IN_PROGRESS",
+                        "summary": "En progreso"
+                      },
+                      "completado": {
+                        "value": "COMPLETED",
+                        "summary": "Completado"
+                      },
+                      "entregado": {
+                        "value": "DELIVERED",
+                        "summary": "Entregado"
+                      },
+                      "pagado": {
+                        "value": "PAID",
+                        "summary": "Pagado"
+                      },
+                      "anulado": {
+                        "value": "ANNULLATED",
+                        "summary": "Anulado"
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "cambiarACompletado": {
+                  "summary": "Marcar servicio como completado",
+                  "description": "Cambia el estado del servicio a COMPLETED cuando el trabajo ha finalizado",
+                  "value": {
+                    "status": "COMPLETED"
+                  }
+                },
+                "cambiarAEntregado": {
+                  "summary": "Marcar servicio como entregado",
+                  "description": "Cambia el estado del servicio a DELIVERED cuando se ha entregado al cliente",
+                  "value": {
+                    "status": "DELIVERED"
+                  }
+                },
+                "cambiarAPagado": {
+                  "summary": "Marcar servicio como pagado",
+                  "description": "Cambia el estado del servicio a PAID cuando se ha realizado el pago",
+                  "value": {
+                    "status": "PAID"
+                  }
+                },
+                "cambiarAnulado": {
+                  "summary": "Anular servicio",
+                  "description": "Cambia el estado del servicio a ANNULLATED cuando se cancela el servicio",
+                  "value": {
+                    "status": "ANNULLATED"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estado del servicio actualizado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174001"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "REPAIR",
+                        "WARRANTY"
+                      ],
+                      "example": "REPAIR"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "IN_PROGRESS",
+                        "COMPLETED",
+                        "DELIVERED",
+                        "PAID",
+                        "ANNULLATED"
+                      ],
+                      "example": "COMPLETED"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "Reparación completa del motor"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Revisión completa del motor, cambio de aceite y filtros"
+                    },
+                    "photoUrls": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "https://supabase-url.com/photo1.jpg"
+                      ]
+                    },
+                    "price": {
+                      "type": "number",
+                      "example": 250
+                    },
+                    "orderId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Estado no válido o datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Estado no válido. Los estados permitidos son: IN_PROGRESS, COMPLETED, DELIVERED, PAID, ANNULLATED"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "No tiene permisos para realizar esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "No tienes permisos para cambiar el estado de este servicio"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No se encontró el servicio especificado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Servicio con ID \"123e4567-e89b-12d3-a456-426614174001\" no encontrado"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Cambiar estado de un servicio",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
     "/services/remove/{id}": {
       "delete": {
-        "description": "Elimina permanentemente un servicio del sistema. Esta acción no se puede deshacer.",
+        "description": "Elimina permanentemente un servicio del sistema. Esta acción solo puede ser realizada por usuarios con rol ADMIN. La eliminación es irreversible y también eliminará las imágenes asociadas en Supabase Storage.",
         "operationId": "ServiceController_remove",
         "parameters": [
           {
             "name": "id",
             "required": true,
             "in": "path",
-            "description": "ID único del servicio a eliminar",
+            "description": "ID único del servicio a eliminar (UUID v4)",
             "schema": {
-              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "example": "123e4567-e89b-12d3-a456-426614174001",
               "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
-            "description": "Servicio eliminado exitosamente"
+            "description": "Servicio eliminado exitosamente. No retorna contenido en el body."
+          },
+          "400": {
+            "description": "Formato de ID inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Validation failed (uuid is expected)"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
-            "description": "No autorizado. Se requiere autenticación"
+            "description": "No autorizado. Se requiere autenticación JWT"
           },
           "403": {
-            "description": "No tiene permisos para realizar esta acción"
+            "description": "No tiene permisos para realizar esta acción. Solo ADMIN puede eliminar servicios.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
           },
           "404": {
-            "description": "No se encontró el servicio especificado"
+            "description": "No se encontró el servicio especificado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Servicio con ID \"123e4567-e89b-12d3-a456-426614174001\" no encontrado"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
           },
           "409": {
-            "description": "No se puede eliminar el servicio porque tiene registros asociados"
+            "description": "No se puede eliminar el servicio porque tiene registros asociados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "No se puede eliminar el servicio porque está asociado a una orden activa"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "description": "Error interno del servidor"
@@ -5676,6 +6794,405 @@
           }
         ],
         "summary": "Eliminar un servicio",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
+    "/services/{id}/pending-payment": {
+      "get": {
+        "description": "Calcula el monto restante por pagar de un servicio específico. Revisa todos los pagos registrados para el servicio y resta el total del precio del servicio. Disponible para usuarios ADMIN y USER.",
+        "operationId": "ServiceController_getPendingPayment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID único del servicio (UUID v4)",
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Monto pendiente calculado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "serviceId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "123e4567-e89b-12d3-a456-426614174001"
+                    },
+                    "serviceName": {
+                      "type": "string",
+                      "example": "Reparación de motor"
+                    },
+                    "servicePrice": {
+                      "type": "number",
+                      "example": 350
+                    },
+                    "totalPaid": {
+                      "type": "number",
+                      "example": 120
+                    },
+                    "pendingAmount": {
+                      "type": "number",
+                      "example": 230
+                    },
+                    "isFullyPaid": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "paymentBreakdown": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "pay-123-456"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "EFECTIVO",
+                              "TARJETA",
+                              "TRANSFERENCIA",
+                              "YAPE",
+                              "PLIN",
+                              "OTRO"
+                            ],
+                            "example": "EFECTIVO"
+                          },
+                          "amount": {
+                            "type": "number",
+                            "example": 120
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "example": "2024-01-15T10:30:00Z"
+                          }
+                        }
+                      },
+                      "description": "Lista de pagos realizados para este servicio"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de ID inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Validation failed (uuid is expected)"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "No tiene permisos para realizar esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "No tienes permisos para ver el estado de pago de este servicio"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No se encontró el servicio especificado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Servicio con ID \"123e4567-e89b-12d3-a456-426614174001\" no encontrado"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener monto pendiente de pago de un servicio",
+        "tags": [
+          "Servicios"
+        ]
+      }
+    },
+    "/services/findAllWithClients": {
+      "get": {
+        "description": "Obtiene una lista de servicios con información adicional de clientes y órdenes. Permite filtrar por estado, tipo de servicio y tienda. Los usuarios ADMIN pueden ver todos los servicios, mientras que los USER solo pueden ver los servicios de sus órdenes.",
+        "operationId": "ServiceController_findAllWithClients",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar servicios por estado actual",
+            "schema": {
+              "enum": [
+                "IN_PROGRESS",
+                "COMPLETED",
+                "DELIVERED",
+                "PAID",
+                "ANNULLATED"
+              ],
+              "default": null,
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar servicios por tipo de servicio",
+            "schema": {
+              "enum": [
+                "REPAIR",
+                "WARRANTY"
+              ],
+              "default": null,
+              "type": "string"
+            }
+          },
+          {
+            "name": "storeId",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar servicios por tienda específica",
+            "schema": {
+              "format": "uuid",
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de servicios con clientes obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "123e4567-e89b-12d3-a456-426614174001"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "REPAIR",
+                          "WARRANTY"
+                        ],
+                        "example": "REPAIR"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "IN_PROGRESS",
+                          "COMPLETED",
+                          "DELIVERED",
+                          "PAID",
+                          "ANNULLATED"
+                        ],
+                        "example": "IN_PROGRESS"
+                      },
+                      "name": {
+                        "type": "string",
+                        "example": "Reparación completa del motor"
+                      },
+                      "description": {
+                        "type": "string",
+                        "example": "Revisión completa del motor"
+                      },
+                      "photoUrls": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "example": [
+                          "https://supabase-url.com/photo1.jpg"
+                        ]
+                      },
+                      "price": {
+                        "type": "number",
+                        "example": 250
+                      },
+                      "orderId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "123e4567-e89b-12d3-a456-426614174000"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "client": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "client-123"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "Juan Pérez"
+                          },
+                          "email": {
+                            "type": "string",
+                            "example": "juan@ejemplo.com"
+                          },
+                          "phone": {
+                            "type": "string",
+                            "example": "+1234567890"
+                          },
+                          "address": {
+                            "type": "string",
+                            "example": "Av. Principal 123"
+                          }
+                        }
+                      },
+                      "order": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "123e4567-e89b-12d3-a456-426614174000"
+                          },
+                          "clientId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "client-123"
+                          },
+                          "totalAmount": {
+                            "type": "number",
+                            "example": 500
+                          },
+                          "status": {
+                            "type": "string",
+                            "example": "PENDING"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de filtrado inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Valor de estado no válido"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "Acceso denegado. Se requieren permisos adecuados"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener servicios con información de clientes",
         "tags": [
           "Servicios"
         ]
@@ -7071,6 +8588,346 @@
           "Cash Sessions"
         ]
       }
+    },
+    "/receipts/service/{orderId}": {
+      "get": {
+        "description": "Genera un recibo con toda la información necesaria para el PDF de una venta de servicios",
+        "operationId": "ReceiptController_getServiceReceipt",
+        "parameters": [
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "description": "ID de la orden que contiene servicios",
+            "schema": {
+              "format": "uuid",
+              "example": "123e4567-e89b-12d3-a456-426614174001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recibo de servicios generado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "receipt": {
+                      "type": "object",
+                      "properties": {
+                        "businessName": {
+                          "type": "string",
+                          "example": "Tecnicentro JR"
+                        },
+                        "address": {
+                          "type": "string",
+                          "example": "Av. Principal 123"
+                        },
+                        "phone": {
+                          "type": "string",
+                          "example": "+1234567890"
+                        },
+                        "currentDate": {
+                          "type": "string",
+                          "example": "01/12/2025"
+                        },
+                        "currentTime": {
+                          "type": "string",
+                          "example": "15:30:45"
+                        },
+                        "orderNumber": {
+                          "type": "string",
+                          "example": "001-20251201-CIW0Y8NQ"
+                        },
+                        "sellerName": {
+                          "type": "string",
+                          "example": "Juan Vendedor"
+                        },
+                        "clientName": {
+                          "type": "string",
+                          "example": "Carlos Cliente"
+                        },
+                        "clientDni": {
+                          "type": "string",
+                          "example": "12345678"
+                        },
+                        "clientPhone": {
+                          "type": "string",
+                          "example": "987654321"
+                        },
+                        "paidAmount": {
+                          "type": "number",
+                          "example": 350
+                        }
+                      }
+                    },
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "service-uuid"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "Reparación de teclado"
+                          },
+                          "price": {
+                            "type": "number",
+                            "example": 350
+                          },
+                          "payments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "example": "EFECTIVO"
+                                },
+                                "amount": {
+                                  "type": "number",
+                                  "example": 10
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "Acceso denegado. Se requieren permisos adecuados"
+          },
+          "404": {
+            "description": "Orden no encontrada o no contiene servicios",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Orden no encontrada"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener recibo de venta de servicios",
+        "tags": [
+          "Receipts"
+        ]
+      }
+    },
+    "/receipts/product/{orderId}": {
+      "get": {
+        "description": "Genera un recibo con toda la información necesaria para el PDF de una venta de productos",
+        "operationId": "ReceiptController_getProductReceipt",
+        "parameters": [
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "description": "ID de la orden que contiene productos",
+            "schema": {
+              "format": "uuid",
+              "example": "123e4567-e89b-12d3-a456-426614174001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recibo de productos generado exitosamente"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "Acceso denegado. Se requieren permisos adecuados"
+          },
+          "404": {
+            "description": "Orden no encontrada o no contiene productos"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener recibo de venta de productos",
+        "tags": [
+          "Receipts"
+        ]
+      }
+    },
+    "/receipts/advance/{serviceId}": {
+      "get": {
+        "description": "Genera un recibo para un adelanto de pago de servicio",
+        "operationId": "ReceiptController_getAdvanceReceipt",
+        "parameters": [
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "path",
+            "description": "ID del servicio con adelanto",
+            "schema": {
+              "format": "uuid",
+              "example": "123e4567-e89b-12d3-a456-426614174001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recibo de adelanto generado exitosamente"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "Acceso denegado. Se requieren permisos adecuados"
+          },
+          "404": {
+            "description": "Servicio no encontrado"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener recibo de adelanto de servicio",
+        "tags": [
+          "Receipts"
+        ]
+      }
+    },
+    "/receipts/completion/{serviceId}": {
+      "get": {
+        "description": "Genera un recibo para un servicio completado",
+        "operationId": "ReceiptController_getCompletionReceipt",
+        "parameters": [
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "path",
+            "description": "ID del servicio completado",
+            "schema": {
+              "format": "uuid",
+              "example": "123e4567-e89b-12d3-a456-426614174001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recibo de finalización generado exitosamente"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "Acceso denegado. Se requieren permisos adecuados"
+          },
+          "404": {
+            "description": "Servicio no encontrado o no está completado"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener recibo de servicio finalizado",
+        "tags": [
+          "Receipts"
+        ]
+      }
+    },
+    "/receipts/cash-close/{sessionId}": {
+      "get": {
+        "description": "Genera un recibo para el cierre de una sesión de caja",
+        "operationId": "ReceiptController_getCashCloseReceipt",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "ID de la sesión de caja cerrada",
+            "schema": {
+              "format": "uuid",
+              "example": "123e4567-e89b-12d3-a456-426614174001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recibo de cierre de caja generado exitosamente"
+          },
+          "401": {
+            "description": "No autorizado. Se requiere autenticación JWT"
+          },
+          "403": {
+            "description": "Acceso denegado. Se requieren permisos adecuados"
+          },
+          "404": {
+            "description": "Sesión de caja no encontrada o no está cerrada"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        },
+        "security": [
+          {
+            "JWT": []
+          }
+        ],
+        "summary": "Obtener recibo de cierre de caja",
+        "tags": [
+          "Receipts"
+        ]
+      }
     }
   },
   "info": {
@@ -7314,6 +9171,10 @@
         }
       },
       "CreateOrderDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CompleteOrderDto": {
         "type": "object",
         "properties": {}
       },

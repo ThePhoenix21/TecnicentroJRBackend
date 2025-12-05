@@ -210,7 +210,7 @@ export class OrderService {
       if (services && services.length > 0) {
         servicesData = services.map(service => ({
           name: service.name,
-          description: service.description || 'Sin descripción',
+          description: service.description || '',
           price: service.price,
           type: service.type,
           photoUrls: service.photoUrls || [],
@@ -385,97 +385,8 @@ export class OrderService {
         }
       }
 
-      // Obtener la orden completa
-      const completeOrder = await this.prisma.order.findUnique({
-        where: { id: order.id },
-        include: {
-          orderProducts: {
-            include: {
-              product: {
-                include: {
-                  product: true
-                }
-              }
-            }
-          },
-          services: true,
-          client: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          cashSession: {
-            include: {
-              Store: true
-            }
-          }
-        }
-      });
-
-      // Validar que la orden exista
-      if (!completeOrder) {
-        throw new NotFoundException('Orden no encontrada después de crear');
-      }
-
-      // Obtener pagos para orderProducts
-      const orderProductIds = completeOrder.orderProducts.map(op => op.id);
-      const orderProductPayments = await this.prisma.payment.findMany({
-        where: {
-          sourceType: 'ORDERPRODUCT',
-          sourceId: { in: orderProductIds }
-        }
-      });
-
-      // Obtener pagos para services
-      const serviceIds = completeOrder.services.map(s => s.id);
-      const servicePayments = await this.prisma.payment.findMany({
-        where: {
-          sourceType: 'SERVICE',
-          sourceId: { in: serviceIds }
-        }
-      });
-
-      // Agregar pagos a cada orderProduct
-      const orderProductsWithPayments = completeOrder.orderProducts.map(op => ({
-        ...op,
-        payments: orderProductPayments.filter(p => p.sourceId === op.id)
-      }));
-
-      // Agregar pagos a cada service
-      const servicesWithPayments = completeOrder.services.map(service => ({
-        ...service,
-        payments: servicePayments.filter(p => p.sourceId === service.id)
-      }));
-
-      // Devolver la orden con pagos incluidos y toda la información para PDF
-      const orderWithPayments = {
-        ...completeOrder,
-        orderProducts: orderProductsWithPayments,
-        services: servicesWithPayments
-      };
-
-      // Agregar información adicional para PDF
-      const pdfInfo = {
-        businessName: 'Tecnicentro JR',
-        address: completeOrder.cashSession?.Store?.address || 'Dirección no disponible',
-        phone: completeOrder.cashSession?.Store?.phone || 'Teléfono no disponible',
-        currentDate: new Date(completeOrder.createdAt).toLocaleDateString('es-PE'),
-        currentTime: new Date(completeOrder.createdAt).toLocaleTimeString('es-PE'),
-        orderNumber: completeOrder.orderNumber,
-        sellerName: completeOrder.user?.name || 'Vendedor no identificado',
-        clientName: completeOrder.client?.name || 'Cliente no identificado',
-        clientDni: completeOrder.client?.dni || 'N/A',
-        clientPhone: completeOrder.client?.phone || 'N/A',
-        paidAmount: [...orderProductPayments, ...servicePayments].reduce((sum, payment) => sum + payment.amount, 0)
-      };
-
-      return {
-        ...orderWithPayments,
-        pdfInfo
-      } as unknown as Order;
+      // Usar el método reutilizable para obtener la orden completa con detalles
+      return this.getOrderWithDetails(order.id);
     });
   }
 
@@ -765,6 +676,101 @@ export class OrderService {
       // 8. Devolver la orden actualizada
       return updatedOrder as unknown as Order;
     });
+  }
+
+  // Método auxiliar para obtener la orden con todos los detalles necesarios para la respuesta (PDF, pagos, etc.)
+  async getOrderWithDetails(orderId: string): Promise<Order> {
+    // Obtener la orden completa
+    const completeOrder = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        orderProducts: {
+          include: {
+            product: {
+              include: {
+                product: true
+              }
+            }
+          }
+        },
+        services: true,
+        client: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        cashSession: {
+          include: {
+            Store: true
+          }
+        }
+      }
+    });
+
+    // Validar que la orden exista
+    if (!completeOrder) {
+      throw new NotFoundException('Orden no encontrada');
+    }
+
+    // Obtener pagos para orderProducts
+    const orderProductIds = completeOrder.orderProducts.map(op => op.id);
+    const orderProductPayments = await this.prisma.payment.findMany({
+      where: {
+        sourceType: 'ORDERPRODUCT',
+        sourceId: { in: orderProductIds }
+      }
+    });
+
+    // Obtener pagos para services
+    const serviceIds = completeOrder.services.map(s => s.id);
+    const servicePayments = await this.prisma.payment.findMany({
+      where: {
+        sourceType: 'SERVICE',
+        sourceId: { in: serviceIds }
+      }
+    });
+
+    // Agregar pagos a cada orderProduct
+    const orderProductsWithPayments = completeOrder.orderProducts.map(op => ({
+      ...op,
+      payments: orderProductPayments.filter(p => p.sourceId === op.id)
+    }));
+
+    // Agregar pagos a cada service
+    const servicesWithPayments = completeOrder.services.map(service => ({
+      ...service,
+      payments: servicePayments.filter(p => p.sourceId === service.id)
+    }));
+
+    // Devolver la orden con pagos incluidos y toda la información para PDF
+    const orderWithPayments = {
+      ...completeOrder,
+      orderProducts: orderProductsWithPayments,
+      services: servicesWithPayments
+    };
+
+    // Agregar información adicional para PDF
+    const pdfInfo = {
+      businessName: 'Tecnicentro JR',
+      address: completeOrder.cashSession?.Store?.address || 'Dirección no disponible',
+      phone: completeOrder.cashSession?.Store?.phone || 'Teléfono no disponible',
+      currentDate: new Date(completeOrder.createdAt).toLocaleDateString('es-PE'),
+      currentTime: new Date(completeOrder.createdAt).toLocaleTimeString('es-PE'),
+      orderNumber: completeOrder.orderNumber,
+      sellerName: completeOrder.user?.name || 'Vendedor no identificado',
+      clientName: completeOrder.client?.name || 'Cliente no identificado',
+      clientDni: completeOrder.client?.dni || 'N/A',
+      clientPhone: completeOrder.client?.phone || 'N/A',
+      paidAmount: [...orderProductPayments, ...servicePayments].reduce((sum, payment) => sum + payment.amount, 0)
+    };
+
+    return {
+      ...orderWithPayments,
+      pdfInfo
+    } as unknown as Order;
   }
 
   async updateStatus(
