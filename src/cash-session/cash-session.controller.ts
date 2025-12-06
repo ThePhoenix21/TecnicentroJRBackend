@@ -335,19 +335,6 @@ export class CashSessionController {
       type: 'object',
       properties: {
         message: { type: 'string', example: 'Sesión de caja cerrada exitosamente' },
-        cashSession: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            openedAt: { type: 'string' },
-            closedAt: { type: 'string' },
-            openedById: { type: 'string' },
-            closedById: { type: 'string' },
-            status: { type: 'string', example: 'CLOSED' },
-            openingAmount: { type: 'number' },
-            closingAmount: { type: 'number' }
-          }
-        },
         cashBalance: {
           type: 'object',
           properties: {
@@ -357,17 +344,47 @@ export class CashSessionController {
             balanceActual: { type: 'number' }
           }
         },
-        movements: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              amount: { type: 'number' },
-              description: { type: 'string' },
-              clientName: { type: 'string' },
-              createdAt: { type: 'string' }
+        closingReport: {
+          type: 'object',
+          properties: {
+            openedAt: { type: 'string' },
+            closedAt: { type: 'string' },
+            openedBy: { type: 'string' },
+            closedBy: { type: 'string' },
+            openingAmount: { type: 'number' },
+            closingAmount: { type: 'number' },
+            storeName: { type: 'string' },
+            storeAddress: { type: 'string' },
+            storePhone: { type: 'string' },
+            printedAt: { type: 'string' },
+            orders: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  orderNumber: { type: 'string' },
+                  quantity: { type: 'number' },
+                  description: { type: 'string' },
+                  paymentMethod: { type: 'string' },
+                  price: { type: 'number' },
+                  status: { type: 'string' }
+                }
+              }
+            },
+            paymentSummary: {
+              type: 'object',
+              additionalProperties: { type: 'number' }
+            },
+            expenses: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  description: { type: 'string' },
+                  amount: { type: 'number' },
+                  time: { type: 'string' }
+                }
+              }
             }
           }
         }
@@ -423,13 +440,20 @@ export class CashSessionController {
     const closingAmount = cashBalance.balance.balanceActual;
 
     // 7. Cerrar la sesión de caja
-    const updatedSession = await this.cashSessionService.close(id, user.id, closingAmount);
+    const updatedSession = await this.cashSessionService.close(
+      id, 
+      user.id, 
+      closingAmount, 
+      closeCashSessionDto.declaredAmount
+    );
+
+    // 8. Obtener reporte de cierre
+    const closingReport = await this.cashSessionService.getClosingReport(id);
 
     return {
       message: 'Sesión de caja cerrada exitosamente',
-      cashSession: updatedSession,
       cashBalance: cashBalance.balance,
-      movements: cashBalance.movements
+      closingReport,
     };
   }
 }

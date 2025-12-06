@@ -294,8 +294,8 @@ export class CashSessionService {
   }
 
   // Método para cerrar una sesión de caja
-  async close(id: string, closedById: string, closingAmount: number) {
-    this.logger.log(`Iniciando cierre de sesión de caja: ${id} - Usuario: ${closedById} - Monto de cierre: ${closingAmount}`);
+  async close(id: string, closedById: string, closingAmount: number, declaredAmount: number) {
+    this.logger.log(`Iniciando cierre de sesión de caja: ${id} - Usuario: ${closedById} - Monto de cierre: ${closingAmount} - Monto declarado: ${declaredAmount}`);
 
     try {
       // Actualizar la sesión de caja con los datos de cierre
@@ -305,7 +305,8 @@ export class CashSessionService {
           status: SessionStatus.CLOSED,
           closedAt: new Date(),
           closedById: closedById,
-          closingAmount: closingAmount
+          closingAmount: closingAmount,
+          declaredAmount: declaredAmount,
         },
         include: {
           Store: {
@@ -335,5 +336,188 @@ export class CashSessionService {
       this.logger.error(`Error al cerrar sesión de caja: ${error.message}`, error.stack);
       throw new BadRequestException('Error al cerrar la sesión de caja');
     }
+  }
+
+  async getClosingReport(sessionId: string) {
+    // 1. Obtener sesión con datos básicos
+    const session = await this.prisma.cashSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        Store: true,
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Sesión de caja no encontrada');
+    }
+
+    // 2. Obtener usuarios (abrió y cerró)
+    const openedByUser = await this.prisma.user.findUnique({
+      where: { id: session.openedById },
+      select: { name: true },
+    });
+
+    const closedByUser = session.closedById
+      ? await this.prisma.user.findUnique({
+          where: { id: session.closedById },
+          select: { name: true },
+        })
+      : null;
+
+    // 3. Obtener órdenes y sus items
+    const orders = await this.prisma.order.findMany({
+      where: { cashSessionsId: sessionId },
+      include: {
+        orderProducts: {
+          include: {
+            product: {
+              include: {
+                product: true,
+              },
+            },
+          },
+        },
+        services: {
+          include: {
+            order: true,
+          },
+        },
+      },
+    });
+
+    // 4. Obtener IDs para buscar pagos
+    const orderProductIds = orders.flatMap((o) =>
+      o.orderProducts.map((op) => op.id),
+    );
+    const serviceIds = orders.flatMap((o) => o.services.map((s) => s.id));
+
+    // Buscar pagos relacionados
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        OR: [
+          {
+            sourceId: { in: orderProductIds },
+            sourceType: 'ORDERPRODUCT',
+          },
+          {
+            sourceId: { in: serviceIds },
+            sourceType: 'SERVICE',
+          },
+        ],
+      },
+    });
+
+    // Agrupar pagos por sourceId
+    const paymentsMap = new Map<string, any[]>();
+    payments.forEach((p) => {
+      if (!paymentsMap.has(p.sourceId)) {
+        paymentsMap.set(p.sourceId, []);
+      }
+      paymentsMap.get(p.sourceId)!.push(p);
+    });
+
+    // 5. Construir lista de items
+    const items: any[] = [];
+
+    for (const order of orders) {
+      const orderNumberShort = order.orderNumber.slice(-4);
+
+      // Procesar Productos
+      for (const op of order.orderProducts) {
+        const opPayments = paymentsMap.get(op.id) || [];
+        const paymentMethods = opPayments.length > 0
+          ? [...new Set(opPayments.map((p) => p.type))].join(', ')
+          : 'SIN PAGO';
+
+        // Estado orden
+        let statusShort = 'PEN';
+        if (order.status === 'COMPLETED') statusShort = 'COM';
+        if (order.status === 'CANCELLED') statusShort = 'ANU';
+
+        items.push({
+          orderNumber: orderNumberShort,
+          quantity: op.quantity,
+          description: op.product.product.name,
+          paymentMethod: paymentMethods,
+          price: op.price * op.quantity,
+          status: statusShort,
+        });
+      }
+
+      // Procesar Servicios
+      for (const svc of order.services) {
+        const svcPayments = paymentsMap.get(svc.id) || [];
+        const paymentMethods = svcPayments.length > 0
+          ? [...new Set(svcPayments.map((p) => p.type))].join(', ')
+          : 'SIN PAGO';
+
+        // Para servicios, SIEMPRE mostrar solo la suma de los pagos de esta sesión
+        const price = svcPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        let statusShort = 'PEN';
+        if (
+          svc.status === 'COMPLETED' ||
+          svc.status === 'DELIVERED' ||
+          svc.status === 'PAID'
+        ) {
+          statusShort = 'COM';
+        } else if (svc.status === 'ANNULLATED') {
+          statusShort = 'ANU';
+        }
+
+        items.push({
+          orderNumber: orderNumberShort,
+          quantity: 1, // Servicios siempre 1
+          description: svc.name,
+          paymentMethod: paymentMethods,
+          price: price,
+          status: statusShort,
+        });
+      }
+    }
+
+    // 6. Calcular Resumen por Método de Pago
+    const paymentSummary: Record<string, number> = {};
+    payments.forEach((p) => {
+      const type = p.type;
+      const amount = p.amount;
+      paymentSummary[type] = (paymentSummary[type] || 0) + amount;
+    });
+
+    // 7. Obtener Gastos (Expenses)
+    const expenses = await this.prisma.cashMovement.findMany({
+      where: {
+        CashSessionId: sessionId, // Nota: Schema usa CashSessionId
+        type: 'EXPENSE',
+      },
+      select: {
+        id: true,
+        amount: true,
+        description: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      openedAt: session.openedAt,
+      closedAt: session.closedAt || new Date(),
+      openedBy: openedByUser?.name || 'Desconocido',
+      closedBy: closedByUser?.name || 'Desconocido',
+      openingAmount: session.openingAmount,
+      closingAmount: session.closingAmount,
+      declaredAmount: session.declaredAmount,
+      difference: (session.declaredAmount || 0) - (session.closingAmount || 0),
+      storeName: session.Store.name,
+      storeAddress: session.Store.address,
+      storePhone: session.Store.phone,
+      printedAt: new Date(),
+      orders: items,
+      paymentSummary,
+      expenses: expenses.map((e) => ({
+        description: e.description,
+        amount: e.amount,
+        time: e.createdAt,
+      })),
+    };
   }
 }

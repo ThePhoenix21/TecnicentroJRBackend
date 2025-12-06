@@ -17,4 +17,12 @@ export class CloseCashSessionDto {
   @IsString()
   @IsNotEmpty()
   password: string;
+
+  @ApiProperty({
+    example: 1500.50,
+    description: 'Monto declarado en caja al momento del cierre (efectivo físico)',
+    required: true,
+  })
+  @IsNotEmpty()
+  declaredAmount: number;
 }

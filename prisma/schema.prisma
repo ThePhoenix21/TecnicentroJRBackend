@@ -181,6 +181,7 @@ model CashSession {
   closedById      String?
   status          SessionStatus @default(OPEN)
   openingAmount   Float
+  declaredAmount  Float    @default(0)
   closingAmount   Float?
 
   StoreId         String
