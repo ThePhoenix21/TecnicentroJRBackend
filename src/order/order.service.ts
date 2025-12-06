@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompleteOrderDto } from './dto/complete-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, PrismaClient, SessionStatus, PaymentType, MovementType, PaymentSourceType, ServiceStatus } from '@prisma/client';
+import { Prisma, SaleStatus, PrismaClient, SessionStatus, PaymentType, MovementType, PaymentSourceType, ServiceStatus, InventoryMovementType } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
 import { PaymentService } from '../payment/payment.service';
@@ -260,18 +260,33 @@ export class OrderService {
         },
       });
 
-      // 7. Actualizar el stock de los productos en tienda
+      // 7. Actualizar el stock de los productos en tienda y registrar movimientos
       await Promise.all(
         existingStoreProducts.map(storeProduct => {
           const productData = productMap.get(storeProduct.id);
           if (!productData) return null;
           
-          return prisma.storeProduct.update({
+          // Actualizar stock
+          const updateStock = prisma.storeProduct.update({
             where: { id: storeProduct.id },
             data: { 
               stock: storeProduct.stock - productData.quantity
             },
           });
+
+          // Crear movimiento de inventario
+          const createMovement = prisma.inventoryMovement.create({
+            data: {
+              type: InventoryMovementType.SALE,
+              quantity: -productData.quantity, // Cantidad negativa para salida
+              description: "Movimiento por venta automática",
+              storeProductId: storeProduct.id,
+              userId: userId,
+              orderId: order.id
+            }
+          });
+
+          return Promise.all([updateStock, createMovement]);
         }).filter(Boolean) // Filtrar posibles valores nulos
       );
 

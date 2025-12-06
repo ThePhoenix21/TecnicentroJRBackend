@@ -14,6 +14,7 @@ import { StoreModule } from './store/store.module';
 import { CashSessionModule } from './cash-session/cash-session.module';
 import { CashMovementModule } from './cash-movement/cash-movement.module';
 import { ReceiptModule } from './receipt/receipt.module';
+import { InventoryCountModule } from './inventory-count/inventory-count.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ReceiptModule } from './receipt/receipt.module';
     CashSessionModule,
     CashMovementModule,
     ReceiptModule,
+    InventoryCountModule,
   ],
   controllers: [],
   providers: [],

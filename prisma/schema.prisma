@@ -51,6 +51,9 @@ model User {
   storeUsers                StoreUsers[]
   stores                    Store[]
   storeProducts             StoreProduct[]
+  inventoryMovements        InventoryMovement[]
+  inventorySessions         InventoryCountSession[]
+
   // auditoría de anulaciones
   ordersCanceled Order[] @relation("OrderCanceledBy")
 }
@@ -88,6 +91,8 @@ model StoreProduct {
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   orderProducts OrderProduct[]
+  inventoryMovements     InventoryMovement[]
+  inventoryCountItems    InventoryCountItem[]
 }
 
 model OrderProduct {
@@ -137,6 +142,7 @@ model Order {
   cashSession    CashSession?    @relation(fields: [cashSessionsId], references: [id])
 
   cashMovements CashMovement[]
+  inventoryMovements InventoryMovement[]
   orderProducts OrderProduct[]
   services      Service[]
 
@@ -225,9 +231,10 @@ model Store {
   createdById String?
   createdBy   User? @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
-  cashSessions        CashSession[]
-  storeUsers          StoreUsers[]
-  storeProducts       StoreProduct[]
+  cashSessions            CashSession[]
+  storeUsers              StoreUsers[]
+  storeProducts           StoreProduct[]
+  inventorySessions       InventoryCountSession[]
 }
 
 model StoreUsers {
@@ -238,6 +245,63 @@ model StoreUsers {
 
   userId    String
   user      User        @relation(fields: [userId], references: [id])
+}
+
+//===================SECCIÓN DE INVENTARIO===================
+
+model InventoryMovement {
+  id          String      @id @default(uuid())
+  type        InventoryMovementType
+  quantity    Int
+  description String?
+  date        DateTime    @default(now())
+
+  // relación con StoreProduct (producto en una tienda específica)
+  storeProductId String
+  storeProduct   StoreProduct @relation(fields: [storeProductId], references: [id])
+
+  // usuario que realizó el movimiento
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  orderId     String?
+  order       Order?      @relation(fields: [orderId], references: [id])
+}
+
+model InventoryCountSession {
+  id          String      @id @default(uuid())
+  name        String
+  createdAt   DateTime    @default(now())
+  finalizedAt DateTime?
+  storeId     String
+  store       Store       @relation(fields: [storeId], references: [id])
+
+  createdById String
+  createdBy   User @relation(fields: [createdById], references: [id])
+
+  items       InventoryCountItem[]
+}
+
+model InventoryCountItem {
+  id                 String   @id @default(uuid())
+  expectedStock      Int      // lo que el sistema dice que deberia haber
+  physicalStock      Int      // lo que el trabajador conto
+  difference         Int      // physical - expected
+  createdAt          DateTime @default(now())
+
+  sessionId          String
+  session            InventoryCountSession @relation(fields: [sessionId], references: [id])
+
+  storeProductId     String
+  storeProduct       StoreProduct @relation(fields: [storeProductId], references: [id])
+}
+
+enum InventoryMovementType {
+  INCOMING      // Compras / Ingresos
+  OUTGOING      // Mermas / Salidas manuales
+  SALE          // Salida por venta automática
+  RETURN        // Devolución de cliente
+  ADJUST        // Ajuste por inventario físico
 }
 
 enum PaymentType {
