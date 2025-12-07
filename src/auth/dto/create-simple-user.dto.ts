@@ -54,4 +54,13 @@ export class CreateSimpleUserDto {
   @IsNotEmpty({ message: 'El ID de la tienda es obligatorio' })
   @IsUUID('4', { message: 'El ID de la tienda debe ser un UUID válido' })
   storeId: string;
+
+  @ApiProperty({
+    example: ['VIEW_INVENTORY', 'CREATE_ORDER'],
+    description: 'Lista de permisos granulares para el usuario',
+    required: false,
+    type: [String]
+  })
+  @IsOptional()
+  permissions?: string[];
 }

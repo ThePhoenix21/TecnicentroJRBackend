@@ -68,4 +68,13 @@ export class CreateUserRequestDto {
   @IsOptional()
   @IsString()
   timezone?: string;
+
+  @ApiProperty({
+    example: ['VIEW_ADMIN_DASHBOARD', 'MANAGE_USERS'],
+    description: 'Lista de permisos granulares para el usuario',
+    required: false,
+    type: [String]
+  })
+  @IsOptional()
+  permissions?: string[];
 }

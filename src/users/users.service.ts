@@ -35,7 +35,7 @@ export class UsersService {
      *    - verifyTokenExpires: fecha de expiración del token (24 horas)
      * 6. Retorna el usuario recién creado.
      */
-    async createUser(email: string, password: string, name: string, username: string, storeId: string, phone?: string, birthdate?: Date, language?: string, timezone?: string) {
+    async createUser(email: string, password: string, name: string, username: string, storeId: string, phone?: string, birthdate?: Date, language?: string, timezone?: string, permissions?: string[]) {
         return this.create({
             email,
             password,
@@ -46,7 +46,8 @@ export class UsersService {
             language,
             timezone,
             role: Role.USER,
-            storeId
+            storeId,
+            permissions
         });
     }
 
@@ -61,9 +62,10 @@ export class UsersService {
         timezone?: string;
         role?: Role;
         verified?: boolean;
-        storeId: string; // Ahora es obligatorio
+        storeId: string;
+        permissions?: string[]; // Nuevos permisos
     }) {
-        const { email, password, name, username, phone, birthdate, language, timezone, role, verified = true, storeId } = userData;
+        const { email, password, name, username, phone, birthdate, language, timezone, role, verified = true, storeId, permissions = [] } = userData;
         
         this.logger.log(`Iniciando creación de usuario: ${username || email}`);
 
@@ -142,6 +144,7 @@ export class UsersService {
                     verifyToken,
                     verifyTokenExpires,
                     verified,
+                    permissions: permissions || [], // Guardar permisos
                     lastLoginAt: new Date(),
                 },
                 select: {
@@ -151,6 +154,7 @@ export class UsersService {
                     username: true,
                     phone: true,
                     role: true,
+                    permissions: true, // Retornar permisos
                     createdAt: true,
                     updatedAt: true,
                     lastLoginAt: true,

@@ -300,6 +300,7 @@ export class UsersController {
       timezone: 'UTC',
       verified: true, // Usuario verificado por defecto
       storeId: createUserDto.storeId, // Agregar el storeId (obligatorio)
+      permissions: createUserDto.permissions || [] // Pasar permisos
     };
 
     this.logger.debug(`Datos del usuario a crear: ${JSON.stringify({...userData, password: '***'})}`);

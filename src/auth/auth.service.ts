@@ -208,7 +208,8 @@ export class AuthService {
     phone: string = 'sin_telefono',
     birthdate?: Date,
     language: string = 'es',
-    timezone: string = 'UTC'
+    timezone: string = 'UTC',
+    permissions: string[] = [] // Nuevo parámetro opcional
   ) {
     // Verificar si el correo ya existe
     const existingUser = await this.prisma.user.findUnique({
@@ -258,6 +259,7 @@ export class AuthService {
         verifyTokenExpires,
         role: Role.ADMIN,
         status: 'ACTIVE' as const,
+        permissions: permissions // Guardar permisos
       };
 
       const newUser = await this.prisma.user.create({ data: userData });
@@ -426,6 +428,7 @@ export class AuthService {
       email: user.email, 
       sub: user.id,
       role: user.role,
+      permissions: user.permissions || [], // Incluir permisos en el token
       stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
     };
 
@@ -475,6 +478,7 @@ export class AuthService {
         name: user.name,
         username: user.username,
         role: user.role,
+        permissions: user.permissions || [], // Incluir permisos en la respuesta
         verified: user.verified,
         stores: stores // Incluir tiendas completas en la respuesta
       }

@@ -30,6 +30,7 @@ model User {
   username                  String         @unique @default("default_username")
   status                    UserStatus     @default(ACTIVE)
   role                      Role           @default(USER)
+  permissions               String[]       @default([]) // Permisos granulares
   lastLoginAt               DateTime?
   lastLoginIp               String?
   createdAt                 DateTime       @default(now())

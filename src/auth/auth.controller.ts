@@ -143,6 +143,7 @@ export class AuthController {
       registerDto.birthdate,
       language,
       timezone,
+      registerDto.permissions || [] // Pasar permisos
     );
 
     // Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
