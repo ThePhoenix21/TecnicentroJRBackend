@@ -144,12 +144,78 @@ export class InventoryCountService {
       throw new BadRequestException('La sesión ya está cerrada');
     }
 
-    return this.prisma.inventoryCountSession.update({
+    // Cerrar la sesión
+    const closedSession = await this.prisma.inventoryCountSession.update({
       where: { id: sessionId },
       data: {
         finalizedAt: new Date(),
       },
+      include: {
+        store: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        items: {
+          include: {
+            storeProduct: {
+              include: {
+                product: true
+              }
+            }
+          }
+        }
+      },
     });
+
+    // Calcular resumen
+    const totalProducts = closedSession.items.length;
+    const countedProducts = closedSession.items.filter(item => item.physicalStock !== null).length;
+    const correctCount = closedSession.items.filter(item => item.difference === 0).length;
+    const discrepancies = totalProducts - correctCount;
+    const positiveDiscrepancies = closedSession.items.filter(item => item.difference > 0).length;
+    const negativeDiscrepancies = closedSession.items.filter(item => item.difference < 0).length;
+
+    // Formatear respuesta
+    return {
+      session: {
+        id: closedSession.id,
+        name: closedSession.name,
+        createdAt: closedSession.createdAt,
+        finalizedAt: closedSession.finalizedAt,
+        store: {
+          id: closedSession.store.id,
+          name: closedSession.store.name
+        },
+        createdBy: {
+          id: closedSession.createdBy.id,
+          name: closedSession.createdBy.name
+        }
+      },
+      summary: {
+        totalProducts,
+        countedProducts,
+        correctCount,
+        discrepancies,
+        positiveDiscrepancies,
+        negativeDiscrepancies
+      },
+      items: closedSession.items.map(item => ({
+        storeProduct: {
+          id: item.storeProduct.id,
+          product: {
+            name: item.storeProduct.product.name,
+            description: item.storeProduct.product.description
+          }
+        },
+        expectedStock: item.expectedStock,
+        physicalStock: item.physicalStock,
+        difference: item.difference
+      }))
+    };
   }
 
   async getSessionReport(sessionId: string) {

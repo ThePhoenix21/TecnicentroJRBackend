@@ -22,12 +22,11 @@ export class CreateInventoryMovementDto {
   type: InventoryMovementType;
 
   @ApiProperty({
-    description: 'Cantidad del movimiento (siempre positiva, el sistema ajusta signo según tipo)',
+    description: 'Cantidad del movimiento (puede ser positivo o negativo, el sistema ajusta el stock directamente)',
     example: 10,
-    minimum: 1
+    minimum: -999999
   })
   @IsInt()
-  @Min(1)
   quantity: number;
 
   @ApiProperty({

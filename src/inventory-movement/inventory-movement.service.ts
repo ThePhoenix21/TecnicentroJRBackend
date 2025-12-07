@@ -20,49 +20,16 @@ export class InventoryMovementService {
       throw new NotFoundException('Producto de tienda no encontrado');
     }
 
-    // 2. Determinar signo de la cantidad para el stock
-    let stockChange = 0;
+    // 2. Determinar el cambio de stock
+    // Ahora quantity puede ser positivo o negativo directamente
+    // El tipo solo sirve para categorización histórica
+    let stockChange = quantity;
     
-    // INCOMING: Aumenta stock (+)
-    // OUTGOING: Disminuye stock (-)
-    // ADJUST: Depende, pero aquí asumimos que el usuario envía la cantidad DEL MOVIMIENTO
-    // Nota: Para ADJUST manual, es mejor usar "cantidad a ajustar" (+ o -). 
-    // Pero si seguimos la lógica de "tipo de movimiento", ADJUST podría ser corrección.
-    // Vamos a asumir: 
-    // INCOMING -> +
-    // OUTGOING -> -
-    // ADJUST -> El usuario debe especificar si es positivo o negativo? 
-    // En el DTO validamos quantity > 0.
-    // Para ADJUST, podríamos permitir que el usuario defina si es suma o resta, O mejor:
-    // Que ADJUST manual se comporte como una "entrada" o "salida" correctiva.
-    // Por simplicidad y seguridad:
-    // Si es OUTGOING o SALE -> Resta
-    // Si es INCOMING o RETURN -> Suma
-    // Si es ADJUST -> Vamos a requerir que el usuario use INCOMING/OUTGOING para correcciones manuales
-    // O si usa ADJUST, asumimos que es una corrección positiva si no se especifica lo contrario.
-    // PERO, para ser estrictos con el requerimiento: "Salida manual (OUTGOING)", "Entrada (INCOMING)".
-    
-    if (type === InventoryMovementType.INCOMING || type === InventoryMovementType.RETURN) {
-      stockChange = quantity;
-    } else if (type === InventoryMovementType.OUTGOING || type === InventoryMovementType.SALE) {
-      stockChange = -quantity;
-    } else if (type === InventoryMovementType.ADJUST) {
-      // Para ajuste manual directo, asumimos que puede ser + o -
-      // Pero como quantity en DTO es positivo, necesitamos saber la dirección.
-      // Podríamos asumir que ADJUST manual es siempre "resetear" stock? No, eso es InventoryCount.
-      // Vamos a permitir que ADJUST funcione como INCOMING por defecto, 
-      // o el usuario debería usar INCOMING/OUTGOING para claridad.
-      // Sin embargo, para cumplir con "Ajuste (ADJUST, solo supervisores)", 
-      // asumiremos que ADJUST manual requiere un manejo especial o es simplemente un registro.
-      // Vamos a tratarlo como una actualización directa de stock? No, InventoryMovement es un flujo.
-      
-      // Decisión: ADJUST manual sumará si quantity es positivo.
-      // Si quieren restar, deberían enviar un negativo, pero el DTO valida min 1.
-      // Solución: Permitir negativos en DTO para ADJUST, o usar un campo extra.
-      // Simplificación: ADJUST manual en este endpoint sumará (corrección positiva).
-      // Para corrección negativa (mermas), usar OUTGOING.
-      stockChange = quantity; 
+    // Validación especial para OUTGOING: si quantity es positivo, lo tratamos como resta
+    if (type === InventoryMovementType.OUTGOING || type === InventoryMovementType.SALE) {
+      stockChange = -Math.abs(quantity); // Asegurar que sea negativo
     }
+    // Para INCOMING, RETURN, ADJUST: usamos el quantity tal como viene (puede ser + o -)
 
     // Validar stock suficiente para salidas
     if (stockChange < 0 && (storeProduct.stock + stockChange < 0)) {

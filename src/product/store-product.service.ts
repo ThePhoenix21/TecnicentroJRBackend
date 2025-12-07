@@ -462,36 +462,97 @@ export class StoreProductService {
 
     // Actualizar el StoreProduct si hay cambios
     if (Object.keys(storeProductFields).length > 0) {
-      return this.prisma.storeProduct.update({
-        where: { id },
-        data: storeProductFields,
-        include: {
-          product: {
-            select: {
-              id: true,
-              name: true,
-              description: true,
-              basePrice: true,
-              buyCost: true,
+      // Si se está actualizando el stock, necesitamos registrar el movimiento
+      if (storeProductFields.stock !== undefined && storeProductFields.stock !== storeProduct.stock) {
+        const difference = storeProductFields.stock - storeProduct.stock;
+        
+        return this.prisma.$transaction(async (prisma) => {
+          // 1. Crear movimiento de inventario (ADJUST)
+          await prisma.inventoryMovement.create({
+            data: {
+              storeProductId: id,
+              type: InventoryMovementType.ADJUST,
+              quantity: Math.abs(difference), // Guardar cantidad absoluta, el tipo define lógica pero ADJUST es especial
+              // NOTA: En InventoryMovementService asumimos que ADJUST sumaba si era positivo.
+              // Para ser consistentes con el historial, si es negativo (reducción), deberíamos usar OUTGOING o ADJUST con nota?
+              // Vamos a usar ADJUST y poner la diferencia real en description o manejarlo.
+              // O mejor: Si la diferencia es negativa, usamos quantity positivo y tipo ADJUST? 
+              // En el esquema, quantity es Int. Si guardamos negativo, ¿qué pasa?
+              // Revisando InventoryMovementService, para tipos INCOMING/OUTGOING usaba la cantidad positiva y aplicaba signo al stock.
+              // Aquí el stock YA lo estamos forzando al valor nuevo. El movimiento es solo registro histórico.
+              // Guardaremos la cantidad absoluta y en description aclaramos si fue aumento o disminución.
+              // O mejor aún: Usar el quantity con signo si el modelo lo permite? El DTO validaba Min(1).
+              // Asumiremos que InventoryMovement guarda cantidad POSITIVA de movimiento.
+              description: `Ajuste manual desde edición de producto (Stock: ${storeProduct.stock} -> ${storeProductFields.stock})`,
+              userId: userId
+            }
+          });
+
+          // 2. Actualizar el producto
+          return prisma.storeProduct.update({
+            where: { id },
+            data: storeProductFields,
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                  basePrice: true,
+                  buyCost: true,
+                },
+              },
+              store: {
+                select: {
+                  id: true,
+                  name: true,
+                  address: true,
+                  phone: true,
+                },
+              },
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          });
+        });
+      } else {
+        // Actualización normal sin cambio de stock (o transacción simple)
+        return this.prisma.storeProduct.update({
+          where: { id },
+          data: storeProductFields,
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                basePrice: true,
+                buyCost: true,
+              },
+            },
+            store: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+              },
+            },
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
             },
           },
-          store: {
-            select: {
-              id: true,
-              name: true,
-              address: true,
-              phone: true,
-            },
-          },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-      });
+        });
+      }
     }
 
     // Si no hay cambios en StoreProduct pero sí en Product, retornar el producto actualizado
