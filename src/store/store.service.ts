@@ -42,49 +42,73 @@ export class StoreService {
         throw new ConflictException('Ya existe una tienda con ese nombre');
       }
 
-      // Crear la tienda
-      const newStore = await this.prisma.store.create({
-        data: {
-          name: createStoreDto.name,
-          address: createStoreDto.address,
-          phone: createStoreDto.phone,
-          createdById: adminUser.id
-        },
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true
+      // Usar transacción para asegurar que se crea todo o nada
+      const result = await this.prisma.$transaction(async (prisma) => {
+        // Crear la tienda
+        const newStore = await prisma.store.create({
+          data: {
+            name: createStoreDto.name,
+            address: createStoreDto.address,
+            phone: createStoreDto.phone,
+            createdById: adminUser.id
+          },
+          include: {
+            createdBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true
+              }
             }
           }
-        }
-      });
-
-      // Obtener todos los usuarios administradores y crear registros en StoreUsers
-      const adminUsers = await this.prisma.user.findMany({
-        where: { role: 'ADMIN' }
-      });
-
-      if (adminUsers.length > 0) {
-        const storeUsersData = adminUsers.map(admin => ({
-          storeId: newStore.id,
-          userId: admin.id,
-        }));
-
-        await this.prisma.storeUsers.createMany({
-          data: storeUsersData,
         });
 
-        this.logger.log(`Se crearon ${storeUsersData.length} registros StoreUsers para la nueva tienda ${newStore.name}`);
-      }
+        // Obtener todos los usuarios administradores y crear registros en StoreUsers
+        const adminUsers = await prisma.user.findMany({
+          where: { role: 'ADMIN' }
+        });
 
-      this.logger.log(`Tienda creada exitosamente: ${newStore.id} - ${newStore.name} por admin: ${adminUser.email}`);
+        if (adminUsers.length > 0) {
+          const storeUsersData = adminUsers.map(admin => ({
+            storeId: newStore.id,
+            userId: admin.id,
+          }));
+
+          await prisma.storeUsers.createMany({
+            data: storeUsersData,
+          });
+
+          this.logger.log(`Se crearon ${storeUsersData.length} registros StoreUsers para la nueva tienda ${newStore.name}`);
+        }
+
+        // Crear StoreProducts para todos los productos existentes
+        const allProducts = await prisma.product.findMany();
+        if (allProducts.length > 0) {
+          const storeProductsData = allProducts.map(product => ({
+            productId: product.id,
+            storeId: newStore.id,
+            stock: 0,
+            price: product.basePrice || 0,
+            userId: adminUser.id,
+            stockThreshold: 1 // Valor por defecto
+          }));
+          
+          await prisma.storeProduct.createMany({
+            data: storeProductsData
+          });
+          
+          this.logger.log(`Se crearon ${storeProductsData.length} StoreProducts para la nueva tienda`);
+        }
+
+        return newStore;
+      });
+
+      this.logger.log(`Tienda creada exitosamente: ${result.id} - ${result.name} por admin: ${adminUser.email}`);
 
       return {
         message: 'Tienda creada exitosamente',
-        store: newStore
+        store: result
       };
 
     } catch (error) {
