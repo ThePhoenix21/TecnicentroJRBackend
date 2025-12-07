@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStoreProductDto } from './dto/create-store-product.dto';
 import { UpdateStoreProductDto } from './dto/update-store-product.dto';
 import { StoreProduct } from './entities/store-product.entity';
 import { ProductService } from './product.service';
 import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
+import { InventoryMovementType } from '@prisma/client';
 
 @Injectable()
 export class StoreProductService {
@@ -224,7 +225,7 @@ export class StoreProductService {
     };
   }
 
-  async updateStock(userId: string, id: string, stock: number, isAdmin: boolean = false): Promise<StoreProduct> {
+  async updateStock(userId: string, id: string, newStock: number, isAdmin: boolean = false): Promise<StoreProduct> {
     // Verificar que el StoreProduct existe
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
@@ -239,36 +240,63 @@ export class StoreProductService {
       throw new ForbiddenException('No tienes permiso para actualizar este producto');
     }
 
-    // Actualizar el stock
-    return this.prisma.storeProduct.update({
-      where: { id },
-      data: { stock },
-      include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            basePrice: true,
-            buyCost: true,
+    // Validar lógica de cambio de stock
+    if (newStock < storeProduct.stock) {
+      throw new BadRequestException('No se puede disminuir el stock desde esta opción. Use el módulo de Movimientos de Inventario (Salida Manual).');
+    }
+
+    // Si el stock es igual, no hacer nada
+    if (newStock === storeProduct.stock) {
+      return this.findOne(id);
+    }
+
+    // Calcular diferencia positiva
+    const difference = newStock - storeProduct.stock;
+
+    // Ejecutar actualización y creación de movimiento en transacción
+    return this.prisma.$transaction(async (prisma) => {
+      // 1. Crear movimiento de inventario
+      await prisma.inventoryMovement.create({
+        data: {
+          storeProductId: id,
+          type: InventoryMovementType.ADJUST,
+          quantity: difference,
+          description: 'Ajuste manual de stock desde edición de producto',
+          userId: userId
+        }
+      });
+
+      // 2. Actualizar el stock
+      return prisma.storeProduct.update({
+        where: { id },
+        data: { stock: newStock },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              basePrice: true,
+              buyCost: true,
+            },
+          },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
           },
         },
-        store: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-            phone: true,
-          },
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
+      });
     });
   }
 
