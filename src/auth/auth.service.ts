@@ -18,6 +18,7 @@ import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { EmailValidatorService } from '../common/validators/email-validator.service';
 import { Role } from '../common/enums/role.enum';
+import { ALL_PERMISSIONS } from './permissions';
 
 @Injectable()
 export class AuthService {
@@ -235,6 +236,19 @@ export class AuthService {
       throw new BadRequestException('El correo electrónico no es válido o el dominio no existe');
     }
 
+    // Validar permisos contra catálogo
+    if (permissions && permissions.length > 0) {
+      const invalid = permissions.filter(p => !ALL_PERMISSIONS.includes(p));
+      if (invalid.length > 0) {
+        throw new BadRequestException(
+          `Permisos inválidos: ${invalid.join(', ')}. Revise el catálogo de permisos disponibles.`,
+        );
+      }
+    }
+
+    // Si es ADMIN y no se enviaron permisos, asignar todos por defecto
+    const finalPermissions = permissions.length > 0 ? permissions : ALL_PERMISSIONS;
+
     // Hashear la contraseña
     const hashedPassword = await bcrypt.hash(password, 10);
     
@@ -259,7 +273,7 @@ export class AuthService {
         verifyTokenExpires,
         role: Role.ADMIN,
         status: 'ACTIVE' as const,
-        permissions: permissions // Guardar permisos
+        permissions: finalPermissions // Guardar permisos
       };
 
       const newUser = await this.prisma.user.create({ data: userData });

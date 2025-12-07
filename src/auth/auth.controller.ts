@@ -38,6 +38,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Role } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ALL_PERMISSIONS } from './permissions';
 
 @ApiTags('Autenticación')
 @Controller('auth')
@@ -50,6 +51,29 @@ export class AuthController {
     private readonly userService: UsersService,
     private readonly prisma: PrismaService,
   ) {}
+
+  @Get('permissions')
+  @ApiOperation({
+    summary: 'Obtener lista de permisos disponibles',
+    description: 'Devuelve el catálogo oficial de permisos que el backend reconoce para control de acceso granular.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de permisos obtenida correctamente',
+    schema: {
+      type: 'object',
+      properties: {
+        permissions: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['VIEW_DASHBOARD', 'VIEW_INVENTORY', 'MANAGE_USERS'],
+        },
+      },
+    },
+  })
+  getPermissions() {
+    return { permissions: ALL_PERMISSIONS };
+  }
 
   @Post('register')
   @ApiOperation({

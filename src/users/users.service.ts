@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { User, Role } from '@prisma/client';
+import { ALL_PERMISSIONS } from '../auth/permissions';
 
 @Injectable()
 export class UsersService {
@@ -121,6 +122,16 @@ export class UsersService {
         const finalLanguage = language || 'indeterminado';
         const finalTimezone = timezone || 'UTC';
         const finalRole = role || Role.USER;
+
+        // Validar permisos contra catálogo
+        if (permissions && permissions.length > 0) {
+            const invalid = permissions.filter(p => !ALL_PERMISSIONS.includes(p));
+            if (invalid.length > 0) {
+                throw new BadRequestException(
+                    `Permisos inválidos: ${invalid.join(', ')}. Revise el catálogo de permisos disponibles.`,
+                );
+            }
+        }
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const verifyToken = this.generateToken();
