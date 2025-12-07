@@ -221,7 +221,6 @@ model CashMovement {
 
 model Store {
   id        String      @id @default(uuid())
-  code      Int         @unique @default(autoincrement()) // Código secuencial para la tienda (1, 2, 3...)
   name      String
   address   String?
   phone     String?

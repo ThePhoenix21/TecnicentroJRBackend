@@ -52,13 +52,6 @@ export class OrderService {
               email: true,
               name: true
             }
-          },
-          Store: {
-            select: {
-              id: true,
-              name: true,
-              code: true // Necesitamos el código
-            }
           }
         }
       });
@@ -231,10 +224,20 @@ export class OrderService {
         ? SaleStatus.PENDING 
         : SaleStatus.COMPLETED;
 
-      // 5. Generar número de orden
-      const orderNumber = await this.generateOrderNumber(cashSession.Store['code'] || 1); // Fallback a 1 si no hay código (temporal hasta regenerar cliente)
+      // 5. Calcular número de tienda según orden de creación
+      // Se obtienen todas las tiendas ordenadas por createdAt y se busca el índice de la tienda de la sesión
+      const stores = await prisma.store.findMany({
+        orderBy: { createdAt: 'asc' },
+        select: { id: true }
+      });
 
-      // 6. Crear la orden
+      const storeIndex = stores.findIndex((s) => s.id === cashSession.StoreId);
+      const storeNumber = storeIndex >= 0 ? storeIndex + 1 : 1; // 1 para primera tienda, 2 para segunda, etc.
+
+      // 6. Generar número de orden con prefijo 001/002/... usando storeNumber
+      const orderNumber = await this.generateOrderNumber(storeNumber);
+
+      // 7. Crear la orden
       const orderData: Prisma.OrderCreateInput = {
         orderNumber,
         totalAmount,
