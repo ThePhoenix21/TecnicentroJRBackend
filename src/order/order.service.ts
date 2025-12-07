@@ -17,14 +17,17 @@ export class OrderService {
   ) {}
 
   // Función para generar el número de orden secuencial
-  private async generateOrderNumber(): Promise<string> {
+  private async generateOrderNumber(storeCode: number): Promise<string> {
   const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
   const uniqueId = nanoid(); // algo como: 9G7T1KQ2
 
   const now = new Date();
   const datePart = now.toISOString().slice(0,10).replace(/-/g, ''); // YYYYMMDD
 
-  return `001-${datePart}-${uniqueId}`;
+  // Usar el código de la tienda formateado a 3 dígitos
+  const prefix = storeCode.toString().padStart(3, '0');
+
+  return `${prefix}-${datePart}-${uniqueId}`;
 }
 
   async create(createOrderDto: CreateOrderDto, user?: { userId: string; email: string; role: string }): Promise<Order> {
@@ -53,7 +56,8 @@ export class OrderService {
           Store: {
             select: {
               id: true,
-              name: true
+              name: true,
+              code: true // Necesitamos el código
             }
           }
         }
@@ -62,6 +66,7 @@ export class OrderService {
       if (!cashSession) {
         throw new NotFoundException('La sesión de caja especificada no existe');
       }
+
 
       // Validar que la sesión esté abierta
       if (cashSession.status !== SessionStatus.OPEN) {
@@ -227,7 +232,7 @@ export class OrderService {
         : SaleStatus.COMPLETED;
 
       // 5. Generar número de orden
-      const orderNumber = await this.generateOrderNumber();
+      const orderNumber = await this.generateOrderNumber(cashSession.Store['code'] || 1); // Fallback a 1 si no hay código (temporal hasta regenerar cliente)
 
       // 6. Crear la orden
       const orderData: Prisma.OrderCreateInput = {
@@ -486,6 +491,11 @@ export class OrderService {
         },
         services: true,
         client: true,
+        cashSession: {
+          include: {
+            Store: true
+          }
+        }
       },
     });
 

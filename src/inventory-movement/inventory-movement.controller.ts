@@ -21,7 +21,7 @@ export class InventoryMovementController {
   create(@Body() createDto: CreateInventoryMovementDto, @Req() req: any) {
     // Validación adicional de rol para ADJUST
     if (createDto.type === 'ADJUST' && req.user.role !== 'ADMIN') {
-       throw new Error('Solo administradores pueden realizar ajustes manuales');
+      throw new Error('Solo administradores pueden realizar ajustes manuales');
     }
     return this.inventoryMovementService.create(createDto, req.user.userId);
   }
