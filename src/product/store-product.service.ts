@@ -100,13 +100,16 @@ export class StoreProductService {
         throw new ForbiddenException('Este producto ya está registrado en todas las tiendas');
       }
 
+      // Determinar el precio para la tienda origen (si no se envía, usar 0)
+      const originPrice = createStoreProductDto.price ?? 0;
+
       // Crear los StoreProducts en todas las tiendas necesarias
       const storeProductsToCreate = storesToCreate.map(store => ({
         productId: productId,
         storeId: store.id,
         userId: userId,
         price: store.id === createStoreProductDto.storeId 
-          ? createStoreProductDto.price 
+          ? originPrice
           : 0, // Precio 0 para otras tiendas
         stock: store.id === createStoreProductDto.storeId 
           ? createStoreProductDto.stock 
@@ -225,7 +228,7 @@ export class StoreProductService {
     };
   }
 
-  async updateStock(userId: string, id: string, newStock: number, isAdmin: boolean = false): Promise<StoreProduct> {
+  async updateStock(userId: string, id: string, newStock: number, isAdmin: boolean = false, bypassOwnership: boolean = false): Promise<StoreProduct> {
     // Verificar que el StoreProduct existe
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
@@ -235,8 +238,9 @@ export class StoreProductService {
       throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
 
-    // Si no es admin, verificar que el producto pertenece al usuario
-    if (!isAdmin && storeProduct.userId !== userId) {
+    // Si no es admin y no se permite saltar la restricción de propietario,
+    // verificar que el producto pertenece al usuario
+    if (!isAdmin && !bypassOwnership && storeProduct.userId !== userId) {
       throw new ForbiddenException('No tienes permiso para actualizar este producto');
     }
 
@@ -375,7 +379,8 @@ export class StoreProductService {
     userId: string,
     id: string,
     updateData: UpdateStoreProductDto,
-    isAdmin: boolean = false
+    isAdmin: boolean = false,
+    bypassOwnership: boolean = false,
   ): Promise<StoreProduct> {
     console.log('=== DEBUG UPDATE STORE PRODUCT ===');
     console.log('userId:', userId);
@@ -397,8 +402,9 @@ export class StoreProductService {
 
     console.log('StoreProduct encontrado:', JSON.stringify(storeProduct, null, 2));
 
-    // Si no es admin, verificar que el producto pertenece al usuario
-    if (!isAdmin && storeProduct.userId !== userId) {
+    // Si no es admin y no se permite saltar la restricción de propietario,
+    // verificar que el producto pertenece al usuario
+    if (!isAdmin && !bypassOwnership && storeProduct.userId !== userId) {
       throw new ForbiddenException('No tienes permiso para actualizar este producto');
     }
 

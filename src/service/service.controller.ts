@@ -33,8 +33,11 @@ import { UpdateServiceDto } from './dto/update-service.dto';
 import { Service } from './entities/service.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 import { ServiceStatus, ServiceType } from '@prisma/client';
 import { SupabaseStorageService } from '../common/utility/supabase-storage.util';
 import { memoryStorage } from 'multer';
@@ -43,7 +46,7 @@ import { memoryStorage } from 'multer';
 @ApiBearerAuth('JWT')
 @ApiExtraModels(Service)
 @Controller('services')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'No autorizado. Se requiere autenticación JWT' })
 @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Acceso denegado. Se requieren permisos adecuados' })
 @ApiResponse({ status: HttpStatus.INTERNAL_SERVER_ERROR, description: 'Error interno del servidor' })
@@ -180,6 +183,7 @@ export class ServiceController {
     }
   })
   @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
   async create(
     @Body() createServiceDto: CreateServiceDto,
     @UploadedFile() file?: Express.Multer.File
@@ -263,6 +267,7 @@ export class ServiceController {
       }
     }
   })
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async findAll(
     @Query('status') status?: ServiceStatus,
     @Query('type') type?: ServiceType,
@@ -325,6 +330,7 @@ export class ServiceController {
       }
     }
   })
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<Service> {
     return this.serviceService.findOne(id);
   }
@@ -421,6 +427,7 @@ export class ServiceController {
       }
     }
   })
+  @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
   async update(
     @Param('id', ParseUUIDPipe) id: string, 
     @Body() updateServiceDto: UpdateServiceDto
@@ -538,6 +545,7 @@ export class ServiceController {
       }
     }
   })
+  @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
   async updateStatus(
     @Param('id', ParseUUIDPipe) id: string, 
     @Body() updateStatusDto: { status: 'IN_PROGRESS' | 'COMPLETED' | 'DELIVERED' | 'PAID' | 'ANNULLATED' }
@@ -610,6 +618,7 @@ export class ServiceController {
       }
     }
   })
+  @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
   async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.serviceService.remove(id);
   }
@@ -690,6 +699,7 @@ export class ServiceController {
       }
     }
   })
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async getPendingPayment(@Param('id', ParseUUIDPipe) id: string): Promise<{
     serviceId: string;
     serviceName: string;
@@ -797,6 +807,7 @@ export class ServiceController {
       }
     }
   })
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async findAllWithClients(
     @Query('status') status?: ServiceStatus,
     @Query('type') type?: ServiceType,

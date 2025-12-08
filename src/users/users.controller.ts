@@ -28,6 +28,7 @@ import { CreateSimpleUserDto } from '../auth/dto/create-simple-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User } from '@prisma/client';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcrypt';
 import { Roles } from 'src/auth/decorators/roles.decorator';
@@ -40,6 +41,8 @@ import { supabase } from '../supabase.client';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 
 @ApiTags('Users')
 @Controller('users')
@@ -324,7 +327,7 @@ export class UsersController {
   @Roles(Role.ADMIN)
   @ApiOperation({ 
     summary: 'Obtener todos los usuarios',
-    description: 'Obtiene una lista de todos los usuarios registrados. Requiere rol de ADMIN'
+    description: 'Obtiene una lista de todos los usuarios registrados. Requiere rol ADMIN'
   })
   @ApiResponse({ 
     status: 200, 
@@ -799,7 +802,7 @@ export class UsersController {
         // Si USER intenta modificar campos restringidos, lanzar error
         if (storeId || status !== undefined || verified !== undefined) {
           this.logger.warn(`USER ${req.user.userId} intentando modificar campos restringidos`);
-          throw new ForbiddenException('No tienes permisos para modificar estos campos. Solo ADMIN puede modificar storeId, status y verified.');
+          throw new ForbiddenException('No tienes permisos para modificar estos campos. Se requiere permiso de administrador.');
         }
         
         updateUserDto = allowedUpdateData;

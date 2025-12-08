@@ -20,8 +20,11 @@ import { CompleteOrderDto } from './dto/complete-order.dto';
 import { plainToInstance } from 'class-transformer';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 
 @Controller('orders')
 @UseGuards(RolesGuard)
@@ -32,8 +35,9 @@ export class OrderController {
 
   @Post('create')
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
   async create(
     @Req() req: Request & { user: { userId: string; email: string; role: Role } },
     @Body(new ValidationPipe({ 
@@ -77,8 +81,9 @@ export class OrderController {
   }
 
   @Get('details/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getOrderDetails(
     @Param('id') id: string,
     @Req() req: Request & { user: { userId: string; email: string; role: Role } }
@@ -185,8 +190,9 @@ export class OrderController {
   }
 
   @Patch('complete')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
   @HttpCode(HttpStatus.OK)
   async completeOrder(
     @Req() req: Request & { user: { userId: string; email: string; role: Role } },
@@ -205,8 +211,9 @@ export class OrderController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async findMe(@Req() req: Request & { user: { userId: string; email: string; role: Role } }) {
     const userId = req.user?.userId;
     
@@ -218,22 +225,25 @@ export class OrderController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getOrders() {
     return this.orderService.findAll();
   }
 
   @Get('store/:storeId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getOrdersByStore(@Param('storeId') storeId: string) {
     return this.orderService.findByStore(storeId);
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getOrderById(
     @Param('id') id: string,
     @Req() req: Request & { user: { userId: string; email: string; role: Role } }
@@ -248,15 +258,17 @@ export class OrderController {
   }
 
   @Get('user/:userId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getUserOrders(@Param('userId') userId: string) {
     return this.orderService.findMe(userId);
   }
 
   @Patch(':id/cancel')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
   @HttpCode(HttpStatus.OK)
   async cancelOrder(
     @Param('id') id: string,

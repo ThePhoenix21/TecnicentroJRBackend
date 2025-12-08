@@ -6,7 +6,8 @@ import {
   IsDateString, 
   IsEnum, 
   IsBoolean,
-  IsUUID
+  IsUUID,
+  IsArray
 } from 'class-validator';
 import { UserStatus } from '@prisma/client';
 
@@ -54,4 +55,9 @@ export class UpdateUserDto {
   @IsOptional()
   @IsUUID()
   storeId?: string;
+
+  // Permisos granulares del usuario (solo deberían ser gestionados por ADMIN)
+  @IsOptional()
+  @IsArray()
+  permissions?: string[];
 }

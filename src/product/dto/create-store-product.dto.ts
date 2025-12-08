@@ -77,11 +77,13 @@ export class CreateStoreProductDto {
   @ApiProperty({
     description: 'Precio de venta del producto en esta tienda',
     example: 29.99,
-    minimum: 0
+    minimum: 0,
+    required: false,
   })
   @IsNumber()
   @Min(0)
-  price: number;
+  @IsOptional()
+  price?: number;
 
   @ApiProperty({
     description: 'Cantidad en inventario para esta tienda',

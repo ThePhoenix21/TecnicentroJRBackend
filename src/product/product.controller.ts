@@ -22,7 +22,10 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 import { Role } from '../auth/enums/role.enum';
 import { ProductService } from './product.service';
 import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
@@ -32,7 +35,7 @@ import { CatalogProduct } from './entities/catalog-product.entity';
 @ApiTags('Catálogo de Productos')
 @ApiBearerAuth('JWT')
 @Controller('catalog/products')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'No autorizado' })
 @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No tiene permisos' })
 export class ProductController {
@@ -40,6 +43,7 @@ export class ProductController {
 
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.MANAGE_PRODUCTS, PERMISSIONS.MANAGE_PRICES)
   @ApiOperation({ 
     summary: 'Crear un nuevo producto en el catálogo maestro',
     description: 'Crea un nuevo producto en el catálogo maestro que estará disponible para ser agregado a cualquier tienda. Este producto contiene la información básica como nombre, descripción, precios de referencia y costos.'
@@ -131,6 +135,7 @@ export class ProductController {
 
   @Get('all')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @ApiOperation({ 
     summary: 'Obtener todos los productos del catálogo',
     description: 'Retorna una lista completa de todos los productos registrados en el catálogo maestro, ordenados por fecha de creación descendente. Incluye información del usuario que creó cada producto.'
@@ -178,6 +183,7 @@ export class ProductController {
 
   @Get('findOne/:id')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @ApiOperation({ 
     summary: 'Obtener un producto del catálogo por ID',
     description: 'Retorna la información detallada de un producto específico del catálogo maestro usando su UUID. Incluye información del usuario que lo creó.'
@@ -244,6 +250,7 @@ export class ProductController {
 
   @Patch('update/:id')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_PRODUCTS, PERMISSIONS.MANAGE_PRICES)
   @ApiOperation({ 
     summary: 'Actualizar un producto del catálogo',
     description: 'Actualiza la información de un producto existente en el catálogo maestro. Solo los administradores pueden realizar esta operación. Los cambios afectan al producto base pero no a los inventarios existentes en las tiendas.'
@@ -331,6 +338,7 @@ export class ProductController {
 
   @Delete('remove/:id')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_PRODUCTS)
   @ApiOperation({ 
     summary: 'Eliminar un producto del catálogo (Soft Delete)',
     description: 'Marca un producto del catálogo como eliminado (soft delete). Esta operación solo puede realizarla un administrador. El producto no se elimina físicamente, solo se marca como eliminado y ya no aparecerá en las consultas normales.'

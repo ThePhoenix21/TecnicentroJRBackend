@@ -30,7 +30,7 @@ export class OrderService {
   return `${prefix}-${datePart}-${uniqueId}`;
 }
 
-  async create(createOrderDto: CreateOrderDto, user?: { userId: string; email: string; role: string }): Promise<Order> {
+  async create(createOrderDto: CreateOrderDto, user?: { userId: string; email: string; role: string; stores?: string[] }): Promise<Order> {
     const { clientInfo, clientId, products, services, userId, cashSessionId } = createOrderDto;
 
     // Validar que cashSessionId esté presente
@@ -66,9 +66,16 @@ export class OrderService {
         throw new ConflictException('La sesión de caja está cerrada. No se pueden crear órdenes en sesiones cerradas.');
       }
 
-      // Validar que el usuario que crea la orden pertenezca a la sesión
-      if (user && cashSession.UserId !== user.userId) {
-        throw new ForbiddenException('No tienes permisos para crear órdenes en esta sesión de caja');
+      // Regla de acceso a la sesión de caja:
+      // - ADMIN puede crear órdenes en cualquier sesión abierta.
+      // - USER solo puede crear órdenes si pertenece a la tienda de la sesión.
+      if (user && !isAdmin) {
+        const userStores = Array.isArray(user.stores) ? user.stores : [];
+        const belongsToStore = userStores.includes(cashSession.StoreId);
+
+        if (!belongsToStore) {
+          throw new ForbiddenException('No tienes permisos para crear órdenes en esta sesión de caja');
+        }
       }
 
       // 1. Verificar o crear el cliente
@@ -78,45 +85,67 @@ export class OrderService {
         if (!userId) {
           throw new BadRequestException('Se requiere el ID de usuario para crear un cliente');
         }
-        
-        // Verificar si ya existe un cliente con el mismo DNI, RUC o email
-        const existingClient = await prisma.client.findFirst({
-          where: {
-            OR: [
-              { dni: clientInfo.dni },
-              { ruc: clientInfo.ruc },
-              ...(clientInfo.email ? [{ email: clientInfo.email }] : [])
-            ].filter(condition => Object.values(condition)[0] !== undefined), // Solo incluir condiciones definidas
-            userId: userId
-          },
-          select: { 
-            id: true,
-            dni: true,
-            email: true 
-          }
-        });
 
-        if (existingClient) {
-          // Si el email existe pero el DNI es diferente, lanzar un error específico
-          if (clientInfo.email && existingClient.email === clientInfo.email && 
-              existingClient.dni !== clientInfo.dni) {
+        // 1) Si hay email, buscar primero por email SIN filtrar por userId
+        //    para evitar violar la restricción única en email.
+        let existingClientByEmail: { id: string; dni: string | null; email: string | null } | null = null;
+        if (clientInfo.email) {
+          existingClientByEmail = await prisma.client.findFirst({
+            where: { email: clientInfo.email },
+            select: {
+              id: true,
+              dni: true,
+              email: true,
+            },
+          });
+        }
+
+        if (existingClientByEmail) {
+          // Si el email ya existe pero el DNI es diferente, lanzar error claro
+          if (
+            clientInfo.dni &&
+            existingClientByEmail.dni &&
+            existingClientByEmail.dni !== clientInfo.dni
+          ) {
             throw new BadRequestException({
               statusCode: 400,
               message: 'El correo electrónico ya está registrado con un DNI diferente',
               error: 'Bad Request',
-              code: 'EMAIL_ALREADY_EXISTS'
+              code: 'EMAIL_ALREADY_EXISTS',
             });
           }
-          clientIdToUse = existingClient.id; // Usar el ID del cliente existente
+
+          // Reutilizar cliente existente por email
+          clientIdToUse = existingClientByEmail.id;
         } else {
-          // Crear nuevo cliente
-          const newClient = await prisma.client.create({
-            data: {
-              ...clientInfo,
-              userId: userId!
-            }
+          // 2) Si no hay cliente por email, buscar por DNI/RUC para este usuario
+          const existingClient = await prisma.client.findFirst({
+            where: {
+              OR: [
+                { dni: clientInfo.dni },
+                { ruc: clientInfo.ruc },
+              ].filter((condition) => Object.values(condition)[0] !== undefined), // Solo incluir condiciones definidas
+              userId: userId,
+            },
+            select: {
+              id: true,
+              dni: true,
+              email: true,
+            },
           });
-          clientIdToUse = newClient.id;
+
+          if (existingClient) {
+            clientIdToUse = existingClient.id; // Usar el ID del cliente existente por DNI/RUC
+          } else {
+            // 3) Crear nuevo cliente (email garantizado único a este punto)
+            const newClient = await prisma.client.create({
+              data: {
+                ...clientInfo,
+                userId: userId!,
+              },
+            });
+            clientIdToUse = newClient.id;
+          }
         }
       } else {
         throw new BadRequestException('Se requiere información del cliente');
@@ -127,11 +156,16 @@ export class OrderService {
       console.log('🔍 Buscando StoreProducts con IDs:', productIds);
       console.log('🔍 Para el userId:', userId);
       console.log('🔍 Es ADMIN:', isAdmin);
+      console.log('🔍 StoreId de la sesión de caja:', cashSession.StoreId);
       
-      // Si es ADMIN, puede ver todos los productos, sino solo los suyos
-      const productWhere = isAdmin 
-        ? { id: { in: productIds } }  // ADMIN: busca todos los productos con esos IDs
-        : { id: { in: productIds }, userId }; // USER: solo busca sus productos
+      // Regla de acceso a productos en tienda:
+      // - ADMIN: puede usar cualquier StoreProduct por ID.
+      // - USER: ya se validó que pertenece a la tienda de la sesión,
+      //         así que puede usar cualquier StoreProduct de ESA tienda,
+      //         independientemente de su userId (propietario).
+      const productWhere = isAdmin
+        ? { id: { in: productIds } }
+        : { id: { in: productIds }, storeId: cashSession.StoreId };
       
       const existingStoreProducts = await prisma.storeProduct.findMany({
         where: productWhere,

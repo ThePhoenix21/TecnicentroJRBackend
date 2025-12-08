@@ -13,6 +13,7 @@ import {
   ParseUUIDPipe,
   Query,
   ValidationPipe,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -25,8 +26,11 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 import { StoreProductService } from './store-product.service';
 import { CreateStoreProductDto } from './dto/create-store-product.dto';
 import { UpdateStoreProductDto } from './dto/update-store-product.dto';
@@ -35,7 +39,7 @@ import { StoreProduct } from './entities/store-product.entity';
 @ApiTags('Productos en Tienda')
 @ApiBearerAuth('JWT')
 @Controller('store/products')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @ApiResponse({ 
   status: HttpStatus.UNAUTHORIZED, 
   description: 'No autorizado - Token JWT inválido o ausente',
@@ -63,6 +67,7 @@ export class StoreProductController {
 
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.MANAGE_PRODUCTS)
   @ApiOperation({ 
     summary: 'Agregar producto a todas las tiendas',
     description: 'Agrega un producto al inventario de todas las tiendas del sistema. La tienda especificada recibirá el producto con el precio y stock indicados, mientras que las demás tiendas recibirán el mismo producto con precio=0 y stock=0. Puede usar un producto existente del catálogo o crear uno nuevo. Requiere que el usuario tenga acceso a la tienda especificada.'
@@ -192,16 +197,29 @@ export class StoreProductController {
     @Body() createStoreProductDto: CreateStoreProductDto,
   ): Promise<StoreProduct[]> {
     const userId = req.user?.userId || req.user?.id;
+    const userPermissions: string[] = req.user?.permissions || [];
+    const canManagePrices = userPermissions.includes(PERMISSIONS.MANAGE_PRICES);
     
     if (!userId) {
       throw new Error('No se pudo obtener el ID del usuario del token JWT');
     }
-    
+
+    // Si se están enviando campos de precio, verificar permiso MANAGE_PRICES
+    const touchesPriceFields =
+      createStoreProductDto.price !== undefined ||
+      createStoreProductDto.basePrice !== undefined ||
+      createStoreProductDto.buyCost !== undefined;
+
+    if (touchesPriceFields && !canManagePrices) {
+      throw new ForbiddenException('No tienes permisos para establecer precios al crear un producto en tienda');
+    }
+
     return this.storeProductService.create(userId, createStoreProductDto);
   }
 
   @Get('my-products')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
   @ApiOperation({ 
     summary: 'Obtener los productos del usuario autenticado en sus tiendas',
     description: 'Retorna una lista de todos los productos que el usuario autenticado ha agregado a las tiendas donde tiene acceso. Incluye información completa del producto del catálogo y de la tienda.'
@@ -268,6 +286,7 @@ export class StoreProductController {
 
   @Get('store/:storeId')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
   @ApiOperation({ 
     summary: 'Obtener todos los productos de una tienda específica',
     description: 'Retorna una lista paginada de todos los productos disponibles en el inventario de una tienda específica. Incluye información del producto del catálogo y datos específicos de la tienda como precio y stock. Soporta búsqueda por nombre de producto.'
@@ -514,17 +533,27 @@ export class StoreProductController {
   ): Promise<StoreProduct> {
     const userId = req.user?.userId || req.user?.id;
     const isAdmin = req.user?.role === Role.ADMIN;
+    const userPermissions: string[] = req.user?.permissions || [];
+
+    // ADMIN siempre puede actualizar stock. Para USER, requerimos MANAGE_PRODUCTS.
+    const canManageProducts = userPermissions.includes(PERMISSIONS.MANAGE_PRODUCTS);
+
+    if (!isAdmin && !canManageProducts) {
+      throw new ForbiddenException('No tienes permisos para modificar el stock de productos');
+    }
     
     // Validar que el stock no sea negativo
     if (stock < 0) {
       throw new Error('El stock no puede ser negativo');
     }
     
-    return this.storeProductService.updateStock(userId, id, stock, isAdmin);
+    // Ya validamos permisos aquí, podemos omitir la restricción de propietario en el servicio.
+    return this.storeProductService.updateStock(userId, id, stock, isAdmin, true);
   }
 
   @Get('findOne/:id')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
   @ApiOperation({ 
     summary: 'Obtener un producto en tienda por ID',
     description: 'Retorna la información detallada de un producto específico en una tienda usando su UUID. Incluye información completa del producto del catálogo, datos de la tienda y del usuario responsable.'
@@ -764,12 +793,45 @@ export class StoreProductController {
     })) updateData: UpdateStoreProductDto,
   ): Promise<StoreProduct> {
     const userId = req.user?.userId || req.user?.id;
-    const isAdmin = req.user?.role === Role.ADMIN;    
-    return this.storeProductService.update(userId, id, updateData, isAdmin);
+    const isAdmin = req.user?.role === Role.ADMIN;
+
+    const userPermissions: string[] = req.user?.permissions || [];
+    const canManageProducts = userPermissions.includes(PERMISSIONS.MANAGE_PRODUCTS);
+    const canManagePrices = userPermissions.includes(PERMISSIONS.MANAGE_PRICES);
+
+    // Debe tener al menos uno de estos permisos para usar este endpoint
+    if (!canManageProducts && !canManagePrices) {
+      throw new ForbiddenException('Debes tener al menos uno de los permisos MANAGE_PRODUCTS o MANAGE_PRICES para actualizar este producto');
+    }
+
+    const touchesStockFields =
+      updateData.stock !== undefined ||
+      updateData.stockThreshold !== undefined;
+
+    const touchesPriceFields =
+      updateData.price !== undefined ||
+      updateData.basePrice !== undefined ||
+      updateData.buyCost !== undefined;
+
+    // Cambios de stock/stockThreshold requieren MANAGE_PRODUCTS
+    if (touchesStockFields && !canManageProducts) {
+      throw new ForbiddenException('No tienes permisos para modificar el stock de productos');
+    }
+
+    // Cambios de precios requieren MANAGE_PRICES
+    if (touchesPriceFields && !canManagePrices) {
+      throw new ForbiddenException('No tienes permisos para modificar precios');
+    }
+
+    // Ya validamos a nivel de controlador qué campos puede tocar según permisos,
+    // por lo que podemos permitir que usuarios con MANAGE_INVENTORY / MANAGE_PRICES
+    // actualicen aunque no sean el "propietario" original del storeProduct.
+    return this.storeProductService.update(userId, id, updateData, isAdmin, true);
   }
 
   @Delete('remove/:id')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ 
     summary: 'Eliminar un producto de una tienda',
