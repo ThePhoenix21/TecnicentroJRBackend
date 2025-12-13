@@ -1,4 +1,4 @@
-import { Order as PrismaOrder, SaleStatus, Service, OrderProduct, Payment, Client, User } from '@prisma/client';
+import { Order as PrismaOrder, SaleStatus, Service, OrderProduct, PaymentMethod, Client, User } from '@prisma/client';
 
 export class Order implements PrismaOrder {
   id: string;
@@ -9,8 +9,9 @@ export class Order implements PrismaOrder {
   updatedAt: Date;
   userId: string;
   clientId: string;
-  orderProducts?: (OrderProduct & { payments?: Payment[] })[];
-  services?: (Service & { payments?: Payment[] })[];
+  orderProducts?: OrderProduct[];
+  services?: Service[];
+  paymentMethods?: PaymentMethod[];
   orderNumber: string;
   cashSessionsId: string | null;
   client?: Client;

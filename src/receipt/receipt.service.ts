@@ -18,6 +18,7 @@ export class ReceiptService {
       where: { id: orderId },
       include: {
         services: true,
+        paymentMethods: true,
         client: true,
         user: {
           select: {
@@ -48,27 +49,19 @@ export class ReceiptService {
       throw new NotFoundException('La orden no está asociada a una tienda');
     }
 
-    // Obtener pagos para los servicios
-    const serviceIds = order.services.map(s => s.id);
-    const servicePayments = await this.prisma.payment.findMany({
-      where: {
-        sourceType: 'SERVICE',
-        sourceId: { in: serviceIds }
-      }
-    });
+    const payments = order.paymentMethods || [];
 
     // Calcular monto total pagado
-    const paidAmount = servicePayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
 
     // Formatear fecha y hora
     const now = new Date(order.createdAt);
     const currentDate = now.toLocaleDateString('es-PE');
     const currentTime = now.toLocaleTimeString('es-PE');
 
-    // Agregar pagos a cada servicio
     const servicesWithPayments = order.services.map(service => ({
       ...service,
-      payments: servicePayments.filter(p => p.sourceId === service.id)
+      payments: []
     }));
 
     const receipt = {
@@ -95,7 +88,7 @@ export class ReceiptService {
     return {
       receipt,
       services: servicesWithPayments,
-      payments: servicePayments
+      payments
     };
   }
 
@@ -105,6 +98,7 @@ export class ReceiptService {
       where: { id: orderId },
       include: {
         orderProducts: true,
+        paymentMethods: true,
         client: true,
         user: {
           select: {
@@ -135,27 +129,19 @@ export class ReceiptService {
       throw new NotFoundException('La orden no está asociada a una tienda');
     }
 
-    // Obtener pagos para los productos
-    const orderProductIds = order.orderProducts.map(op => op.id);
-    const orderProductPayments = await this.prisma.payment.findMany({
-      where: {
-        sourceType: 'ORDERPRODUCT',
-        sourceId: { in: orderProductIds }
-      }
-    });
+    const payments = order.paymentMethods || [];
 
     // Calcular monto total pagado
-    const paidAmount = orderProductPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
 
     // Formatear fecha y hora
     const now = new Date(order.createdAt);
     const currentDate = now.toLocaleDateString('es-PE');
     const currentTime = now.toLocaleTimeString('es-PE');
 
-    // Agregar pagos a cada producto
     const productsWithPayments = order.orderProducts.map(op => ({
       ...op,
-      payments: orderProductPayments.filter(p => p.sourceId === op.id)
+      payments: []
     }));
 
     const receipt = {
@@ -182,7 +168,7 @@ export class ReceiptService {
     return {
       receipt,
       products: productsWithPayments,
-      payments: orderProductPayments
+      payments
     };
   }
 
@@ -205,7 +191,8 @@ export class ReceiptService {
               include: {
                 Store: true
               }
-            }
+            },
+            paymentMethods: true,
           }
         }
       }
@@ -225,16 +212,10 @@ export class ReceiptService {
       throw new NotFoundException('El servicio no está asociado a una tienda');
     }
 
-    // Obtener pagos del servicio
-    const servicePayments = await this.prisma.payment.findMany({
-      where: {
-        sourceType: 'SERVICE',
-        sourceId: serviceId
-      }
-    });
+    const payments = service.order.paymentMethods || [];
 
-    // Calcular monto pagado (adelanto)
-    const paidAmount = servicePayments.reduce((sum, payment) => sum + payment.amount, 0);
+    // Calcular monto pagado
+    const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
 
     // Formatear fecha y hora
     const now = new Date(service.createdAt);
@@ -266,9 +247,9 @@ export class ReceiptService {
       receipt,
       service: {
         ...service,
-        payments: servicePayments
+        payments: []
       },
-      payments: servicePayments
+      payments
     };
   }
 
@@ -291,7 +272,8 @@ export class ReceiptService {
               include: {
                 Store: true
               }
-            }
+            },
+            paymentMethods: true,
           }
         }
       }
@@ -311,16 +293,10 @@ export class ReceiptService {
       throw new NotFoundException('El servicio no está asociado a una tienda');
     }
 
-    // Obtener pagos del servicio
-    const servicePayments = await this.prisma.payment.findMany({
-      where: {
-        sourceType: 'SERVICE',
-        sourceId: serviceId
-      }
-    });
+    const payments = service.order.paymentMethods || [];
 
     // Calcular monto total pagado
-    const paidAmount = servicePayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
 
     // Formatear fecha y hora
     const now = new Date(service.updatedAt); // Usar updatedAt para completados
@@ -352,9 +328,9 @@ export class ReceiptService {
       receipt,
       service: {
         ...service,
-        payments: servicePayments
+        payments: []
       },
-      payments: servicePayments
+      payments
     };
   }
 

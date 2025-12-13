@@ -368,6 +368,7 @@ export class CashSessionService {
     const orders = await this.prisma.order.findMany({
       where: { cashSessionsId: sessionId },
       include: {
+        paymentMethods: true,
         orderProducts: {
           include: {
             product: {
@@ -385,36 +386,11 @@ export class CashSessionService {
       },
     });
 
-    // 4. Obtener IDs para buscar pagos
-    const orderProductIds = orders.flatMap((o) =>
-      o.orderProducts.map((op) => op.id),
-    );
-    const serviceIds = orders.flatMap((o) => o.services.map((s) => s.id));
-
-    // Buscar pagos relacionados
-    const payments = await this.prisma.payment.findMany({
-      where: {
-        OR: [
-          {
-            sourceId: { in: orderProductIds },
-            sourceType: 'ORDERPRODUCT',
-          },
-          {
-            sourceId: { in: serviceIds },
-            sourceType: 'SERVICE',
-          },
-        ],
-      },
-    });
-
-    // Agrupar pagos por sourceId
-    const paymentsMap = new Map<string, any[]>();
-    payments.forEach((p) => {
-      if (!paymentsMap.has(p.sourceId)) {
-        paymentsMap.set(p.sourceId, []);
-      }
-      paymentsMap.get(p.sourceId)!.push(p);
-    });
+    // 4. Agrupar métodos de pago por orden
+    const paymentsByOrderId = new Map<string, any[]>();
+    for (const o of orders) {
+      paymentsByOrderId.set(o.id, o.paymentMethods || []);
+    }
 
     // 5. Construir lista de items
     const items: any[] = [];
@@ -422,12 +398,14 @@ export class CashSessionService {
     for (const order of orders) {
       const orderNumberShort = order.orderNumber.slice(-4);
 
+      const orderPayments = paymentsByOrderId.get(order.id) || [];
+      const orderPaymentMethods = orderPayments.length > 0
+        ? [...new Set(orderPayments.map((p) => p.type))].join(', ')
+        : 'SIN PAGO';
+
       // Procesar Productos
       for (const op of order.orderProducts) {
-        const opPayments = paymentsMap.get(op.id) || [];
-        const paymentMethods = opPayments.length > 0
-          ? [...new Set(opPayments.map((p) => p.type))].join(', ')
-          : 'SIN PAGO';
+        const paymentMethods = orderPaymentMethods;
 
         // Estado orden
         let statusShort = 'PEN';
@@ -446,13 +424,10 @@ export class CashSessionService {
 
       // Procesar Servicios
       for (const svc of order.services) {
-        const svcPayments = paymentsMap.get(svc.id) || [];
-        const paymentMethods = svcPayments.length > 0
-          ? [...new Set(svcPayments.map((p) => p.type))].join(', ')
-          : 'SIN PAGO';
+        const paymentMethods = orderPaymentMethods;
 
-        // Para servicios, SIEMPRE mostrar solo la suma de los pagos de esta sesión
-        const price = svcPayments.reduce((sum, p) => sum + p.amount, 0);
+        // En nuevo esquema, el pago está a nivel de orden: mostramos el precio del servicio
+        const price = svc.price;
 
         let statusShort = 'PEN';
         if (
@@ -478,11 +453,14 @@ export class CashSessionService {
 
     // 6. Calcular Resumen por Método de Pago
     const paymentSummary: Record<string, number> = {};
-    payments.forEach((p) => {
-      const type = p.type;
-      const amount = p.amount;
-      paymentSummary[type] = (paymentSummary[type] || 0) + amount;
-    });
+    for (const order of orders) {
+      const methods = order.paymentMethods || [];
+      methods.forEach((p) => {
+        const type = p.type;
+        const amount = p.amount;
+        paymentSummary[type] = (paymentSummary[type] || 0) + amount;
+      });
+    }
 
     // 7. Obtener Gastos (Expenses)
     const expenses = await this.prisma.cashMovement.findMany({

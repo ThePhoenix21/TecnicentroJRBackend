@@ -146,6 +146,7 @@ model Order {
   inventoryMovements InventoryMovement[]
   orderProducts OrderProduct[]
   services      Service[]
+  paymentMethods PaymentMethod[]
 
   // auditoría de anulaciones
   canceledAt     DateTime?
@@ -178,6 +179,18 @@ model Payment {
   
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
+}
+
+model PaymentMethod {
+  id        String      @id @default(uuid())
+  type      PaymentType @default(EFECTIVO)
+  amount    Float
+
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 }
 
 model CashSession {

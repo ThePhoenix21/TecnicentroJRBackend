@@ -51,6 +51,8 @@ export class OrderCreateResponseDto {
   productos: OrderProductResponseDto[];
   @ApiProperty({ type: [OrderServiceResponseDto], required: false })
   servicios?: OrderServiceResponseDto[];
+  @ApiProperty({ type: 'array', items: { type: 'object' }, required: false })
+  paymentMethods?: { type: string; amount: number }[];
   @ApiProperty({ required: false })
   adelantos?: number;
   @ApiProperty()

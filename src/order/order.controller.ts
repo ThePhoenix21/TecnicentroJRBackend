@@ -14,6 +14,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompleteOrderDto } from './dto/complete-order.dto';
@@ -25,7 +26,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
+import { OrderCreateResponseDto } from './dto/order-create-response.dto';
 
+@ApiTags('Órdenes')
+@ApiBearerAuth('JWT-auth')
 @Controller('orders')
 @UseGuards(RolesGuard)
 export class OrderController {
@@ -38,6 +42,55 @@ export class OrderController {
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
   @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
+  @ApiOperation({
+    summary: 'Crear una orden',
+    description: 'Crea una orden con productos y/o servicios. Los pagos se registran a nivel de orden en paymentMethods. Los campos legacy products[].payments y services[].payments, si se envían, serán ignorados.'
+  })
+  @ApiBody({
+    type: CreateOrderDto,
+    examples: {
+      ejemploConProductoYServicio: {
+        summary: 'Orden con 1 producto y 1 servicio',
+        value: {
+          clientInfo: {
+            name: 'Juan Pérez',
+            email: 'juan@email.com',
+            phone: '987654321',
+            address: 'Av. Principal 123',
+            dni: '12345678',
+            ruc: '20123456789'
+          },
+          products: [
+            {
+              productId: '1c5e23f3-253b-4cc3-a902-0efc86ad2766',
+              quantity: 1,
+              price: 20
+            }
+          ],
+          services: [
+            {
+              name: 'Cambio de aceite',
+              description: 'Servicio de mantenimiento',
+              price: 50,
+              type: 'SERVICIO'
+            }
+          ],
+          paymentMethods: [
+            {
+              type: 'EFECTIVO',
+              amount: 70
+            }
+          ],
+          cashSessionId: '33403c01-fb0f-4d17-b6f6-2990df45551f'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Orden creada exitosamente',
+    type: OrderCreateResponseDto,
+  })
   async create(
     @Req() req: Request & { user: { userId: string; email: string; role: Role } },
     @Body(new ValidationPipe({ 
@@ -98,7 +151,7 @@ export class OrderController {
 
   private formatOrderResponse(order: any) {
     // Procesar la respuesta según si tiene servicios o solo productos
-    const { pdfInfo, orderProducts, services, client, user } = order;
+    const { pdfInfo, orderProducts, services, client, user, paymentMethods } = order;
     const tieneServicios = services && services.length > 0;
 
     // Datos del negocio
@@ -117,22 +170,17 @@ export class OrderController {
     };
     // Productos
     const productos = (orderProducts || []).map((op: any) => {
-      // Pagos por producto
-      const metodosPago = (op.payments || []).map((p: any) => ({
-        tipo: p.type,
-        monto: p.amount,
-      }));
       // Precio de tienda (storeProduct)
       const precioTienda = op.product?.price ?? 0;
-      // Descuento: diferencia entre precio tienda y precio pagado
-      const sumaPagos = (op.payments || []).reduce((sum: number, p: any) => sum + p.amount, 0);
-      const descuento = (precioTienda * op.quantity) - sumaPagos;
+      // Descuento: diferencia entre precio tienda y precio final aplicado en la orden
+      const precioFinal = op.price ?? precioTienda;
+      const descuento = (precioTienda - precioFinal) * op.quantity;
       return {
         nombre: op.product?.product?.name || '',
         cantidad: op.quantity,
         precioUnitario: precioTienda,
         descuento: descuento > 0 ? descuento : 0,
-        metodosPago,
+        metodosPago: [],
       };
     });
 
@@ -148,17 +196,16 @@ export class OrderController {
         nombre: s.name,
         descripcion: s.description,
         precio: s.price,
-        adelantos: (s.payments || []).map((p: any) => ({ tipo: p.type, monto: p.amount }))
+        adelantos: []
       }));
       subtotalServicios = (services || []).reduce((sum: number, s: any) => sum + (s.price || 0), 0);
-      adelantos = (services || []).reduce((sum: number, s: any) => sum + ((s.payments || []).reduce((a: number, ad: any) => a + ad.amount, 0)), 0);
+      adelantos = 0;
     }
     // Subtotal global
     const subtotal = subtotalProductos + subtotalServicios;
-    // Pagos de productos
-    const pagosProductos = productos.reduce((sum: number, p: any) => sum + ((p.metodosPago ?? []).reduce((a: number, mp: any) => a + mp.monto, 0) || 0), 0);
+    const pagosOrden = (paymentMethods || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
     // Total a pagar (lo que falta por pagar)
-    let total = subtotal - descuentos - adelantos - pagosProductos;
+    let total = subtotal - descuentos - adelantos - pagosOrden;
     if (!tieneServicios) {
       total = subtotal - descuentos;
     }
@@ -174,6 +221,10 @@ export class OrderController {
       address,
       phone,
       issueDate,
+      paymentMethods: (paymentMethods || []).map((p: any) => ({
+        type: p.type,
+        amount: p.amount,
+      })),
       client: cliente,
       productos: productosFinal,
       descuentos,
@@ -307,27 +358,13 @@ export class OrderController {
     }
 
     // 4. Validar que los pagos tengan montos positivos
-    if (orderData.products) {
-      for (const product of orderData.products) {
-        if (product.payments && product.payments.length > 0) {
-          for (const payment of product.payments) {
-            if (payment.amount <= 0) {
-              throw new BadRequestException('El monto de pago debe ser mayor a cero');
-            }
-          }
-        }
-      }
+    if (!orderData.paymentMethods || orderData.paymentMethods.length === 0) {
+      throw new BadRequestException('Se requiere al menos un método de pago');
     }
 
-    if (orderData.services) {
-      for (const service of orderData.services) {
-        if (service.payments && service.payments.length > 0) {
-          for (const payment of service.payments) {
-            if (payment.amount <= 0) {
-              throw new BadRequestException('El monto de pago debe ser mayor a cero');
-            }
-          }
-        }
+    for (const payment of orderData.paymentMethods) {
+      if (payment.amount <= 0) {
+        throw new BadRequestException('El monto de pago debe ser mayor a cero');
       }
     }
   }

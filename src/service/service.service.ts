@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
-import { Service, ServiceStatus, ServiceType, PaymentSourceType } from '@prisma/client';
+import { Service, ServiceStatus, ServiceType } from '@prisma/client';
 
 @Injectable()
 export class ServiceService {
@@ -90,22 +90,21 @@ export class ServiceService {
     // 1. Obtener el servicio
     const service = await this.prisma.service.findUnique({
       where: { id },
+      include: {
+        order: {
+          include: {
+            paymentMethods: true,
+          },
+        },
+      },
     });
 
     if (!service) {
       throw new NotFoundException(`Servicio con ID ${id} no encontrado`);
     }
 
-    // 2. Obtener todos los pagos de este servicio
-    const payments = await this.prisma.payment.findMany({
-      where: {
-        sourceType: PaymentSourceType.SERVICE,
-        sourceId: id,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    // 2. Obtener todos los pagos de la orden (nuevo esquema: pagos a nivel de orden)
+    const payments = service.order?.paymentMethods || [];
 
     // 3. Calcular totales
     const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);

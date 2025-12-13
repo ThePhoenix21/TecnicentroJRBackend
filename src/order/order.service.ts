@@ -3,17 +3,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompleteOrderDto } from './dto/complete-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, PrismaClient, SessionStatus, PaymentType, MovementType, PaymentSourceType, ServiceStatus, InventoryMovementType } from '@prisma/client';
+import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
-import { PaymentService } from '../payment/payment.service';
 
 @Injectable()
 export class OrderService {
   constructor(
     private prisma: PrismaService,
     private cashMovementService: CashMovementService,
-    private paymentService: PaymentService
   ) {}
 
   // Función para generar el número de orden secuencial
@@ -31,7 +29,7 @@ export class OrderService {
 }
 
   async create(createOrderDto: CreateOrderDto, user?: { userId: string; email: string; role: string; stores?: string[] }): Promise<Order> {
-    const { clientInfo, clientId, products, services, userId, cashSessionId } = createOrderDto;
+    const { clientInfo, clientId, products, services, userId, cashSessionId, paymentMethods } = createOrderDto;
 
     // Validar que cashSessionId esté presente
     if (!cashSessionId) {
@@ -291,7 +289,13 @@ export class OrderService {
         },
         services: {
           create: servicesData
-        }
+        },
+        paymentMethods: {
+          create: (paymentMethods || []).map((pm) => ({
+            type: pm.type as any,
+            amount: pm.amount,
+          })),
+        },
       };
 
       const order = await prisma.order.create({
@@ -299,6 +303,7 @@ export class OrderService {
         include: {
           orderProducts: true,
           services: true,
+          paymentMethods: true,
         },
       });
 
@@ -339,105 +344,33 @@ export class OrderService {
         servicesData: order.services,
         productsDto: products,
         servicesDto: services,
-        clientIdToUse
+        clientIdToUse,
+        paymentMethodsDto: paymentMethods,
       };
     }).then(async (result) => {
       // 8. Crear pagos y movimientos de caja FUERA de la transacción
-      const { order, orderProductsData, servicesData, productsDto, servicesDto, clientIdToUse } = result;
+      const { order, clientIdToUse, paymentMethodsDto } = result;
       
       console.log('💰 Creando pagos y movimientos de caja para la orden:', order.id);
-      
-      // Crear pagos de productos (siempre se procesan)
-      if (productsDto && productsDto.length > 0) {
-        for (let i = 0; i < orderProductsData.length; i++) {
-          const orderProduct = orderProductsData[i];
-          const productDto = productsDto[i];
-          
-          if (productDto.payments && productDto.payments.length > 0) {
-            console.log('📦 Creando pagos para producto:', orderProduct.id);
-            
-            // Crear pagos
-            const paymentData = productDto.payments.map(payment => ({
-              type: payment.type as any, // Convertir a tipo de Prisma
-              amount: payment.amount,
-              sourceType: 'ORDERPRODUCT' as PaymentSourceType,
-              sourceId: orderProduct.id
-            }));
-            
-            const createdPayments = await this.paymentService.createPayments(paymentData);
-            console.log('✅ Pagos de producto creados:', createdPayments.length);
-            
-            // Crear movimientos de caja para pagos en efectivo
-            const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
-            if (cashPayments.length > 0) {
-              console.log('💰 Creando movimientos de caja para pagos en efectivo');
-              
-              for (const cashPayment of cashPayments) {
-                try {
-                  await this.cashMovementService.createFromOrder({
-                    cashSessionId: cashSessionId,
-                    amount: cashPayment.amount,
-                    orderId: order.id,
-                    clientId: clientIdToUse,
-                    clientName: clientInfo?.name,
-                    clientEmail: clientInfo?.email
-                  }, false, userId); // isRefund: false para ingresos, pasar userId
-                  
-                  console.log('✅ Movimiento de caja creado:', cashPayment.amount);
-                } catch (error) {
-                  console.error('❌ Error al crear movimiento de caja:', error.message);
-                  // No fallar la creación de la orden si falla el movimiento
-                }
-              }
-            }
-          }
-        }
-      }
-      
-      // NOTA: Los servicios SÍ pueden tener pagos de adelanto
-      // Los pagos de servicios se procesan al crear y al completar la orden
-      if (servicesDto && servicesDto.length > 0) {
-        for (let i = 0; i < servicesData.length; i++) {
-          const service = servicesData[i];
-          const serviceDto = servicesDto[i];
-          
-          if (serviceDto.payments && serviceDto.payments.length > 0) {
-            console.log('🔧 Creando pagos de adelanto para servicio:', service.id);
-            
-            // Crear pagos de adelanto
-            const paymentData = serviceDto.payments.map(payment => ({
-              type: payment.type as any,
-              amount: payment.amount,
-              sourceType: 'SERVICE' as PaymentSourceType,
-              sourceId: service.id
-            }));
-            
-            const createdPayments = await this.paymentService.createPayments(paymentData);
-            console.log('✅ Pagos de adelanto de servicio creados:', createdPayments.length);
-            
-            // Crear movimientos de caja para pagos en efectivo (adelantos)
-            const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
-            if (cashPayments.length > 0) {
-              console.log('💰 Creando movimientos de caja para adelantos en efectivo');
-              
-              for (const cashPayment of cashPayments) {
-                try {
-                  await this.cashMovementService.createFromOrder({
-                    cashSessionId: cashSessionId,
-                    amount: cashPayment.amount,
-                    orderId: order.id,
-                    clientId: clientIdToUse,
-                    clientName: clientInfo?.name,
-                    clientEmail: clientInfo?.email
-                  }, false, userId); // isRefund: false para ingresos
-                  
-                  console.log('✅ Movimiento de caja de adelanto creado:', cashPayment.amount);
-                } catch (error) {
-                  console.error('❌ Error al crear movimiento de caja de adelanto:', error.message);
-                  // No fallar la creación de la orden si falla el movimiento
-                }
-              }
-            }
+
+      const cashPayments = (paymentMethodsDto || []).filter((pm) => pm.type === PaymentType.EFECTIVO);
+      if (cashPayments.length > 0) {
+        console.log('💰 Creando movimientos de caja para pagos en efectivo');
+
+        for (const cashPayment of cashPayments) {
+          try {
+            await this.cashMovementService.createFromOrder({
+              cashSessionId: cashSessionId,
+              amount: cashPayment.amount,
+              orderId: order.id,
+              clientId: clientIdToUse,
+              clientName: clientInfo?.name,
+              clientEmail: clientInfo?.email
+            }, false, userId);
+
+            console.log('✅ Movimiento de caja creado:', cashPayment.amount);
+          } catch (error) {
+            console.error('❌ Error al crear movimiento de caja:', error.message);
           }
         }
       }
@@ -561,6 +494,7 @@ export class OrderService {
           },
           services: true,
           orderProducts: true,
+          paymentMethods: true,
           client: true,
           cashSession: true
         }
@@ -583,59 +517,8 @@ export class OrderService {
         throw new BadRequestException('La orden ya está anulada');
       }
 
-      // 4. Obtener todos los pagos en EFECTIVO de la orden
-      const allPayments: any[] = [];
-      
-      // Obtener pagos de orderProducts
-      if (order.orderProducts && order.orderProducts.length > 0) {
-        console.log('🔍 [OrderService] Buscando pagos en orderProducts:', order.orderProducts.length);
-        const orderProductIds = order.orderProducts.map(op => op.id);
-        console.log('🔍 [OrderService] OrderProduct IDs:', orderProductIds);
-        
-        const orderProductPayments = await prisma.payment.findMany({
-          where: {
-            sourceType: 'ORDERPRODUCT',
-            sourceId: { in: orderProductIds }
-          }
-        });
-        
-        console.log('🔍 [OrderService] Pagos de orderProducts encontrados:', orderProductPayments.length);
-        orderProductPayments.forEach(payment => {
-          allPayments.push({
-            ...payment,
-            sourceType: 'ORDERPRODUCT',
-            sourceId: payment.sourceId
-          });
-        });
-      }
-
-      // Obtener pagos de servicios
-      if (order.services && order.services.length > 0) {
-        console.log('🔍 [OrderService] Buscando pagos en servicios:', order.services.length);
-        const serviceIds = order.services.map(s => s.id);
-        console.log('🔍 [OrderService] Service IDs:', serviceIds);
-        
-        const servicePayments = await prisma.payment.findMany({
-          where: {
-            sourceType: 'SERVICE',
-            sourceId: { in: serviceIds }
-          }
-        });
-        
-        console.log('🔍 [OrderService] Pagos de servicios encontrados:', servicePayments.length);
-        servicePayments.forEach(payment => {
-          allPayments.push({
-            ...payment,
-            sourceType: 'SERVICE',
-            sourceId: payment.sourceId
-          });
-        });
-      }
-
-      console.log('🔄 [OrderService] Pagos encontrados para anulación:', allPayments.map(p => ({ type: p.type, amount: p.amount })));
-
-      // 5. Filtrar pagos en EFECTIVO y crear movimientos de caja
-      const cashPayments = allPayments.filter(payment => payment.type === PaymentType.EFECTIVO);
+      // 4. Filtrar pagos en EFECTIVO (PaymentMethod) y crear movimientos de caja
+      const cashPayments = (order.paymentMethods || []).filter((pm) => pm.type === PaymentType.EFECTIVO);
       console.log('💰 [OrderService] Pagos en efectivo a reembolsar:', cashPayments.length, cashPayments.map(p => ({ amount: p.amount })));
 
       console.log('🔍 [OrderService] Información de sesión de caja:', {
@@ -756,6 +639,7 @@ export class OrderService {
           }
         },
         services: true,
+        paymentMethods: true,
         client: true,
         user: {
           select: {
@@ -777,42 +661,7 @@ export class OrderService {
       throw new NotFoundException('Orden no encontrada');
     }
 
-    // Obtener pagos para orderProducts
-    const orderProductIds = completeOrder.orderProducts.map(op => op.id);
-    const orderProductPayments = await this.prisma.payment.findMany({
-      where: {
-        sourceType: 'ORDERPRODUCT',
-        sourceId: { in: orderProductIds }
-      }
-    });
-
-    // Obtener pagos para services
-    const serviceIds = completeOrder.services.map(s => s.id);
-    const servicePayments = await this.prisma.payment.findMany({
-      where: {
-        sourceType: 'SERVICE',
-        sourceId: { in: serviceIds }
-      }
-    });
-
-    // Agregar pagos a cada orderProduct
-    const orderProductsWithPayments = completeOrder.orderProducts.map(op => ({
-      ...op,
-      payments: orderProductPayments.filter(p => p.sourceId === op.id)
-    }));
-
-    // Agregar pagos a cada service
-    const servicesWithPayments = completeOrder.services.map(service => ({
-      ...service,
-      payments: servicePayments.filter(p => p.sourceId === service.id)
-    }));
-
-    // Devolver la orden con pagos incluidos y toda la información para PDF
-    const orderWithPayments = {
-      ...completeOrder,
-      orderProducts: orderProductsWithPayments,
-      services: servicesWithPayments
-    };
+    const orderWithPayments = completeOrder;
 
     // Agregar información adicional para PDF
     const pdfInfo = {
@@ -826,7 +675,7 @@ export class OrderService {
       clientName: completeOrder.client?.name || 'Cliente no identificado',
       clientDni: completeOrder.client?.dni || 'N/A',
       clientPhone: completeOrder.client?.phone || 'N/A',
-      paidAmount: [...orderProductPayments, ...servicePayments].reduce((sum, payment) => sum + payment.amount, 0)
+      paidAmount: (completeOrder.paymentMethods || []).reduce((sum, pm) => sum + pm.amount, 0)
     };
 
     return {
@@ -922,51 +771,58 @@ export class OrderService {
       // 4. Procesar pagos (permite pagos parciales sin validar estado de servicios)
       console.log('💰 Procesando pagos para servicios:', services.length);
 
+      const newPaymentMethods: Array<{ type: PaymentType; amount: number }> = [];
       for (const servicePayment of services) {
-        const service = servicesMap.get(servicePayment.serviceId);
-        if (!service) continue; // Skip if service not found
-        
-        console.log('🔧 Creando pagos para servicio:', service.id);
-        
-        // Crear pagos adicionales (no reemplazar los existentes)
-        const paymentData = servicePayment.payments.map(payment => ({
-          type: payment.type as any,
-          amount: payment.amount,
-          sourceType: 'SERVICE' as PaymentSourceType,
-          sourceId: service.id
-        }));
-        
-        const createdPayments = await this.paymentService.createPayments(paymentData);
-        console.log('✅ Pagos de servicio creados:', createdPayments.length);
-        
-        // Crear movimientos de caja para pagos en efectivo
-        const cashPayments = createdPayments.filter(p => p.type === PaymentType.EFECTIVO);
-        if (cashPayments.length > 0) {
-          console.log('💰 Creando movimientos de caja para pagos en efectivo');
-          
-          for (const cashPayment of cashPayments) {
-            try {
-              await this.cashMovementService.createFromOrder({
-                cashSessionId: order.cashSession?.id || '',
-                amount: cashPayment.amount,
-                orderId: order.id,
-                clientId: order.clientId,
-                clientName: order.client?.name || undefined,
-                clientEmail: order.client?.email || undefined
-              }, false, user?.userId); // isRefund: false para ingresos
-              
-              console.log('✅ Movimiento de caja creado para servicio:', cashPayment.amount);
-            } catch (error) {
-              console.error('❌ Error al crear movimiento de caja para servicio:', error.message);
-              // No fallar el proceso si falla el movimiento
-            }
+        for (const payment of (servicePayment.payments || [])) {
+          newPaymentMethods.push({
+            type: payment.type as unknown as PaymentType,
+            amount: payment.amount,
+          });
+        }
+      }
+
+      if (newPaymentMethods.length > 0) {
+        await prisma.paymentMethod.createMany({
+          data: newPaymentMethods.map((pm) => ({
+            orderId,
+            type: pm.type,
+            amount: pm.amount,
+          })),
+        });
+      }
+
+      const cashPayments = newPaymentMethods.filter((pm) => pm.type === PaymentType.EFECTIVO);
+      if (cashPayments.length > 0) {
+        console.log('💰 Creando movimientos de caja para pagos en efectivo');
+
+        for (const cashPayment of cashPayments) {
+          try {
+            await this.cashMovementService.createFromOrder({
+              cashSessionId: order.cashSession?.id || '',
+              amount: cashPayment.amount,
+              orderId: order.id,
+              clientId: order.clientId,
+              clientName: order.client?.name || undefined,
+              clientEmail: order.client?.email || undefined
+            }, false, user?.userId);
+
+            console.log('✅ Movimiento de caja creado para servicio:', cashPayment.amount);
+          } catch (error) {
+            console.error('❌ Error al crear movimiento de caja para servicio:', error.message);
           }
         }
       }
 
       // 5. Calcular totales para determinar si la orden puede completarse
-      const totalOwed = await this.calculateTotalOwed(orderId);
-      const totalPaid = await this.calculateTotalPaid(orderId);
+      const totalOwed = order.services.reduce((sum, s) => sum + (s.price || 0), 0)
+        + order.orderProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0);
+
+      const existingPaymentMethods = await prisma.paymentMethod.findMany({
+        where: { orderId },
+        select: { amount: true }
+      });
+
+      const totalPaid = existingPaymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
       
       console.log('💰 Estado financiero:', { totalOwed, totalPaid, balance: totalPaid - totalOwed });
 
@@ -1062,39 +918,11 @@ export class OrderService {
 
   // Método auxiliar para calcular el total pagado de una orden
   private async calculateTotalPaid(orderId: string): Promise<number> {
-    // Obtener todos los pagos relacionados con esta orden
-    const services = await this.prisma.service.findMany({
+    const paymentMethods = await this.prisma.paymentMethod.findMany({
       where: { orderId },
-      select: { id: true }
+      select: { amount: true }
     });
 
-    const orderProducts = await this.prisma.orderProduct.findMany({
-      where: { orderId },
-      select: { id: true }
-    });
-
-    const serviceIds = services.map(s => s.id);
-    const orderProductIds = orderProducts.map(op => op.id);
-
-    // Sumar pagos de servicios
-    const servicePayments = await this.prisma.payment.findMany({
-      where: {
-        sourceType: 'SERVICE',
-        sourceId: { in: serviceIds }
-      }
-    });
-
-    // Sumar pagos de productos
-    const productPayments = await this.prisma.payment.findMany({
-      where: {
-        sourceType: 'ORDERPRODUCT',
-        sourceId: { in: orderProductIds }
-      }
-    });
-
-    const servicePaymentsTotal = servicePayments.reduce((sum, payment) => sum + payment.amount, 0);
-    const productPaymentsTotal = productPayments.reduce((sum, payment) => sum + payment.amount, 0);
-    
-    return servicePaymentsTotal + productPaymentsTotal;
+    return paymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
   }
 }
