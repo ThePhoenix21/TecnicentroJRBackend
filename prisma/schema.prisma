@@ -43,6 +43,9 @@ model User {
   passwordResetToken        String?
   passwordResetTokenExpires DateTime?
 
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+
   clients                   Client[]
   orders                    Order[]
   products                  Product[]
@@ -245,6 +248,9 @@ model Store {
   createdById String?
   createdBy   User? @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+
   cashSessions            CashSession[]
   storeUsers              StoreUsers[]
   storeProducts           StoreProduct[]
@@ -259,6 +265,18 @@ model StoreUsers {
 
   userId    String
   user      User        @relation(fields: [userId], references: [id])
+}
+
+//===================SECCIÓN DE EMPRESA===================
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  ruc       String?
+  createdAt DateTime @default(now())
+
+  stores    Store[]
+  users     User[]
 }
 
 //===================SECCIÓN DE INVENTARIO===================
