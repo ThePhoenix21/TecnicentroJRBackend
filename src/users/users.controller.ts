@@ -371,8 +371,14 @@ export class UsersController {
     }
   })
   @ApiResponse({ status: 403, description: 'No autorizado' })
-  async findAll() {
-    return this.usersService.findAll();
+  async findAll(@Request() req: any) {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.usersService.findAll(tenantId);
   }
 
   @Put('change-password')

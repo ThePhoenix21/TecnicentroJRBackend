@@ -299,8 +299,8 @@ export class UsersService {
         return this.prisma.user.update({
             where: { id: userId },
             data: {
-            password: newPassword,
-            passwordChangedAt: new Date(),
+                password: newPassword,
+                passwordChangedAt: new Date(),
             },
         });
     }
@@ -318,8 +318,9 @@ export class UsersService {
         });
     }
 
-    async findAll() {
+    async findAll(tenantId: string) {
         const users = await this.prisma.user.findMany({
+            where: { tenantId },
             select: {
                 id: true,
                 email: true,
@@ -329,21 +330,19 @@ export class UsersService {
                 phone: true,
                 createdAt: true,
                 updatedAt: true,
-                // Excluir campos sensibles como password, passwordResetToken, etc.
             },
             orderBy: {
-                createdAt: 'desc', // Opcional: ordenar por fecha de creación
+                createdAt: 'desc',
             },
         });
 
-        // Para cada usuario, obtener sus tiendas asociadas
         const usersWithStores = await Promise.all(
             users.map(async (user) => {
                 let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
-                
+
                 if (user.role === 'ADMIN') {
-                    // ADMIN: obtener todas las tiendas
                     stores = await this.prisma.store.findMany({
+                        where: { tenantId },
                         select: {
                             id: true,
                             name: true,
@@ -351,13 +350,17 @@ export class UsersService {
                             phone: true,
                             createdAt: true,
                             updatedAt: true,
-                            createdById: true
-                        }
+                            createdById: true,
+                        },
                     });
                 } else {
-                    // USER: obtener tiendas asignadas
                     const userStores = await this.prisma.storeUsers.findMany({
-                        where: { userId: user.id },
+                        where: {
+                            userId: user.id,
+                            store: {
+                                tenantId,
+                            },
+                        },
                         include: {
                             store: {
                                 select: {
@@ -367,19 +370,20 @@ export class UsersService {
                                     phone: true,
                                     createdAt: true,
                                     updatedAt: true,
-                                    createdById: true
-                                }
-                            }
-                        }
+                                    createdById: true,
+                                },
+                            },
+                        },
                     });
-                    stores = userStores.map(us => us.store);
+
+                    stores = userStores.map((us) => us.store);
                 }
 
                 return {
                     ...user,
-                    stores
+                    stores,
                 };
-            })
+            }),
         );
 
         return usersWithStores;

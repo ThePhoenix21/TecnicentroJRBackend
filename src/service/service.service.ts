@@ -149,6 +149,7 @@ export class ServiceService {
         order: {
           include: {
             client: true,
+            paymentMethods: true,
             cashSession: {
               include: {
                 Store: true
@@ -162,6 +163,7 @@ export class ServiceService {
     // Formatear la respuesta para incluir cliente, tienda y orden
     return services.map((service: any) => ({
       ...service,
+      hasPendingPayment: (service.price || 0) - ((service.order?.paymentMethods || []).reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0)) > 0,
       client: service.order?.client || null,
       store: service.order?.cashSession?.Store || null,
       order: service.order ? {

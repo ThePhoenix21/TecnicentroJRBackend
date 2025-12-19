@@ -14,6 +14,7 @@ import {
   Query,
   ValidationPipe,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -197,11 +198,16 @@ export class StoreProductController {
     @Body() createStoreProductDto: CreateStoreProductDto,
   ): Promise<StoreProduct[]> {
     const userId = req.user?.userId || req.user?.id;
+    const tenantId = req.user?.tenantId;
     const userPermissions: string[] = req.user?.permissions || [];
     const canManagePrices = userPermissions.includes(PERMISSIONS.MANAGE_PRICES);
     
     if (!userId) {
       throw new Error('No se pudo obtener el ID del usuario del token JWT');
+    }
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
     }
 
     // Si se están enviando campos de precio, verificar permiso MANAGE_PRICES
@@ -214,7 +220,7 @@ export class StoreProductController {
       throw new ForbiddenException('No tienes permisos para establecer precios al crear un producto en tienda');
     }
 
-    return this.storeProductService.create(userId, createStoreProductDto);
+    return this.storeProductService.create(userId, tenantId, createStoreProductDto);
   }
 
   @Get('my-products')
@@ -281,7 +287,14 @@ export class StoreProductController {
     description: 'No tiene permisos para ver productos'
   })
   async findMyProducts(@Req() req: any): Promise<StoreProduct[]> {
-    return this.storeProductService.findByUser(req.user.userId);
+    const tenantId = req.user?.tenantId;
+    const userId = req.user?.userId || req.user?.id;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.storeProductService.findByUser(tenantId, userId);
   }
 
   @Get('store/:storeId')
@@ -395,12 +408,19 @@ export class StoreProductController {
     description: 'No tiene permisos para ver productos de esta tienda'
   })
   async findByStore(
+    @Req() req: any,
     @Param('storeId') storeId: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20,
     @Query('search') search: string = ''
   ): Promise<any> {
-    return this.storeProductService.findByStore(storeId, page, limit, search);
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.storeProductService.findByStore(tenantId, storeId, Number(page), Number(limit), search);
   }
 
   @Patch(':id/stock')
@@ -532,6 +552,7 @@ export class StoreProductController {
     @Body('stock') stock: number
   ): Promise<StoreProduct> {
     const userId = req.user?.userId || req.user?.id;
+    const tenantId = req.user?.tenantId;
     const isAdmin = req.user?.role === Role.ADMIN;
     const userPermissions: string[] = req.user?.permissions || [];
 
@@ -541,6 +562,10 @@ export class StoreProductController {
     if (!isAdmin && !canManageProducts) {
       throw new ForbiddenException('No tienes permisos para modificar el stock de productos');
     }
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
     
     // Validar que el stock no sea negativo
     if (stock < 0) {
@@ -548,7 +573,7 @@ export class StoreProductController {
     }
     
     // Ya validamos permisos aquí, podemos omitir la restricción de propietario en el servicio.
-    return this.storeProductService.updateStock(userId, id, stock, isAdmin, true);
+    return this.storeProductService.updateStock(tenantId, userId, id, stock, isAdmin, true);
   }
 
   @Get('findOne/:id')
@@ -632,9 +657,16 @@ export class StoreProductController {
     description: 'No tiene permisos para ver este producto'
   })
   async findOne(
+    @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<StoreProduct> {  
-    return this.storeProductService.findOne(id);
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.storeProductService.findOne(tenantId, id);
   }
 
   @Patch('update/:id')
@@ -793,6 +825,7 @@ export class StoreProductController {
     })) updateData: UpdateStoreProductDto,
   ): Promise<StoreProduct> {
     const userId = req.user?.userId || req.user?.id;
+    const tenantId = req.user?.tenantId;
     const isAdmin = req.user?.role === Role.ADMIN;
 
     const userPermissions: string[] = req.user?.permissions || [];
@@ -826,7 +859,7 @@ export class StoreProductController {
     // Ya validamos a nivel de controlador qué campos puede tocar según permisos,
     // por lo que podemos permitir que usuarios con MANAGE_INVENTORY / MANAGE_PRICES
     // actualicen aunque no sean el "propietario" original del storeProduct.
-    return this.storeProductService.update(userId, id, updateData, isAdmin, true);
+    return this.storeProductService.update(userId, tenantId, id, updateData, isAdmin, true);
   }
 
   @Delete('remove/:id')
@@ -892,8 +925,13 @@ export class StoreProductController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     const userId = req.user?.userId || req.user?.id;
+    const tenantId = req.user?.tenantId;
     const isAdmin = req.user?.role === Role.ADMIN;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
     
-    return this.storeProductService.remove(userId, id, isAdmin);
+    return this.storeProductService.remove(tenantId, userId, id, isAdmin);
   }
 }

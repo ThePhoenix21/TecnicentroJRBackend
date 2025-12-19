@@ -568,6 +568,32 @@ export class OrderService {
         console.warn('⚠️ [OrderService] No se encontraron pagos en efectivo para reembolsar');
       }
 
+      // 5. Devolver stock de productos y registrar movimientos de inventario
+      if (order.orderProducts && order.orderProducts.length > 0) {
+        await Promise.all(
+          order.orderProducts.map((op) =>
+            Promise.all([
+              prisma.storeProduct.update({
+                where: { id: op.productId },
+                data: {
+                  stock: { increment: op.quantity },
+                },
+              }),
+              prisma.inventoryMovement.create({
+                data: {
+                  type: InventoryMovementType.RETURN,
+                  quantity: op.quantity, // Cantidad positiva para devolver al stock
+                  description: 'Devolución por anulación de orden',
+                  storeProductId: op.productId,
+                  userId: userId,
+                  orderId: order.id,
+                },
+              }),
+            ]),
+          ),
+        );
+      }
+
       // 6. Actualizar el estado de la orden a CANCELLED y registrar auditoría
       const updatedOrder = await prisma.order.update({
         where: { id },

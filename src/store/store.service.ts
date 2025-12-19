@@ -124,8 +124,9 @@ export class StoreService {
     }
   }
 
-  findAll() {
+  findAll(tenantId: string) {
     return this.prisma.store.findMany({
+      where: { tenantId },
       include: {
         createdBy: {
           select: {

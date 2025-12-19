@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, BadRequestException } from '@nestjs/common';
 import { StoreService } from './store.service';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('Stores')
 @Controller('store')
@@ -75,9 +75,11 @@ export class StoreController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Obtener todas las tiendas',
-    description: 'Obtiene una lista de todas las tiendas registradas en el sistema con información del creador'
+    description: 'Obtiene una lista de tiendas del tenant del usuario autenticado con información del creador'
   })
   @ApiResponse({ 
     status: 200, 
@@ -107,8 +109,15 @@ export class StoreController {
       }
     }
   })
-  findAll() {
-    return this.storeService.findAll();
+  @ApiResponse({ status: 401, description: 'No autorizado - token inválido o expirado' })
+  findAll(@Req() req: any) {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.storeService.findAll(tenantId);
   }
 
   @Get(':id')

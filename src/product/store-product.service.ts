@@ -14,9 +14,13 @@ export class StoreProductService {
     private productService: ProductService
   ) {}
 
-  async create(userId: string, createStoreProductDto: CreateStoreProductDto): Promise<StoreProduct[]> {
+  async create(userId: string, tenantId: string, createStoreProductDto: CreateStoreProductDto): Promise<StoreProduct[]> {
     if (!userId) {
       throw new Error('Se requiere un ID de usuario válido para crear un producto en tienda');
+    }
+
+    if (!tenantId) {
+      throw new Error('TenantId no encontrado en el token');
     }
 
     try {
@@ -68,6 +72,10 @@ export class StoreProductService {
         throw new NotFoundException(`Tienda con ID ${createStoreProductDto.storeId} no encontrada`);
       }
 
+      if (!store.tenantId || store.tenantId !== tenantId) {
+        throw new ForbiddenException('No tienes permisos para agregar productos a esta tienda');
+      }
+
       // Verificar que el usuario tenga acceso a la tienda
       const storeUser = await this.prisma.storeUsers.findFirst({
         where: {
@@ -82,12 +90,18 @@ export class StoreProductService {
 
       // Obtener todas las tiendas disponibles
       const allStores = await this.prisma.store.findMany({
+        where: { tenantId },
         select: { id: true, name: true }
       });
 
       // Verificar si el producto ya existe en alguna tienda
       const existingStoreProducts = await this.prisma.storeProduct.findMany({
-        where: { productId: productId },
+        where: {
+          productId: productId,
+          store: {
+            tenantId,
+          },
+        },
         select: { storeId: true }
       });
 
@@ -161,11 +175,24 @@ export class StoreProductService {
     }
   }
 
-  async findByStore(storeId: string, page: number = 1, limit: number = 20, search: string = ''): Promise<any> {
+  async findByStore(tenantId: string, storeId: string, page: number = 1, limit: number = 20, search: string = ''): Promise<any> {
     const skip = (page - 1) * limit;
+
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: { tenantId: true },
+    });
+
+    if (!store) {
+      throw new NotFoundException(`Tienda con ID ${storeId} no encontrada`);
+    }
+
+    if (!store.tenantId || store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tiene permisos para ver productos de esta tienda');
+    }
     
     // Construir where clause para búsqueda
-    let whereCondition: any = { storeId };
+    let whereCondition: any = { storeId, store: { tenantId } };
     
     if (search) {
       whereCondition.product = {
@@ -228,14 +255,25 @@ export class StoreProductService {
     };
   }
 
-  async updateStock(userId: string, id: string, newStock: number, isAdmin: boolean = false, bypassOwnership: boolean = false): Promise<StoreProduct> {
+  async updateStock(tenantId: string, userId: string, id: string, newStock: number, isAdmin: boolean = false, bypassOwnership: boolean = false): Promise<StoreProduct> {
     // Verificar que el StoreProduct existe
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
+      include: {
+        store: {
+          select: {
+            tenantId: true,
+          },
+        },
+      },
     });
 
     if (!storeProduct) {
       throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
+    }
+
+    if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permiso para actualizar este producto');
     }
 
     // Si no es admin y no se permite saltar la restricción de propietario,
@@ -251,7 +289,7 @@ export class StoreProductService {
 
     // Si el stock es igual, no hacer nada
     if (newStock === storeProduct.stock) {
-      return this.findOne(id);
+      return this.findOne(tenantId, id);
     }
 
     // Calcular diferencia positiva
@@ -304,9 +342,9 @@ export class StoreProductService {
     });
   }
 
-  async findByUser(userId: string): Promise<StoreProduct[]> {
+  async findByUser(tenantId: string, userId: string): Promise<StoreProduct[]> {
     return this.prisma.storeProduct.findMany({
-      where: { userId: userId },
+      where: { userId: userId, store: { tenantId } },
       orderBy: { createdAt: 'desc' },
       include: {
         product: {
@@ -337,9 +375,9 @@ export class StoreProductService {
     });
   }
 
-  async findOne(id: string): Promise<StoreProduct> {
-    const storeProduct = await this.prisma.storeProduct.findUnique({
-      where: { id },
+  async findOne(tenantId: string, id: string): Promise<StoreProduct> {
+    const storeProduct = await this.prisma.storeProduct.findFirst({
+      where: { id, store: { tenantId } },
       include: {
         product: {
           select: {
@@ -377,6 +415,7 @@ export class StoreProductService {
 
   async update(
     userId: string,
+    tenantId: string,
     id: string,
     updateData: UpdateStoreProductDto,
     isAdmin: boolean = false,
@@ -392,7 +431,12 @@ export class StoreProductService {
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
       include: {
-        product: true
+        product: true,
+        store: {
+          select: {
+            tenantId: true,
+          },
+        },
       }
     });
 
@@ -638,10 +682,17 @@ export class StoreProductService {
     return currentStoreProduct as unknown as StoreProduct;
   }
 
-  async remove(userId: string, id: string, isAdmin: boolean = false): Promise<void> {
+  async remove(tenantId: string, userId: string, id: string, isAdmin: boolean = false): Promise<void> {
     // Verificar que el StoreProduct existe
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
+      include: {
+        store: {
+          select: {
+            tenantId: true,
+          },
+        },
+      },
     });
 
     if (!storeProduct) {

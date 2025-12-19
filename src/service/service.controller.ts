@@ -768,6 +768,7 @@ export class ServiceController {
           description: { type: 'string', example: 'Revisión completa del motor' },
           photoUrls: { type: 'array', items: { type: 'string' }, example: ['https://supabase-url.com/photo1.jpg'] },
           price: { type: 'number', example: 250.00 },
+          hasPendingPayment: { type: 'boolean', example: true },
           orderId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },

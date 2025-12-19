@@ -199,16 +199,15 @@ export class OrderController {
         adelantos: []
       }));
       subtotalServicios = (services || []).reduce((sum: number, s: any) => sum + (s.price || 0), 0);
-      adelantos = 0;
     }
     // Subtotal global
     const subtotal = subtotalProductos + subtotalServicios;
     const pagosOrden = (paymentMethods || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-    // Total a pagar (lo que falta por pagar)
-    let total = subtotal - descuentos - adelantos - pagosOrden;
-    if (!tieneServicios) {
-      total = subtotal - descuentos;
+    if (tieneServicios) {
+      adelantos = pagosOrden;
     }
+
+    let total = subtotal - descuentos;
     // Si no hay productos, productos debe ser []
     const productosFinal = productos || [];
 
