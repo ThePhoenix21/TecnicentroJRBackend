@@ -64,8 +64,16 @@ export class ClientController {
   async findAll(
     @Query('page') page = 1,
     @Query('limit') limit = 10,
+    @Request() req: any,
   ) {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
     return this.clientService.findAll({
+      tenantId,
       page: Number(page),
       limit: Number(limit),
     });

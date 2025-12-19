@@ -11,6 +11,7 @@ import { UpdateClientDto } from './dto/update-client.dto';
 import { Client, Prisma } from '@prisma/client';
 
 type FindAllParams = {
+  tenantId?: string;
   page?: number;
   limit?: number;
 };
@@ -45,12 +46,27 @@ export class ClientService {
     }
   }
 
-  async findAll({ page = 1, limit = 10 }: FindAllParams = {}) {
+  async findAll({ tenantId, page = 1, limit = 10 }: FindAllParams = {}) {
     const skip = (page - 1) * limit;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
     
     const [total, clients] = await Promise.all([
-      this.prisma.client.count(),
+      this.prisma.client.count({
+        where: {
+          user: {
+            tenantId,
+          },
+        },
+      }),
       this.prisma.client.findMany({
+        where: {
+          user: {
+            tenantId,
+          },
+        },
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
