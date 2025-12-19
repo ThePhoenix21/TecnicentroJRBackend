@@ -32,9 +32,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Role } from '../auth/enums/role.enum';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('clientes')
 @ApiBearerAuth()
+@RequireTenantFeatures(TenantFeature.CLIENTS)
 @Controller('clientes')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ClientController {

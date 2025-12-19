@@ -7,9 +7,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Stores')
 @Controller('store')
+@RequireTenantFeatures(TenantFeature.STORE)
 export class StoreController {
   constructor(private readonly storeService: StoreService) {}
 

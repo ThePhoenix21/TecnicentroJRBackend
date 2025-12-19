@@ -80,7 +80,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: payload.role as Role,
         permissions: user.permissions || [], 
         stores: payload.stores || [],
-        tenantId: payload.tenantId || user.tenantId,
+        tenantId: (payload.tenantId ?? user.tenantId) ?? undefined,
         tenantName: payload.tenantName
       };
       

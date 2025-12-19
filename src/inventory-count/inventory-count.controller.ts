@@ -21,9 +21,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { Request } from 'express';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Inventario Físico')
 @Controller('inventory-count')
+@RequireTenantFeatures(TenantFeature.INVENTORY)
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class InventoryCountController {

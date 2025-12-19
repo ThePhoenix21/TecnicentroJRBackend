@@ -11,9 +11,12 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery } from 
 import { User } from '@prisma/client';
 import { AuthService } from '../auth/auth.service';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Cash Sessions')
 @Controller('cash-session')
+@RequireTenantFeatures(TenantFeature.CASH)
 export class CashSessionController {
   constructor(
     private readonly cashSessionService: CashSessionService,

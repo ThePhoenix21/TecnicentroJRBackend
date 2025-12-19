@@ -43,8 +43,8 @@ model User {
   passwordResetToken        String?
   passwordResetTokenExpires DateTime?
 
-  tenantId    String
-  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  tenantId                  String?
+  tenant                    Tenant?        @relation(fields: [tenantId], references: [id])
 
   clients                   Client[]
   orders                    Order[]
@@ -274,6 +274,8 @@ model Tenant {
   name      String
   ruc       String?
   status    TenantStatus @default(ACTIVE)
+  plan      TenantPlan    @default(FREE)
+  features  TenantFeature[]
   createdAt DateTime @default(now())
 
   stores    Store[]
@@ -341,6 +343,24 @@ enum TenantStatus {
   ACTIVE
   SUSPENDED
   DISABLED
+}
+
+enum TenantPlan {
+  FREE
+  BASIC
+  PRO
+}
+
+enum TenantFeature {
+  DASHBOARD
+  STORE
+  CASH
+  SALES
+  SERVICES
+  PRODUCTS
+  INVENTORY  
+  CLIENTS
+  CONFIG
 }
 
 enum PaymentType {

@@ -10,9 +10,12 @@ import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { Role } from '../auth/enums/role.enum';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Movimientos de Inventario')
 @Controller('inventory-movements')
+@RequireTenantFeatures(TenantFeature.INVENTORY)
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class InventoryMovementController {

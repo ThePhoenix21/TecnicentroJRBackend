@@ -7,9 +7,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiQuery, ApiParam } from '@nestjs/swagger';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Cash Movements')
 @Controller('cash-movement')
+@RequireTenantFeatures(TenantFeature.CASH)
 export class CashMovementController {
   constructor(private readonly cashMovementService: CashMovementService) {}
 

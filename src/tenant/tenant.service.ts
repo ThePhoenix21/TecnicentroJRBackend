@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, InternalServerError
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import * as bcrypt from 'bcrypt';
-import { Role, TenantStatus, UserStatus } from '@prisma/client';
+import { Role, TenantFeature, TenantPlan, TenantStatus, UserStatus } from '@prisma/client';
 import { ALL_PERMISSIONS } from '../auth/permissions';
 
 @Injectable()
@@ -16,6 +16,8 @@ export class TenantService {
       name,
       ruc,
       status,
+      plan,
+      features,
       adminEmail,
       adminPassword,
       adminName,
@@ -49,12 +51,16 @@ export class TenantService {
     try {
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
+      const allFeatures = Object.values(TenantFeature) as TenantFeature[];
+
       const result = await this.prisma.$transaction(async (tx) => {
         const tenant = await tx.tenant.create({
           data: {
             name,
             ruc: ruc || null,
             status: status || TenantStatus.ACTIVE,
+            plan: plan || TenantPlan.FREE,
+            features: { set: allFeatures },
           },
         });
 

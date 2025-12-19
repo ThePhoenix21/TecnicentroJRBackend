@@ -27,9 +27,12 @@ import { Role } from '../auth/enums/role.enum';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { OrderCreateResponseDto } from './dto/order-create-response.dto';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Órdenes')
 @ApiBearerAuth('JWT-auth')
+@RequireTenantFeatures(TenantFeature.SALES)
 @Controller('orders')
 @UseGuards(RolesGuard)
 export class OrderController {

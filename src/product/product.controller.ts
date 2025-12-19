@@ -27,13 +27,16 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { Role } from '../auth/enums/role.enum';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { ProductService } from './product.service';
 import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CatalogProduct } from './entities/catalog-product.entity';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Catálogo de Productos')
 @ApiBearerAuth('JWT')
+@RequireTenantFeatures(TenantFeature.PRODUCTS)
 @Controller('catalog/products')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'No autorizado' })

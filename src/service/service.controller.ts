@@ -41,10 +41,13 @@ import { PERMISSIONS } from '../auth/permissions';
 import { ServiceStatus, ServiceType } from '@prisma/client';
 import { SupabaseStorageService } from '../common/utility/supabase-storage.util';
 import { memoryStorage } from 'multer';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Servicios')
 @ApiBearerAuth('JWT')
 @ApiExtraModels(Service)
+@RequireTenantFeatures(TenantFeature.SERVICES)
 @Controller('services')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'No autorizado. Se requiere autenticación JWT' })

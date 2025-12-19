@@ -541,11 +541,17 @@ export class AuthService {
         throw new UnauthorizedException('Usuario no encontrado');
       }
 
+      if (!user.tenantId) {
+        throw new UnauthorizedException('Tenant no encontrado');
+      }
+
+      const tenantId = user.tenantId;
+
       // 4. Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
       let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
       if (user.role === 'ADMIN') {
         stores = await this.prisma.store.findMany({
-          where: { tenantId: user.tenantId },
+          where: { tenantId },
           select: {
             id: true,
             name: true,
@@ -578,7 +584,7 @@ export class AuthService {
       }
 
       const tenant = await this.prisma.tenant.findUnique({
-        where: { id: user.tenantId },
+        where: { id: tenantId },
         select: { id: true, name: true },
       });
 

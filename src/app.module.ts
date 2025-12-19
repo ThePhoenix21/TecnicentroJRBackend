@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -17,6 +18,7 @@ import { ReceiptModule } from './receipt/receipt.module';
 import { InventoryCountModule } from './inventory-count/inventory-count.module';
 import { InventoryMovementModule } from './inventory-movement/inventory-movement.module';
 import { TenantModule } from './tenant/tenant.module';
+import { TenantFeaturesGuard } from './tenant/guards/tenant-features.guard';
 
 @Module({
   imports: [
@@ -48,6 +50,11 @@ import { TenantModule } from './tenant/tenant.module';
     TenantModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: TenantFeaturesGuard,
+    },
+  ],
 })
 export class AppModule {}

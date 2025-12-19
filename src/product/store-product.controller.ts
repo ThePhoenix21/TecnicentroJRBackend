@@ -32,13 +32,16 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { StoreProductService } from './store-product.service';
 import { CreateStoreProductDto } from './dto/create-store-product.dto';
 import { UpdateStoreProductDto } from './dto/update-store-product.dto';
 import { StoreProduct } from './entities/store-product.entity';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Productos en Tienda')
 @ApiBearerAuth('JWT')
+@RequireTenantFeatures(TenantFeature.INVENTORY)
 @Controller('store/products')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @ApiResponse({ 
