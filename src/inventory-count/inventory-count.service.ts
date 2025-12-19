@@ -4,43 +4,120 @@ import { CreateInventoryCountSessionDto } from './dto/create-inventory-count-ses
 import { AddInventoryCountItemDto } from './dto/add-inventory-count-item.dto';
 import { UpdateInventoryCountItemDto } from './dto/update-inventory-count-item.dto';
 
+type AuthUser = {
+  userId: string;
+  email: string;
+  role: string;
+  tenantId?: string;
+};
+
 @Injectable()
 export class InventoryCountService {
   constructor(private prisma: PrismaService) {}
 
-  async createSession(createDto: CreateInventoryCountSessionDto, userId: string) {
-    const { storeId, name } = createDto;
+  private async assertStoreAccess(storeId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
 
-    // Verificar si la tienda existe
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     const store = await this.prisma.store.findUnique({
       where: { id: storeId },
+      select: {
+        id: true,
+        tenantId: true,
+      },
     });
 
     if (!store) {
       throw new NotFoundException('Tienda no encontrada');
     }
 
-    // Crear la sesión
-    return this.prisma.inventoryCountSession.create({
-      data: {
-        name,
-        storeId,
-        createdById: userId,
-      },
-    });
+    if (!store.tenantId || store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+    }
+
+    if (user.role !== 'ADMIN') {
+      const storeUser = await this.prisma.storeUsers.findFirst({
+        where: {
+          storeId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      });
+
+      if (!storeUser) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+      }
+    }
+
+    return store;
   }
 
-  async addItem(sessionId: string, addDto: AddInventoryCountItemDto, userId: string) {
-    const { storeProductId, physicalStock } = addDto;
+  private async assertSessionAccess(sessionId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
 
-    // Verificar sesión
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     const session = await this.prisma.inventoryCountSession.findUnique({
       where: { id: sessionId },
+      include: {
+        store: {
+          select: {
+            id: true,
+            tenantId: true,
+          },
+        },
+      },
     });
 
     if (!session) {
       throw new NotFoundException('Sesión de conteo no encontrada');
     }
+
+    if (!session.store?.tenantId || session.store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta sesión de conteo');
+    }
+
+    if (user.role !== 'ADMIN') {
+      const storeUser = await this.prisma.storeUsers.findFirst({
+        where: {
+          storeId: session.storeId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      });
+
+      if (!storeUser) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta sesión de conteo');
+      }
+    }
+
+    return session;
+  }
+
+  async createSession(createDto: CreateInventoryCountSessionDto, user: AuthUser) {
+    const { storeId, name } = createDto;
+
+    await this.assertStoreAccess(storeId, user);
+
+    // Crear la sesión
+    return this.prisma.inventoryCountSession.create({
+      data: {
+        name,
+        storeId,
+        createdById: user.userId,
+      },
+    });
+  }
+
+  async addItem(sessionId: string, addDto: AddInventoryCountItemDto, user: AuthUser) {
+    const { storeProductId, physicalStock } = addDto;
+
+    const session = await this.assertSessionAccess(sessionId, user);
 
     if (session.finalizedAt) {
       throw new BadRequestException('La sesión de conteo ya está finalizada');
@@ -93,13 +170,22 @@ export class InventoryCountService {
     });
   }
 
-  async updateItem(itemId: string, updateDto: UpdateInventoryCountItemDto, userId: string) {
+  async updateItem(itemId: string, updateDto: UpdateInventoryCountItemDto, user: AuthUser) {
     const { physicalStock } = updateDto;
 
     const item = await this.prisma.inventoryCountItem.findUnique({
       where: { id: itemId },
       include: {
-        session: true
+        session: {
+          include: {
+            store: {
+              select: {
+                id: true,
+                tenantId: true,
+              },
+            },
+          },
+        },
       }
     });
 
@@ -110,6 +196,8 @@ export class InventoryCountService {
     if (item.session.finalizedAt) {
       throw new BadRequestException('La sesión de conteo ya está finalizada');
     }
+
+    await this.assertSessionAccess(item.sessionId, user);
 
     // Recalcular diferencia manteniendo el expectedStock original (snapshot)
     // Opcional: ¿Deberíamos actualizar expectedStock? Generalmente no, para ver la foto del momento.
@@ -131,14 +219,8 @@ export class InventoryCountService {
     });
   }
 
-  async closeSession(sessionId: string, userId: string) {
-    const session = await this.prisma.inventoryCountSession.findUnique({
-      where: { id: sessionId },
-    });
-
-    if (!session) {
-      throw new NotFoundException('Sesión de conteo no encontrada');
-    }
+  async closeSession(sessionId: string, user: AuthUser) {
+    const session = await this.assertSessionAccess(sessionId, user);
 
     if (session.finalizedAt) {
       throw new BadRequestException('La sesión ya está cerrada');
@@ -218,7 +300,9 @@ export class InventoryCountService {
     };
   }
 
-  async getSessionReport(sessionId: string) {
+  async getSessionReport(sessionId: string, user: AuthUser) {
+    await this.assertSessionAccess(sessionId, user);
+
     const session = await this.prisma.inventoryCountSession.findUnique({
       where: { id: sessionId },
       include: {
@@ -249,25 +333,43 @@ export class InventoryCountService {
     return session;
   }
 
-  async deleteSession(sessionId: string) {
+  async deleteSession(sessionId: string, user: AuthUser) {
     // Solo se permite eliminar si no está finalizada (o lógica de negocio adicional)
     // El usuario pidió "solo admins", eso se valida en el controller/guard.
     
-    const session = await this.prisma.inventoryCountSession.findUnique({
-      where: { id: sessionId },
-    });
-
-    if (!session) {
-      throw new NotFoundException('Sesión de conteo no encontrada');
-    }
+    await this.assertSessionAccess(sessionId, user);
 
     return this.prisma.inventoryCountSession.delete({
       where: { id: sessionId },
     });
   }
 
-  async findAllSessions(storeId?: string) {
-    const where = storeId ? { storeId } : {};
+  async findAllSessions(user: AuthUser, storeId?: string) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    if (storeId) {
+      await this.assertStoreAccess(storeId, user);
+    }
+
+    const where: any = {
+      ...(storeId ? { storeId } : {}),
+      store: {
+        tenantId,
+        ...(user.role !== 'ADMIN'
+          ? {
+              storeUsers: {
+                some: {
+                  userId: user.userId,
+                },
+              },
+            }
+          : {}),
+      },
+    };
     
     return this.prisma.inventoryCountSession.findMany({
       where,

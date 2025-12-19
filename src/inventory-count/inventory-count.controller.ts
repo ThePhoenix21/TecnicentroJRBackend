@@ -40,21 +40,21 @@ export class InventoryCountController {
     @Body() createDto: CreateInventoryCountSessionDto,
     @Req() req: any
   ) {
-    return this.inventoryCountService.createSession(createDto, req.user.userId);
+    return this.inventoryCountService.createSession(createDto, req.user);
   }
 
   @Get('session')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ summary: 'Listar sesiones de conteo' })
-  findAllSessions() {
-    return this.inventoryCountService.findAllSessions();
+  findAllSessions(@Req() req: any) {
+    return this.inventoryCountService.findAllSessions(req.user);
   }
 
   @Delete('session/:id')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Eliminar una sesión de conteo (Solo ADMIN)' })
-  deleteSession(@Param('id') id: string) {
-    return this.inventoryCountService.deleteSession(id);
+  deleteSession(@Param('id') id: string, @Req() req: any) {
+    return this.inventoryCountService.deleteSession(id, req.user);
   }
 
   @Post('session/:id/items')
@@ -65,7 +65,7 @@ export class InventoryCountController {
     @Body() addDto: AddInventoryCountItemDto,
     @Req() req: any
   ) {
-    return this.inventoryCountService.addItem(sessionId, addDto, req.user.userId);
+    return this.inventoryCountService.addItem(sessionId, addDto, req.user);
   }
 
   @Patch('items/:id')
@@ -76,7 +76,7 @@ export class InventoryCountController {
     @Body() updateDto: UpdateInventoryCountItemDto,
     @Req() req: any
   ) {
-    return this.inventoryCountService.updateItem(itemId, updateDto, req.user.userId);
+    return this.inventoryCountService.updateItem(itemId, updateDto, req.user);
   }
 
   @Post('session/:id/close')
@@ -86,13 +86,13 @@ export class InventoryCountController {
     @Param('id') sessionId: string,
     @Req() req: any
   ) {
-    return this.inventoryCountService.closeSession(sessionId, req.user.userId);
+    return this.inventoryCountService.closeSession(sessionId, req.user);
   }
 
   @Get('session/:id/report')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ summary: 'Obtener reporte de la sesión' })
-  getSessionReport(@Param('id') sessionId: string) {
-    return this.inventoryCountService.getSessionReport(sessionId);
+  getSessionReport(@Param('id') sessionId: string, @Req() req: any) {
+    return this.inventoryCountService.getSessionReport(sessionId, req.user);
   }
 }

@@ -145,7 +145,7 @@ export class OrderController {
     @Req() req: Request & { user: { userId: string; email: string; role: Role } }
   ) {
     try {
-      const order = await this.orderService.getOrderWithDetails(id);
+      const order = await this.orderService.getOrderWithDetails(id, req.user as any);
       return this.formatOrderResponse(order);
     } catch (error) {
       throw new BadRequestException(`Error al obtener los detalles de la orden: ${error.message}`);
@@ -274,23 +274,26 @@ export class OrderController {
       throw new UnauthorizedException('No se pudo autenticar al usuario');
     }
 
-    return this.orderService.findMe(userId);
+    return this.orderService.findMe(userId, req.user as any);
   }
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
   @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
-  async getOrders() {
-    return this.orderService.findAll();
+  async getOrders(@Req() req: Request & { user: { userId: string; email: string; role: Role } }) {
+    return this.orderService.findAll(req.user as any);
   }
 
   @Get('store/:storeId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
   @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
-  async getOrdersByStore(@Param('storeId') storeId: string) {
-    return this.orderService.findByStore(storeId);
+  async getOrdersByStore(
+    @Param('storeId') storeId: string,
+    @Req() req: Request & { user: { userId: string; email: string; role: Role } }
+  ) {
+    return this.orderService.findByStore(storeId, req.user as any);
   }
 
   @Get(':id')
@@ -307,15 +310,18 @@ export class OrderController {
       throw new UnauthorizedException('No se pudo autenticar al usuario');
     }
 
-    return this.orderService.findOne(id, userId);
+    return this.orderService.findOne(id, req.user as any);
   }
 
   @Get('user/:userId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
   @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
-  async getUserOrders(@Param('userId') userId: string) {
-    return this.orderService.findMe(userId);
+  async getUserOrders(
+    @Param('userId') userId: string,
+    @Req() req: Request & { user: { userId: string; email: string; role: Role } }
+  ) {
+    return this.orderService.findMe(userId, req.user as any);
   }
 
   @Patch(':id/cancel')
@@ -364,8 +370,14 @@ export class OrderController {
       throw new BadRequestException('Se requiere al menos un método de pago');
     }
 
+    const hasServices = Array.isArray(orderData.services) && orderData.services.length > 0;
+
     for (const payment of orderData.paymentMethods) {
-      if (payment.amount <= 0) {
+      if (payment.amount < 0) {
+        throw new BadRequestException('El monto de pago no puede ser negativo');
+      }
+
+      if (payment.amount === 0 && !hasServices) {
         throw new BadRequestException('El monto de pago debe ser mayor a cero');
       }
     }

@@ -319,9 +319,10 @@ export class CashMovementController {
   async findBySession(
     @Param('sessionId') sessionId: string,
     @Query('page') page: number = 1,
-    @Query('limit') limit: number = 50
+    @Query('limit') limit: number = 50,
+    @Req() req: any
   ) {
-    return this.cashMovementService.findBySession(sessionId, page, limit);
+    return this.cashMovementService.findBySession(sessionId, page, limit, req.user);
   }
 
   @Get()
@@ -385,8 +386,8 @@ export class CashMovementController {
       }
     }
   })
-  findAll() {
-    return this.cashMovementService.findAll();
+  findAll(@Req() req: any) {
+    return this.cashMovementService.findAll(req.user);
   }
 
   @Get(':id')
@@ -474,8 +475,8 @@ export class CashMovementController {
       }
     }
   })
-  findOne(@Param('id') id: string) {
-    return this.cashMovementService.findOne(id);
+  findOne(@Param('id') id: string, @Req() req: any) {
+    return this.cashMovementService.findOne(id, req.user);
   }
 
   @Patch(':id')
@@ -596,8 +597,8 @@ export class CashMovementController {
       }
     }
   })
-  update(@Param('id') id: string, @Body() updateCashMovementDto: UpdateCashMovementDto) {
-    return this.cashMovementService.update(id, updateCashMovementDto);
+  update(@Param('id') id: string, @Body() updateCashMovementDto: UpdateCashMovementDto, @Req() req: any) {
+    return this.cashMovementService.update(id, updateCashMovementDto, req.user);
   }
 
   @Delete(':id')
@@ -661,7 +662,7 @@ export class CashMovementController {
       }
     }
   })
-  remove(@Param('id') id: string) {
-    return this.cashMovementService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.cashMovementService.remove(id, req.user);
   }
 }

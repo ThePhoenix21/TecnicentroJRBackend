@@ -7,12 +7,113 @@ import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, Inventor
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
 
+type AuthUser = {
+  userId: string;
+  email: string;
+  role: string;
+  tenantId?: string;
+};
+
 @Injectable()
 export class OrderService {
   constructor(
     private prisma: PrismaService,
     private cashMovementService: CashMovementService,
   ) {}
+
+  private async assertStoreAccess(storeId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: {
+        id: true,
+        tenantId: true,
+      },
+    });
+
+    if (!store) {
+      throw new NotFoundException('Tienda no encontrada');
+    }
+
+    if (!store.tenantId || store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+    }
+
+    if (user.role !== 'ADMIN') {
+      const storeUser = await this.prisma.storeUsers.findFirst({
+        where: {
+          storeId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      });
+
+      if (!storeUser) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+      }
+    }
+
+    return store;
+  }
+
+  private async assertOrderAccess(orderId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        cashSession: {
+          include: {
+            Store: {
+              select: {
+                id: true,
+                tenantId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Orden no encontrada');
+    }
+
+    const storeTenantId = order.cashSession?.Store?.tenantId;
+    if (!storeTenantId || storeTenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta orden');
+    }
+
+    if (user.role !== 'ADMIN') {
+      const storeId = order.cashSession?.StoreId;
+      if (!storeId) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta orden');
+      }
+
+      const storeUser = await this.prisma.storeUsers.findFirst({
+        where: {
+          storeId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      });
+
+      if (!storeUser) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta orden');
+      }
+    }
+
+    return order;
+  }
 
   // Función para generar el número de orden secuencial
   private async generateOrderNumber(storeCode: number): Promise<string> {
@@ -28,7 +129,7 @@ export class OrderService {
   return `${prefix}-${datePart}-${uniqueId}`;
 }
 
-  async create(createOrderDto: CreateOrderDto, user?: { userId: string; email: string; role: string; stores?: string[] }): Promise<Order> {
+  async create(createOrderDto: CreateOrderDto, user?: AuthUser): Promise<Order> {
     const { clientInfo, clientId, products, services, userId, cashSessionId, paymentMethods } = createOrderDto;
 
     // Validar que cashSessionId esté presente
@@ -39,11 +140,21 @@ export class OrderService {
     // Determinar si es ADMIN
     const isAdmin = user?.role === 'ADMIN';
 
+    if (!user?.tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     return this.prisma.$transaction(async (prisma) => {
       // 0. Validar la sesión de caja
       const cashSession = await prisma.cashSession.findUnique({
         where: { id: cashSessionId },
         include: {
+          Store: {
+            select: {
+              id: true,
+              tenantId: true,
+            },
+          },
           User: {
             select: {
               id: true,
@@ -58,6 +169,10 @@ export class OrderService {
         throw new NotFoundException('La sesión de caja especificada no existe');
       }
 
+      if (!cashSession.Store?.tenantId || cashSession.Store.tenantId !== user.tenantId) {
+        throw new ForbiddenException('No tienes permisos para crear órdenes en esta sesión de caja');
+      }
+
 
       // Validar que la sesión esté abierta
       if (cashSession.status !== SessionStatus.OPEN) {
@@ -65,13 +180,18 @@ export class OrderService {
       }
 
       // Regla de acceso a la sesión de caja:
-      // - ADMIN puede crear órdenes en cualquier sesión abierta.
-      // - USER solo puede crear órdenes si pertenece a la tienda de la sesión.
-      if (user && !isAdmin) {
-        const userStores = Array.isArray(user.stores) ? user.stores : [];
-        const belongsToStore = userStores.includes(cashSession.StoreId);
+      // - ADMIN: puede crear órdenes en cualquier sesión abierta dentro de su tenant.
+      // - USER: solo puede crear órdenes si pertenece a la tienda de la sesión.
+      if (!isAdmin) {
+        const storeUser = await prisma.storeUsers.findFirst({
+          where: {
+            storeId: cashSession.StoreId,
+            userId: user.userId,
+          },
+          select: { id: true },
+        });
 
-        if (!belongsToStore) {
+        if (!storeUser) {
           throw new ForbiddenException('No tienes permisos para crear órdenes en esta sesión de caja');
         }
       }
@@ -86,7 +206,7 @@ export class OrderService {
 
         // 1) Si hay email, buscar primero por email SIN filtrar por userId
         //    para evitar violar la restricción única en email.
-        let existingClientByEmail: { id: string; dni: string | null; email: string | null } | null = null;
+        let existingClientByEmail: { id: string; dni: string | null; email: string | null; user: { tenantId: string | null } } | null = null;
         if (clientInfo.email) {
           existingClientByEmail = await prisma.client.findFirst({
             where: { email: clientInfo.email },
@@ -94,11 +214,25 @@ export class OrderService {
               id: true,
               dni: true,
               email: true,
+              user: {
+                select: {
+                  tenantId: true,
+                },
+              },
             },
           });
         }
 
         if (existingClientByEmail) {
+          if (!existingClientByEmail.user?.tenantId || existingClientByEmail.user.tenantId !== user.tenantId) {
+            throw new BadRequestException({
+              statusCode: 400,
+              message: 'El correo electrónico ya está registrado en otra empresa',
+              error: 'Bad Request',
+              code: 'EMAIL_ALREADY_EXISTS_OTHER_TENANT',
+            });
+          }
+
           // Si el email ya existe pero el DNI es diferente, lanzar error claro
           if (
             clientInfo.dni &&
@@ -162,7 +296,12 @@ export class OrderService {
       //         así que puede usar cualquier StoreProduct de ESA tienda,
       //         independientemente de su userId (propietario).
       const productWhere = isAdmin
-        ? { id: { in: productIds } }
+        ? {
+            id: { in: productIds },
+            store: {
+              tenantId: user.tenantId,
+            },
+          }
         : { id: { in: productIds }, storeId: cashSession.StoreId };
       
       const existingStoreProducts = await prisma.storeProduct.findMany({
@@ -353,7 +492,7 @@ export class OrderService {
       
       console.log('💰 Creando pagos y movimientos de caja para la orden:', order.id);
 
-      const cashPayments = (paymentMethodsDto || []).filter((pm) => pm.type === PaymentType.EFECTIVO);
+      const cashPayments = (paymentMethodsDto || []).filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
       if (cashPayments.length > 0) {
         console.log('💰 Creando movimientos de caja para pagos en efectivo');
 
@@ -376,13 +515,31 @@ export class OrderService {
       }
 
       // Usar el método reutilizable para obtener la orden completa con detalles
-      return this.getOrderWithDetails(order.id);
+      return this.getOrderWithDetails(order.id, user);
     });
   }
 
-  async findMe(userId: string): Promise<Order[]> {
+  async findMe(userId: string, user: AuthUser): Promise<Order[]> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    // Si es ADMIN puede consultar cualquier usuario dentro de su tenant.
+    // Si es USER solo puede consultar su propio historial.
+    if (user.role !== 'ADMIN' && user.userId !== userId) {
+      throw new ForbiddenException('No tienes permisos para ver órdenes de otro usuario');
+    }
+
     return this.prisma.order.findMany({
-      where: { userId },
+      where: {
+        userId,
+        cashSession: {
+          Store: {
+            tenantId,
+          },
+        },
+      },
       include: {
         orderProducts: true,
         services: true,
@@ -392,8 +549,20 @@ export class OrderService {
     }) as unknown as Promise<Order[]>;
   }
 
-  async findAll(): Promise<Order[]> {
+  async findAll(user: AuthUser): Promise<Order[]> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     return this.prisma.order.findMany({
+      where: {
+        cashSession: {
+          Store: {
+            tenantId,
+          },
+        },
+      },
       include: {
         orderProducts: true,
         services: true,
@@ -410,7 +579,9 @@ export class OrderService {
     }) as unknown as Promise<Order[]>;
   }
 
-  async findByStore(storeId: string): Promise<Order[]> {
+  async findByStore(storeId: string, user: AuthUser): Promise<Order[]> {
+    await this.assertStoreAccess(storeId, user);
+
     return this.prisma.order.findMany({
       where: {
         cashSession: {
@@ -446,7 +617,9 @@ export class OrderService {
     }) as unknown as Promise<Order[]>;
   }
 
-  async findOne(id: string, userId: string): Promise<Order> {
+  async findOne(id: string, user: AuthUser): Promise<Order> {
+    await this.assertOrderAccess(id, user);
+
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: {
@@ -463,9 +636,9 @@ export class OrderService {
         client: true,
         cashSession: {
           include: {
-            Store: true
-          }
-        }
+            Store: true,
+          },
+        },
       },
     });
 
@@ -473,14 +646,10 @@ export class OrderService {
       throw new NotFoundException(`Orden con ID ${id} no encontrada`);
     }
 
-    if (order.userId !== userId) {
-      throw new NotFoundException(`Orden no encontrada`);
-    }
-
     return order as unknown as Order;
   }
 
-  async cancelOrder(id: string, userId: string, userRole: string, authenticatedUser?: { userId: string; email: string; role: string }): Promise<Order> {
+  async cancelOrder(id: string, userId: string, userRole: string, authenticatedUser?: AuthUser): Promise<Order> {
     return this.prisma.$transaction(async (prisma) => {
       // 1. Verificar que la orden existe
       const order = await prisma.order.findUnique({
@@ -496,12 +665,52 @@ export class OrderService {
           orderProducts: true,
           paymentMethods: true,
           client: true,
-          cashSession: true
+          cashSession: {
+            include: {
+              Store: {
+                select: {
+                  tenantId: true,
+                },
+              },
+            },
+          }
         }
       });
 
       if (!order) {
         throw new NotFoundException(`Orden con ID ${id} no encontrada`);
+      }
+
+      if (authenticatedUser) {
+        const tenantId = authenticatedUser?.tenantId;
+
+        if (!tenantId) {
+          throw new ForbiddenException('Tenant no encontrado en el token');
+        }
+
+        const orderTenantId = order.cashSession?.Store?.tenantId;
+        if (!orderTenantId || orderTenantId !== tenantId) {
+          throw new ForbiddenException('No tienes permisos para anular esta orden');
+        }
+
+        if (authenticatedUser.role !== 'ADMIN') {
+          const storeId = order.cashSession?.StoreId;
+          if (!storeId) {
+            throw new ForbiddenException('No tienes permisos para anular esta orden');
+          }
+
+          const storeUser = await prisma.storeUsers.findFirst({
+            where: {
+              storeId,
+              userId: authenticatedUser.userId,
+            },
+            select: { id: true },
+          });
+
+          if (!storeUser) {
+            throw new ForbiddenException('No tienes permisos para anular esta orden');
+          }
+        }
       }
 
       // 2. Verificar permisos: Admin puede anular cualquier orden, otros solo sus propias órdenes
@@ -518,7 +727,7 @@ export class OrderService {
       }
 
       // 4. Filtrar pagos en EFECTIVO (PaymentMethod) y crear movimientos de caja
-      const cashPayments = (order.paymentMethods || []).filter((pm) => pm.type === PaymentType.EFECTIVO);
+      const cashPayments = (order.paymentMethods || []).filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
       console.log('💰 [OrderService] Pagos en efectivo a reembolsar:', cashPayments.length, cashPayments.map(p => ({ amount: p.amount })));
 
       console.log('🔍 [OrderService] Información de sesión de caja:', {
@@ -650,7 +859,9 @@ export class OrderService {
   }
 
   // Método auxiliar para obtener la orden con todos los detalles necesarios para la respuesta (PDF, pagos, etc.)
-  async getOrderWithDetails(orderId: string): Promise<Order> {
+  async getOrderWithDetails(orderId: string, user: AuthUser): Promise<Order> {
+    await this.assertOrderAccess(orderId, user);
+
     // Obtener la orden completa
     const completeOrder = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -753,8 +964,14 @@ export class OrderService {
     });
   }
 
-  async completeOrder(completeOrderDto: CompleteOrderDto, user?: { userId: string; email: string; role: string }): Promise<Order> {
+  async completeOrder(completeOrderDto: CompleteOrderDto, user?: AuthUser): Promise<Order> {
     const { orderId, services } = completeOrderDto;
+
+    if (!user) {
+      throw new ForbiddenException('Usuario no autenticado');
+    }
+
+    await this.assertOrderAccess(orderId, user);
 
     return this.prisma.$transaction(async (prisma) => {
       // 1. Obtener la orden con todos sus datos
@@ -817,7 +1034,7 @@ export class OrderService {
         });
       }
 
-      const cashPayments = newPaymentMethods.filter((pm) => pm.type === PaymentType.EFECTIVO);
+      const cashPayments = newPaymentMethods.filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
       if (cashPayments.length > 0) {
         console.log('💰 Creando movimientos de caja para pagos en efectivo');
 

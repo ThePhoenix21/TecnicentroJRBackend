@@ -114,8 +114,8 @@ export class CashSessionController {
     description: 'Lista de sesiones de caja obtenida exitosamente'
   })
   @ApiResponse({ status: 403, description: 'No autorizado' })
-  findAll() {
-    return this.cashSessionService.findAll();
+  findAll(@Req() req: any) {
+    return this.cashSessionService.findAll(req.user);
   }
 
   @Get('current/:storeId')
@@ -170,8 +170,8 @@ export class CashSessionController {
       }
     }
   })
-  findCurrentSessionByStore(@Param('storeId') storeId: string) {
-    return this.cashSessionService.findOpenSessionByStore(storeId);
+  findCurrentSessionByStore(@Param('storeId') storeId: string, @Req() req: any) {
+    return this.cashSessionService.findOpenSessionByStore(storeId, req.user);
   }
 
   @Get('store/:storeId')
@@ -254,8 +254,9 @@ export class CashSessionController {
     @Param('storeId') storeId: string, 
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20
+    , @Req() req: any
   ) {
-    return this.cashSessionService.findByStore(storeId, page, limit);
+    return this.cashSessionService.findByStore(storeId, page, limit, req.user);
   }
 
   @Get('store/:storeId/open')
@@ -268,8 +269,8 @@ export class CashSessionController {
   @ApiResponse({ status: 200, description: 'Sesión abierta obtenida exitosamente' })
   @ApiResponse({ status: 404, description: 'No hay sesión abierta para esta tienda' })
   @ApiResponse({ status: 403, description: 'No autorizado' })
-  findOpenSessionByStore(@Param('storeId') storeId: string) {
-    return this.cashSessionService.findOpenSessionByStore(storeId);
+  findOpenSessionByStore(@Param('storeId') storeId: string, @Req() req: any) {
+    return this.cashSessionService.findOpenSessionByStore(storeId, req.user);
   }
 
   @Get(':id')
@@ -282,8 +283,8 @@ export class CashSessionController {
   @ApiResponse({ status: 200, description: 'Sesión de caja encontrada exitosamente' })
   @ApiResponse({ status: 404, description: 'Sesión de caja no encontrada' })
   @ApiResponse({ status: 403, description: 'No autorizado' })
-  findOne(@Param('id') id: string) {
-    return this.cashSessionService.findOne(id);
+  findOne(@Param('id') id: string, @Req() req: any) {
+    return this.cashSessionService.findOne(id, req.user);
   }
 
   @Patch(':id')
@@ -296,8 +297,8 @@ export class CashSessionController {
   @ApiResponse({ status: 200, description: 'Sesión de caja actualizada exitosamente' })
   @ApiResponse({ status: 404, description: 'Sesión de caja no encontrada' })
   @ApiResponse({ status: 403, description: 'No autorizado' })
-  update(@Param('id') id: string, @Body() updateCashSessionDto: UpdateCashSessionDto) {
-    return this.cashSessionService.update(id, updateCashSessionDto);
+  update(@Param('id') id: string, @Body() updateCashSessionDto: UpdateCashSessionDto, @Req() req: any) {
+    return this.cashSessionService.update(id, updateCashSessionDto, req.user);
   }
 
   @Delete(':id')
@@ -310,8 +311,8 @@ export class CashSessionController {
   @ApiResponse({ status: 200, description: 'Sesión de caja eliminada exitosamente' })
   @ApiResponse({ status: 404, description: 'Sesión de caja no encontrada' })
   @ApiResponse({ status: 403, description: 'No autorizado' })
-  remove(@Param('id') id: string) {
-    return this.cashSessionService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.cashSessionService.remove(id, req.user);
   }
 
   @Post(':id/close')
@@ -412,8 +413,19 @@ export class CashSessionController {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    if (!user.tenantId) {
+      throw new ForbiddenException('Tenant no encontrado para el usuario');
+    }
+
+    const authUser = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenantId,
+    };
+
     // 2. Obtener la sesión de caja con información completa
-    const cashSession = await this.cashSessionService.findOne(id);
+    const cashSession = await this.cashSessionService.findOne(id, authUser);
     
     if (!cashSession) {
       throw new NotFoundException('La sesión de caja no existe');
@@ -433,11 +445,7 @@ export class CashSessionController {
     }
 
     // 5. Obtener el cuadre de caja actual
-    const cashBalance = await this.cashMovementService.getCashBalance(id, { 
-      userId: user.id, 
-      email: user.email, 
-      role: user.role 
-    });
+    const cashBalance = await this.cashMovementService.getCashBalance(id, authUser);
 
     // 6. Calcular el monto de cierre (balance actual)
     const closingAmount = cashBalance.balance.balanceActual;
@@ -447,11 +455,12 @@ export class CashSessionController {
       id, 
       user.id, 
       closingAmount, 
-      closeCashSessionDto.declaredAmount
+      closeCashSessionDto.declaredAmount,
+      authUser
     );
 
     // 8. Obtener reporte de cierre
-    const closingReport = await this.cashSessionService.getClosingReport(id);
+    const closingReport = await this.cashSessionService.getClosingReport(id, authUser);
 
     return {
       message: 'Sesión de caja cerrada exitosamente',

@@ -4,13 +4,105 @@ import { UpdateCashSessionDto } from './dto/update-cash-session.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { User, SessionStatus } from '@prisma/client';
 
+type AuthUser = {
+  userId: string;
+  email: string;
+  role: string;
+  tenantId?: string;
+};
+
 @Injectable()
 export class CashSessionService {
   private readonly logger = new Logger(CashSessionService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createCashSessionDto: CreateCashSessionDto, user: { userId: string; email: string; role: string }) {
+  private async assertStoreAccess(storeId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: {
+        id: true,
+        name: true,
+        tenantId: true,
+      },
+    });
+
+    if (!store) {
+      throw new NotFoundException('La tienda especificada no existe');
+    }
+
+    if (!store.tenantId || store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+    }
+
+    if (user.role !== 'ADMIN') {
+      const storeUser = await this.prisma.storeUsers.findFirst({
+        where: {
+          storeId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      });
+
+      if (!storeUser) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+      }
+    }
+
+    return store;
+  }
+
+  private async assertCashSessionAccess(cashSessionId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const cashSession = await this.prisma.cashSession.findUnique({
+      where: { id: cashSessionId },
+      include: {
+        Store: {
+          select: {
+            id: true,
+            tenantId: true,
+          },
+        },
+      },
+    });
+
+    if (!cashSession) {
+      throw new NotFoundException('Sesión de caja no encontrada');
+    }
+
+    if (!cashSession.Store?.tenantId || cashSession.Store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
+    }
+
+    if (user.role !== 'ADMIN') {
+      const storeUser = await this.prisma.storeUsers.findFirst({
+        where: {
+          storeId: cashSession.StoreId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      });
+
+      if (!storeUser) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
+      }
+    }
+
+    return cashSession;
+  }
+
+  async create(createCashSessionDto: CreateCashSessionDto, user: AuthUser) {
     console.log('Usuario recibido en servicio:', user);
     console.log('ID del usuario:', user?.userId);
     console.log('Email del usuario:', user?.email);
@@ -21,29 +113,9 @@ export class CashSessionService {
 
     try {
       // 1. Verificar que la tienda exista
-      const store = await this.prisma.store.findUnique({
-        where: { id: storeId }
-      });
-      
-      if (!store) {
-        this.logger.error(`Tienda no encontrada con ID: ${storeId}`);
-        throw new NotFoundException('La tienda especificada no existe');
-      }
+      const store = await this.assertStoreAccess(storeId, user);
       
       this.logger.debug(`Tienda encontrada: ${store.name} (ID: ${storeId})`);
-
-      // 2. Validar que el usuario pertenezca a esa tienda (StoreUsers)
-      const storeUser = await this.prisma.storeUsers.findFirst({
-        where: {
-          storeId: storeId,
-          userId: user.userId
-        }
-      });
-
-      if (!storeUser) {
-        this.logger.warn(`Usuario ${user.email} no pertenece a la tienda ${storeId}`);
-        throw new ForbiddenException('No tienes permisos para crear sesiones en esta tienda');
-      }
 
       this.logger.debug(`Usuario ${user.email} verificado como miembro de la tienda ${storeId}`);
 
@@ -123,8 +195,19 @@ export class CashSessionService {
     }
   }
 
-  findAll() {
+  findAll(user: AuthUser) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     return this.prisma.cashSession.findMany({
+      where: {
+        Store: {
+          tenantId,
+        },
+      },
       include: {
         Store: {
           select: {
@@ -149,7 +232,9 @@ export class CashSessionService {
     });
   }
 
-  findOne(id: string) {
+  async findOne(id: string, user: AuthUser) {
+    await this.assertCashSessionAccess(id, user);
+
     return this.prisma.cashSession.findUnique({
       where: { id },
       include: {
@@ -187,7 +272,9 @@ export class CashSessionService {
     });
   }
 
-  update(id: string, updateCashSessionDto: UpdateCashSessionDto) {
+  async update(id: string, updateCashSessionDto: UpdateCashSessionDto, user: AuthUser) {
+    await this.assertCashSessionAccess(id, user);
+
     return this.prisma.cashSession.update({
       where: { id },
       data: updateCashSessionDto,
@@ -212,19 +299,23 @@ export class CashSessionService {
     });
   }
 
-  remove(id: string) {
+  async remove(id: string, user: AuthUser) {
+    await this.assertCashSessionAccess(id, user);
+
     return this.prisma.cashSession.delete({
       where: { id }
     });
   }
 
   // Método adicional para obtener sesiones por tienda con paginación
-  async findByStore(storeId: string, page: number = 1, limit: number = 20) {
+  async findByStore(storeId: string, page: number = 1, limit: number = 20, user: AuthUser) {
     const skip = (page - 1) * limit;
-    
+
+    await this.assertStoreAccess(storeId, user);
+
     // Obtener el total de sesiones para paginación
     const total = await this.prisma.cashSession.count({
-      where: { StoreId: storeId }
+      where: { StoreId: storeId },
     });
 
     // Obtener las sesiones con paginación
@@ -236,20 +327,21 @@ export class CashSessionService {
             id: true,
             name: true,
             address: true,
-            phone: true
-          }
+            phone: true,
+          },
         },
         User: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
-        }
+            email: true,
+            username: true,
+          },
+        },
       },
       orderBy: { openedAt: 'desc' },
       skip,
-      take: limit
+      take: limit,
     });
 
     const totalPages = Math.ceil(total / limit);
@@ -259,17 +351,18 @@ export class CashSessionService {
       total,
       page,
       limit,
-      totalPages
+      totalPages,
     };
   }
 
   // Método para obtener la sesión abierta actual de una tienda
-  async findOpenSessionByStore(storeId: string) {
-    
+  async findOpenSessionByStore(storeId: string, user: AuthUser) {
+    await this.assertStoreAccess(storeId, user);
+
     const session = await this.prisma.cashSession.findFirst({
       where: {
         StoreId: storeId,
-        status: SessionStatus.OPEN
+        status: SessionStatus.OPEN,
       },
       include: {
         Store: {
@@ -277,24 +370,27 @@ export class CashSessionService {
             id: true,
             name: true,
             address: true,
-            phone: true
-          }
+            phone: true,
+          },
         },
         User: {
           select: {
             id: true,
             name: true,
             email: true,
-            username: true
-          }
-        }
-      }
+            username: true,
+          },
+        },
+      },
     });
+
     return session;
   }
 
   // Método para cerrar una sesión de caja
-  async close(id: string, closedById: string, closingAmount: number, declaredAmount: number) {
+  async close(id: string, closedById: string, closingAmount: number, declaredAmount: number, user: AuthUser) {
+    await this.assertCashSessionAccess(id, user);
+
     this.logger.log(`Iniciando cierre de sesión de caja: ${id} - Usuario: ${closedById} - Monto de cierre: ${closingAmount} - Monto declarado: ${declaredAmount}`);
 
     try {
@@ -338,7 +434,9 @@ export class CashSessionService {
     }
   }
 
-  async getClosingReport(sessionId: string) {
+  async getClosingReport(sessionId: string, user: AuthUser) {
+    await this.assertCashSessionAccess(sessionId, user);
+
     // 1. Obtener sesión con datos básicos
     const session = await this.prisma.cashSession.findUnique({
       where: { id: sessionId },

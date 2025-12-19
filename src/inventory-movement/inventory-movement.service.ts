@@ -1,24 +1,109 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
 import { FilterInventoryMovementDto } from './dto/filter-inventory-movement.dto';
 import { InventoryMovementType, Prisma } from '@prisma/client';
 
+type AuthUser = {
+  userId: string;
+  email: string;
+  role: string;
+  tenantId?: string;
+};
+
 @Injectable()
 export class InventoryMovementService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createDto: CreateInventoryMovementDto, userId: string) {
-    const { storeProductId, type, quantity, description } = createDto;
+  private async assertStoreAccess(storeId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
 
-    // 1. Validar StoreProduct
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: {
+        id: true,
+        tenantId: true,
+      },
+    });
+
+    if (!store) {
+      throw new NotFoundException('Tienda no encontrada');
+    }
+
+    if (!store.tenantId || store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+    }
+
+    if (user.role !== 'ADMIN') {
+      const storeUser = await this.prisma.storeUsers.findFirst({
+        where: {
+          storeId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      });
+
+      if (!storeUser) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+      }
+    }
+
+    return store;
+  }
+
+  private async assertStoreProductAccess(storeProductId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id: storeProductId },
+      include: {
+        store: {
+          select: {
+            id: true,
+            tenantId: true,
+          },
+        },
+      },
     });
 
     if (!storeProduct) {
       throw new NotFoundException('Producto de tienda no encontrado');
     }
+
+    if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a este producto de tienda');
+    }
+
+    if (user.role !== 'ADMIN') {
+      const storeUser = await this.prisma.storeUsers.findFirst({
+        where: {
+          storeId: storeProduct.storeId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      });
+
+      if (!storeUser) {
+        throw new ForbiddenException('No tienes permisos para acceder a este producto de tienda');
+      }
+    }
+
+    return storeProduct;
+  }
+
+  async create(createDto: CreateInventoryMovementDto, user: AuthUser) {
+    const { storeProductId, type, quantity, description } = createDto;
+
+    // 1. Validar StoreProduct
+    const storeProduct = await this.assertStoreProductAccess(storeProductId, user);
 
     // 2. Determinar el cambio de stock
     // Ahora quantity puede ser positivo o negativo directamente
@@ -44,7 +129,7 @@ export class InventoryMovementService {
           type,
           quantity: stockChange, // Guardamos con signo
           description,
-          userId,
+          userId: user.userId,
         },
       });
 
@@ -60,8 +145,17 @@ export class InventoryMovementService {
     });
   }
 
-  async findAll(filterDto: FilterInventoryMovementDto) {
+  async findAll(filterDto: FilterInventoryMovementDto, user: AuthUser) {
     const { storeId, storeProductId, startDate, endDate } = filterDto;
+
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    if (storeId) {
+      await this.assertStoreAccess(storeId, user);
+    }
     
     const where: Prisma.InventoryMovementWhereInput = {};
 
@@ -69,12 +163,21 @@ export class InventoryMovementService {
       where.storeProductId = storeProductId;
     }
 
-    if (storeId) {
-      // Filtrar por productos de esa tienda
-      where.storeProduct = {
-        storeId: storeId
-      };
-    }
+    where.storeProduct = {
+      ...(storeId ? { storeId } : {}),
+      store: {
+        tenantId,
+        ...(user.role !== 'ADMIN'
+          ? {
+              storeUsers: {
+                some: {
+                  userId: user.userId,
+                },
+              },
+            }
+          : {}),
+      },
+    };
 
     if (startDate || endDate) {
       where.date = {};
@@ -104,7 +207,16 @@ export class InventoryMovementService {
     });
   }
 
-  async getDashboardStats(storeId?: string) {
+  async getDashboardStats(storeId: string | undefined, user: AuthUser) {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    if (storeId) {
+      await this.assertStoreAccess(storeId, user);
+    }
+
     // Definir filtros de fecha (mes actual)
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -120,7 +232,21 @@ export class InventoryMovementService {
           gte: startOfMonth,
           lte: endOfMonth
         },
-        storeProduct: storeId ? { storeId } : undefined
+        storeProduct: {
+          ...(storeId ? { storeId } : {}),
+          store: {
+            tenantId,
+            ...(user.role !== 'ADMIN'
+              ? {
+                  storeUsers: {
+                    some: {
+                      userId: user.userId,
+                    },
+                  },
+                }
+              : {}),
+          },
+        }
       },
       _sum: {
         quantity: true
@@ -131,6 +257,18 @@ export class InventoryMovementService {
     const criticalStockProducts = await this.prisma.storeProduct.findMany({
       where: {
         ...whereStore,
+        store: {
+          tenantId,
+          ...(user.role !== 'ADMIN'
+            ? {
+                storeUsers: {
+                  some: {
+                    userId: user.userId,
+                  },
+                },
+              }
+            : {}),
+        },
         stock: {
           lte: this.prisma.storeProduct.fields.stockThreshold // Comparar con columna stockThreshold
           // Nota: Prisma no soporta comparación directa entre columnas en where clause standard fácilmente
@@ -178,7 +316,9 @@ export class InventoryMovementService {
     };
   }
 
-  async getProductMovements(storeProductId: string, limit: number = 5) {
+  async getProductMovements(storeProductId: string, user: AuthUser, limit: number = 5) {
+    await this.assertStoreProductAccess(storeProductId, user);
+
     return this.prisma.inventoryMovement.findMany({
       where: { storeProductId },
       orderBy: { date: 'desc' },

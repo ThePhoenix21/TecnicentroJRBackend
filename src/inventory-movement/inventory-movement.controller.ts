@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, UseGuards, Req, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, UseGuards, Req, Param, ForbiddenException } from '@nestjs/common';
 import { InventoryMovementService } from './inventory-movement.service';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
 import { FilterInventoryMovementDto } from './dto/filter-inventory-movement.dto';
@@ -27,27 +27,27 @@ export class InventoryMovementController {
   create(@Body() createDto: CreateInventoryMovementDto, @Req() req: any) {
     // Validación adicional de rol para ADJUST
     if (createDto.type === 'ADJUST' && req.user.role !== 'ADMIN') {
-      throw new Error('Solo administradores pueden realizar ajustes manuales');
+      throw new ForbiddenException('Solo administradores pueden realizar ajustes manuales');
     }
-    return this.inventoryMovementService.create(createDto, req.user.userId);
+    return this.inventoryMovementService.create(createDto, req.user);
   }
 
   @Get()
   @ApiOperation({ summary: 'Obtener historial de movimientos con filtros' })
-  findAll(@Query() filterDto: FilterInventoryMovementDto) {
-    return this.inventoryMovementService.findAll(filterDto);
+  findAll(@Query() filterDto: FilterInventoryMovementDto, @Req() req: any) {
+    return this.inventoryMovementService.findAll(filterDto, req.user);
   }
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Obtener estadísticas para dashboard de inventario' })
   @RequirePermissions(PERMISSIONS.VIEW_DASHBOARD)
-  getDashboard(@Query('storeId') storeId?: string) {
-    return this.inventoryMovementService.getDashboardStats(storeId);
+  getDashboard(@Query('storeId') storeId: string | undefined, @Req() req: any) {
+    return this.inventoryMovementService.getDashboardStats(storeId, req.user);
   }
 
   @Get('product/:id')
   @ApiOperation({ summary: 'Obtener últimos movimientos de un producto' })
-  getProductMovements(@Param('id') id: string) {
-    return this.inventoryMovementService.getProductMovements(id);
+  getProductMovements(@Param('id') id: string, @Req() req: any) {
+    return this.inventoryMovementService.getProductMovements(id, req.user);
   }
 }

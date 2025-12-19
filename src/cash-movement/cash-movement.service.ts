@@ -3,7 +3,13 @@ import { CreateCashMovementDto, CreateOrderCashMovementDto } from './dto/create-
 import { UpdateCashMovementDto } from './dto/update-cash-movement.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MovementType, SessionStatus } from '@prisma/client';
-import { User } from '@prisma/client';
+
+type AuthUser = {
+  userId: string;
+  email: string;
+  role: string;
+  tenantId?: string;
+};
 
 @Injectable()
 export class CashMovementService {
@@ -11,8 +17,52 @@ export class CashMovementService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private async assertCashSessionAccess(cashSessionId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const cashSession = await this.prisma.cashSession.findUnique({
+      where: { id: cashSessionId },
+      include: {
+        Store: {
+          select: {
+            id: true,
+            tenantId: true,
+          },
+        },
+      },
+    });
+
+    if (!cashSession) {
+      throw new NotFoundException('La sesión de caja especificada no existe');
+    }
+
+    if (!cashSession.Store?.tenantId || cashSession.Store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
+    }
+
+    if (user.role !== 'ADMIN') {
+      const storeUser = await this.prisma.storeUsers.findFirst({
+        where: {
+          storeId: cashSession.StoreId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      });
+
+      if (!storeUser) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
+      }
+    }
+
+    return cashSession;
+  }
+
   // 1. Crear movimiento manual (fuera de órdenes)
-  async createManual(createCashMovementDto: CreateCashMovementDto, user: { userId: string; email: string; role: string }) {
+  async createManual(createCashMovementDto: CreateCashMovementDto, user: AuthUser) {
     const { cashSessionId, amount, type, description, orderId, clientId } = createCashMovementDto;
     
     console.log(' [CashMovementService] Creando movimiento manual:', {
@@ -29,29 +79,13 @@ export class CashMovementService {
 
     try {
       // Validar que la sesión de caja exista y esté abierta
-      const cashSession = await this.prisma.cashSession.findUnique({
-        where: { id: cashSessionId },
-        include: {
-          User: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          }
-        }
-      });
+      const cashSession = await this.assertCashSessionAccess(cashSessionId, user);
 
       console.log(' [CashMovementService] Sesión encontrada:', {
         exists: !!cashSession,
         status: cashSession?.status,
         openedById: cashSession?.openedById
       });
-
-      if (!cashSession) {
-        console.error(' [CashMovementService] La sesión de caja no existe:', cashSessionId);
-        throw new NotFoundException('La sesión de caja especificada no existe');
-      }
 
       if (cashSession.status !== SessionStatus.OPEN) {
         console.error(' [CashMovementService] La sesión de caja está cerrada:', cashSessionId, cashSession.status);
@@ -228,12 +262,15 @@ export class CashMovementService {
   }
 
   // 3. Obtener cuadre de caja
-  async getCashBalance(cashSessionId: string, user?: { userId: string; email: string; role: string }) {
+  async getCashBalance(cashSessionId: string, user?: AuthUser) {
     console.log('🔄 [CashMovementService] Obteniendo cuadre de caja para sesión:', cashSessionId);
     this.logger.log(`Obteniendo cuadre de caja para sesión: ${cashSessionId}`);
 
     try {
-      // Validar que la sesión exista
+      if (user) {
+        await this.assertCashSessionAccess(cashSessionId, user);
+      }
+
       const cashSession = await this.prisma.cashSession.findUnique({
         where: { id: cashSessionId },
         include: {
@@ -247,7 +284,8 @@ export class CashMovementService {
           Store: {
             select: {
               id: true,
-              name: true
+              name: true,
+              tenantId: true
             }
           }
         }
@@ -263,12 +301,6 @@ export class CashMovementService {
         status: cashSession.status,
         openingAmount: cashSession.openingAmount
       });
-
-      // Si se proporciona usuario, validar que tenga acceso
-      if (user && cashSession.UserId !== user.userId && user.role !== 'ADMIN') {
-        console.error('❌ [CashMovementService] Usuario sin permisos:', user.userId, 'para sesión:', cashSessionId);
-        throw new ForbiddenException('No tienes permisos para ver esta sesión de caja');
-      }
 
       // Obtener todos los movimientos de la sesión
       const cashMovements = await this.prisma.cashMovement.findMany({
@@ -395,8 +427,21 @@ export class CashMovementService {
   }
 
   // Métodos existentes actualizados
-  findAll() {
+  findAll(user: AuthUser) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     return this.prisma.cashMovement.findMany({
+      where: {
+        CashSession: {
+          Store: {
+            tenantId,
+          },
+        },
+      },
       include: {
         CashSession: {
           select: {
@@ -418,8 +463,8 @@ export class CashMovementService {
     });
   }
 
-  findOne(id: string) {
-    return this.prisma.cashMovement.findUnique({
+  async findOne(id: string, user: AuthUser) {
+    const movement = await this.prisma.cashMovement.findUnique({
       where: { id },
       include: {
         CashSession: {
@@ -430,16 +475,39 @@ export class CashMovementService {
               select: {
                 id: true,
                 name: true,
-                email: true
-              }
-            }
+                email: true,
+              },
+            },
+            Store: {
+              select: {
+                tenantId: true,
+              },
+            },
           }
-        }
-      }
+        },
+      },
     });
+
+    if (!movement) {
+      throw new NotFoundException('Movimiento no encontrado');
+    }
+
+    await this.assertCashSessionAccess(movement.sessionId, user);
+    return movement;
   }
 
-  update(id: string, updateCashMovementDto: UpdateCashMovementDto) {
+  async update(id: string, updateCashMovementDto: UpdateCashMovementDto, user: AuthUser) {
+    const movement = await this.prisma.cashMovement.findUnique({
+      where: { id },
+      select: { sessionId: true },
+    });
+
+    if (!movement) {
+      throw new NotFoundException('Movimiento no encontrado');
+    }
+
+    await this.assertCashSessionAccess(movement.sessionId, user);
+
     return this.prisma.cashMovement.update({
       where: { id },
       data: updateCashMovementDto,
@@ -461,15 +529,30 @@ export class CashMovementService {
     });
   }
 
-  remove(id: string) {
+  async remove(id: string, user: AuthUser) {
+    const movement = await this.prisma.cashMovement.findUnique({
+      where: { id },
+      select: { sessionId: true },
+    });
+
+    if (!movement) {
+      throw new NotFoundException('Movimiento no encontrado');
+    }
+
+    await this.assertCashSessionAccess(movement.sessionId, user);
+
     return this.prisma.cashMovement.delete({
       where: { id }
     });
   }
 
   // Método adicional: Obtener movimientos por sesión con paginación
-  async findBySession(sessionId: string, page: number = 1, limit: number = 50) {
+  async findBySession(sessionId: string, page: number = 1, limit: number = 50, user?: AuthUser) {
     const skip = (page - 1) * limit;
+
+    if (user) {
+      await this.assertCashSessionAccess(sessionId, user);
+    }
     
     // Obtener el total de movimientos para paginación
     const total = await this.prisma.cashMovement.count({
