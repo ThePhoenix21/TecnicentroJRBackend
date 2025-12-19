@@ -163,6 +163,7 @@ export class AuthController {
       registerDto.password,
       registerDto.name,
       registerDto.username,
+      registerDto.tenantId,
       registerDto.phone,
       registerDto.birthdate,
       language,
@@ -174,6 +175,7 @@ export class AuthController {
     let stores: any[] = [];
     if (user.role === 'ADMIN') {
       stores = await this.prisma.store.findMany({
+        where: { tenantId: user.tenantId },
         include: {
           createdBy: {
             select: {

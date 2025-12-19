@@ -206,6 +206,7 @@ export class AuthService {
     password: string,
     name: string,
     username: string,
+    tenantId: string,
     phone: string = 'sin_telefono',
     birthdate?: Date,
     language: string = 'es',
@@ -273,6 +274,7 @@ export class AuthService {
         verifyTokenExpires,
         role: Role.ADMIN,
         status: 'ACTIVE' as const,
+        tenant: { connect: { id: tenantId } },
         permissions: finalPermissions // Guardar permisos
       };
 
@@ -280,7 +282,7 @@ export class AuthService {
 
       // Si el usuario es ADMIN, crear registros en StoreUsers para todas las tiendas
       if (userData.role === Role.ADMIN) {
-        const stores = await this.prisma.store.findMany();
+        const stores = await this.prisma.store.findMany({ where: { tenantId } });
         
         if (stores.length > 0) {
           const storeUsersData = stores.map(store => ({
@@ -403,10 +405,20 @@ export class AuthService {
   }
 
   async login(user: any, ipAddress?: string, res?: Response) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: { id: true, name: true },
+    });
+
+    if (!tenant) {
+      throw new UnauthorizedException('Tenant no encontrado');
+    }
+
     // Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
     let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
     if (user.role === 'ADMIN') {
       stores = await this.prisma.store.findMany({
+        where: { tenantId: user.tenantId },
         select: {
           id: true,
           name: true,
@@ -442,6 +454,8 @@ export class AuthService {
       email: user.email, 
       sub: user.id,
       role: user.role,
+      tenantId: tenant.id,
+      tenantName: tenant.name,
       permissions: user.permissions || [], // Incluir permisos en el token
       stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
     };
@@ -531,6 +545,7 @@ export class AuthService {
       let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
       if (user.role === 'ADMIN') {
         stores = await this.prisma.store.findMany({
+          where: { tenantId: user.tenantId },
           select: {
             id: true,
             name: true,
@@ -562,11 +577,23 @@ export class AuthService {
         stores = userStores.map(us => us.store);
       }
 
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: user.tenantId },
+        select: { id: true, name: true },
+      });
+
+      if (!tenant) {
+        throw new UnauthorizedException('Tenant no encontrado');
+      }
+
       // 5. Crear nuevos tokens
       const newPayload = { 
         email: user.email, 
         sub: user.id,
         role: user.role,
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        permissions: user.permissions || [],
         stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
       };
 

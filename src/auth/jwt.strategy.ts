@@ -9,6 +9,8 @@ type JwtPayload = {
   sub: string;
   email: string;
   role: string;
+  tenantId?: string;
+  tenantName?: string;
   permissions?: string[];
   stores?: string[];
   iat?: number;
@@ -35,7 +37,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super(strategyOptions);
   }
 
-  async validate(payload: JwtPayload): Promise<{ userId: string; email: string; role: Role; permissions: string[]; stores?: string[] }> {
+  async validate(payload: JwtPayload): Promise<{ userId: string; email: string; role: Role; permissions: string[]; stores?: string[]; tenantId?: string; tenantName?: string }> {
     try {
       this.logger.debug(`Validando token para usuario: ${payload.email}`);
       
@@ -66,13 +68,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       }
       
       this.logger.debug(`Usuario autenticado correctamente: ${user.email}`);
+
+      if (payload.tenantId && user.tenantId && payload.tenantId !== user.tenantId) {
+        this.logger.warn(`Mismatch de tenantId en token para usuario ${user.email}`);
+        throw new UnauthorizedException('Tenant inválido');
+      }
       
       return { 
         userId: payload.sub, 
         email: payload.email, 
         role: payload.role as Role,
         permissions: user.permissions || [], 
-        stores: payload.stores || []
+        stores: payload.stores || [],
+        tenantId: payload.tenantId || user.tenantId,
+        tenantName: payload.tenantName
       };
       
     } catch (error) {

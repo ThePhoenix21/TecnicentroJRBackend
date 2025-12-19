@@ -248,8 +248,8 @@ model Store {
   createdById String?
   createdBy   User? @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
-  tenantId    String
-  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  tenantId    String?
+  tenant      Tenant? @relation(fields: [tenantId], references: [id])
 
   cashSessions            CashSession[]
   storeUsers              StoreUsers[]
@@ -273,6 +273,7 @@ model Tenant {
   id        String   @id @default(uuid())
   name      String
   ruc       String?
+  status    TenantStatus @default(ACTIVE)
   createdAt DateTime @default(now())
 
   stores    Store[]
@@ -334,6 +335,12 @@ enum InventoryMovementType {
   SALE          // Salida por venta automática
   RETURN        // Devolución de cliente
   ADJUST        // Ajuste por inventario físico
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
 }
 
 enum PaymentType {

@@ -1,8 +1,15 @@
-import { IsDate, IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsDate, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
 export class CreateUserRequestDto {
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440001',
+    description: 'ID del tenant (empresa) al que pertenece el usuario',
+  })
+  @IsUUID('4', { message: 'El tenantId debe ser un UUID válido' })
+  tenantId: string;
+
   @ApiProperty({
     example: 'usuario@ejemplo.com',
     description: 'Correo electrónico del usuario',

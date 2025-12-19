@@ -85,6 +85,13 @@ export class UsersService {
             this.logger.error(`Tienda no encontrada con ID: ${storeId}`);
             throw new NotFoundException('La tienda especificada no existe');
         }
+
+        const tenantId = store.tenantId;
+
+        if (!tenantId) {
+            this.logger.error(`La tienda ${storeId} no tiene tenantId asociado`);
+            throw new BadRequestException('La tienda especificada no tiene un tenant asociado');
+        }
         
         this.logger.debug(`Tienda encontrada: ${store.name} (ID: ${storeId})`);
 
@@ -152,6 +159,7 @@ export class UsersService {
                     language: finalLanguage,
                     timezone: finalTimezone,
                     role: finalRole,
+                    tenantId,
                     verifyToken,
                     verifyTokenExpires,
                     verified,

@@ -33,7 +33,8 @@ export class StoreService {
       // Verificar si ya existe una tienda con el mismo nombre
       const existingStore = await this.prisma.store.findFirst({
         where: {
-          name: createStoreDto.name
+          name: createStoreDto.name,
+          tenantId: adminUser.tenantId
         }
       });
 
@@ -50,7 +51,8 @@ export class StoreService {
             name: createStoreDto.name,
             address: createStoreDto.address,
             phone: createStoreDto.phone,
-            createdById: adminUser.id
+            createdById: adminUser.id,
+            tenantId: adminUser.tenantId
           },
           include: {
             createdBy: {
@@ -66,7 +68,7 @@ export class StoreService {
 
         // Obtener todos los usuarios administradores y crear registros en StoreUsers
         const adminUsers = await prisma.user.findMany({
-          where: { role: 'ADMIN' }
+          where: { role: 'ADMIN', tenantId: adminUser.tenantId }
         });
 
         if (adminUsers.length > 0) {

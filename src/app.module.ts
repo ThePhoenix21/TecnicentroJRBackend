@@ -16,6 +16,7 @@ import { CashMovementModule } from './cash-movement/cash-movement.module';
 import { ReceiptModule } from './receipt/receipt.module';
 import { InventoryCountModule } from './inventory-count/inventory-count.module';
 import { InventoryMovementModule } from './inventory-movement/inventory-movement.module';
+import { TenantModule } from './tenant/tenant.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { InventoryMovementModule } from './inventory-movement/inventory-movement
     ReceiptModule,
     InventoryCountModule,
     InventoryMovementModule,
+    TenantModule,
   ],
   controllers: [],
   providers: [],
