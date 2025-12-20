@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayNotEmpty, IsArray, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
-import { TenantFeature, TenantPlan, TenantStatus } from '@prisma/client';
+import { ServiceType, TenantFeature, TenantPlan, TenantStatus } from '@prisma/client';
 
 export class CreateTenantDto {
   @ApiProperty({ example: 'Tecnocentro JR', description: 'Nombre del tenant (empresa)' })
@@ -31,6 +31,15 @@ export class CreateTenantDto {
   @ArrayNotEmpty()
   @IsEnum(TenantFeature, { each: true })
   features: TenantFeature[];
+
+  @ApiPropertyOptional({
+    enum: ServiceType,
+    description: 'Tipo de servicio por defecto del tenant',
+    example: ServiceType.REPAIR,
+  })
+  @IsOptional()
+  @IsEnum(ServiceType)
+  defaultService?: ServiceType;
 
   @ApiProperty({ example: 'admin@tecnocentrojr.com', description: 'Email del usuario administrador inicial' })
   @IsEmail()

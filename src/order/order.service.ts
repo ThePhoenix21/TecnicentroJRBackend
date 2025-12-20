@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompleteOrderDto } from './dto/complete-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType } from '@prisma/client';
+import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType, ServiceType as PrismaServiceType } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
 
@@ -20,6 +20,22 @@ export class OrderService {
     private prisma: PrismaService,
     private cashMovementService: CashMovementService,
   ) {}
+
+  private normalizeServiceType(type: unknown): PrismaServiceType {
+    if (type === 'OTHER') {
+      return PrismaServiceType.MISELANEOUS;
+    }
+
+    if (
+      type === PrismaServiceType.REPAIR ||
+      type === PrismaServiceType.MISELANEOUS ||
+      type === PrismaServiceType.WARRANTY
+    ) {
+      return type as PrismaServiceType;
+    }
+
+    throw new BadRequestException(`Tipo de servicio inválido: ${String(type)}`);
+  }
 
   private async assertStoreAccess(storeId: string, user: AuthUser) {
     const tenantId = user?.tenantId;
@@ -137,6 +153,12 @@ export class OrderService {
       throw new BadRequestException('El ID de la sesión de caja es obligatorio');
     }
 
+    if (!userId) {
+      throw new BadRequestException('Se requiere el ID del usuario para crear la orden');
+    }
+
+    const userIdToUse = userId;
+
     // Determinar si es ADMIN
     const isAdmin = user?.role === 'ADMIN';
 
@@ -186,7 +208,7 @@ export class OrderService {
         const storeUser = await prisma.storeUsers.findFirst({
           where: {
             storeId: cashSession.StoreId,
-            userId: user.userId,
+            userId: userIdToUse,
           },
           select: { id: true },
         });
@@ -198,18 +220,38 @@ export class OrderService {
 
       // 1. Verificar o crear el cliente
       let clientIdToUse = clientId;
-      
-      if (!clientId && clientInfo) {
-        if (!userId) {
-          throw new BadRequestException('Se requiere el ID de usuario para crear un cliente');
+
+      const isFilledString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+
+      if (clientIdToUse) {
+        const existingClientById = await prisma.client.findUnique({
+          where: { id: clientIdToUse },
+          select: {
+            id: true,
+            user: {
+              select: {
+                tenantId: true,
+              },
+            },
+          },
+        });
+
+        if (!existingClientById) {
+          throw new NotFoundException('Cliente no encontrado');
         }
 
-        // 1) Si hay email, buscar primero por email SIN filtrar por userId
-        //    para evitar violar la restricción única en email.
-        let existingClientByEmail: { id: string; dni: string | null; email: string | null; user: { tenantId: string | null } } | null = null;
-        if (clientInfo.email) {
+        if (!existingClientById.user?.tenantId || existingClientById.user.tenantId !== user.tenantId) {
+          throw new ForbiddenException('No tienes permisos para usar este cliente');
+        }
+      } else if (clientInfo) {
+        const dni = clientInfo.dni;
+
+        let existingClientByEmail:
+          | { id: string; dni: string; email: string | null; user: { tenantId: string | null } }
+          | null = null;
+        if (isFilledString(clientInfo.email)) {
           existingClientByEmail = await prisma.client.findFirst({
-            where: { email: clientInfo.email },
+            where: { email: clientInfo.email.trim() },
             select: {
               id: true,
               dni: true,
@@ -233,12 +275,7 @@ export class OrderService {
             });
           }
 
-          // Si el email ya existe pero el DNI es diferente, lanzar error claro
-          if (
-            clientInfo.dni &&
-            existingClientByEmail.dni &&
-            existingClientByEmail.dni !== clientInfo.dni
-          ) {
+          if (existingClientByEmail.dni !== dni) {
             throw new BadRequestException({
               statusCode: 400,
               message: 'El correo electrónico ya está registrado con un DNI diferente',
@@ -246,38 +283,68 @@ export class OrderService {
               code: 'EMAIL_ALREADY_EXISTS',
             });
           }
+        }
 
-          // Reutilizar cliente existente por email
-          clientIdToUse = existingClientByEmail.id;
-        } else {
-          // 2) Si no hay cliente por email, buscar por DNI/RUC para este usuario
-          const existingClient = await prisma.client.findFirst({
-            where: {
-              OR: [
-                { dni: clientInfo.dni },
-                { ruc: clientInfo.ruc },
-              ].filter((condition) => Object.values(condition)[0] !== undefined), // Solo incluir condiciones definidas
-              userId: userId,
-            },
-            select: {
-              id: true,
-              dni: true,
-              email: true,
-            },
-          });
-
-          if (existingClient) {
-            clientIdToUse = existingClient.id; // Usar el ID del cliente existente por DNI/RUC
-          } else {
-            // 3) Crear nuevo cliente (email garantizado único a este punto)
-            const newClient = await prisma.client.create({
-              data: {
-                ...clientInfo,
-                userId: userId!,
+        const existingClientByDni = await prisma.client.findFirst({
+          where: { dni },
+          select: {
+            id: true,
+            user: {
+              select: {
+                tenantId: true,
               },
+            },
+          },
+        });
+
+        if (existingClientByDni) {
+          if (!existingClientByDni.user?.tenantId || existingClientByDni.user.tenantId !== user.tenantId) {
+            throw new BadRequestException({
+              statusCode: 400,
+              message: 'El DNI ya está registrado en otra empresa',
+              error: 'Bad Request',
+              code: 'DNI_ALREADY_EXISTS_OTHER_TENANT',
             });
-            clientIdToUse = newClient.id;
           }
+
+          const updateData: Prisma.ClientUpdateInput = {};
+          if (isFilledString(clientInfo.name)) updateData.name = clientInfo.name.trim();
+          if (isFilledString(clientInfo.email)) updateData.email = clientInfo.email.trim();
+          if (isFilledString(clientInfo.phone)) updateData.phone = clientInfo.phone.trim();
+          if (isFilledString(clientInfo.address)) updateData.address = clientInfo.address.trim();
+          if (isFilledString(clientInfo.ruc)) updateData.ruc = clientInfo.ruc.trim();
+
+          if (Object.keys(updateData).length > 0) {
+            await prisma.client.update({
+              where: { id: existingClientByDni.id },
+              data: updateData,
+            });
+          }
+
+          clientIdToUse = existingClientByDni.id;
+        } else {
+          const createData: Prisma.ClientCreateInput = {
+            dni,
+            user: {
+              connect: { id: userIdToUse },
+            },
+          };
+
+          if (isFilledString(clientInfo.name)) {
+            createData.name = clientInfo.name.trim();
+          } else if (dni === '00000000') {
+            createData.name = 'Cliente Genérico';
+          }
+
+          if (isFilledString(clientInfo.email)) createData.email = clientInfo.email.trim();
+          if (isFilledString(clientInfo.phone)) createData.phone = clientInfo.phone.trim();
+          if (isFilledString(clientInfo.address)) createData.address = clientInfo.address.trim();
+          if (isFilledString(clientInfo.ruc)) createData.ruc = clientInfo.ruc.trim();
+
+          const newClient = await prisma.client.create({
+            data: createData,
+          });
+          clientIdToUse = newClient.id;
         }
       } else {
         throw new BadRequestException('Se requiere información del cliente');
@@ -381,7 +448,7 @@ export class OrderService {
           name: service.name,
           description: service.description || '',
           price: service.price,
-          type: service.type,
+          type: this.normalizeServiceType(service.type),
           photoUrls: service.photoUrls || [],
           status: 'IN_PROGRESS' as const,
         }));
@@ -418,7 +485,7 @@ export class OrderService {
           connect: { id: cashSessionId }
         },
         user: {
-          connect: { id: userId }
+          connect: { id: userIdToUse }
         },
         client: {
           connect: { id: clientIdToUse }
@@ -467,7 +534,7 @@ export class OrderService {
               quantity: -productData.quantity, // Cantidad negativa para salida
               description: "Movimiento por venta automática",
               storeProductId: storeProduct.id,
-              userId: userId,
+              userId: userIdToUse,
               orderId: order.id
             }
           });
@@ -505,7 +572,7 @@ export class OrderService {
               clientId: clientIdToUse,
               clientName: clientInfo?.name,
               clientEmail: clientInfo?.email
-            }, false, userId);
+            }, false, userIdToUse);
 
             console.log('✅ Movimiento de caja creado:', cashPayment.amount);
           } catch (error) {

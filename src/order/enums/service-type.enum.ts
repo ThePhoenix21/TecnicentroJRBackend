@@ -1,5 +1,6 @@
 export enum ServiceType {
   REPAIR = 'REPAIR',
+  MISELANEOUS = 'MISELANEOUS',
   WARRANTY = 'WARRANTY',
   OTHER = 'OTHER'
 }

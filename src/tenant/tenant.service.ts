@@ -18,6 +18,7 @@ export class TenantService {
       status,
       plan,
       features,
+      defaultService,
       adminEmail,
       adminPassword,
       adminName,
@@ -51,7 +52,9 @@ export class TenantService {
     try {
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
-      const allFeatures = Object.values(TenantFeature) as TenantFeature[];
+      const selectedFeatures = (features && features.length > 0
+        ? features
+        : (Object.values(TenantFeature) as TenantFeature[]));
 
       const result = await this.prisma.$transaction(async (tx) => {
         const tenant = await tx.tenant.create({
@@ -60,7 +63,8 @@ export class TenantService {
             ruc: ruc || null,
             status: status || TenantStatus.ACTIVE,
             plan: plan || TenantPlan.FREE,
-            features: { set: allFeatures },
+            features: { set: selectedFeatures },
+            ...(defaultService ? { defaultService } : {}),
           },
         });
 
@@ -155,5 +159,20 @@ export class TenantService {
     return {
       features: tenant.features || [],
     };
+  }
+
+  async getDefaultService(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        defaultService: true,
+      },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant no encontrado');
+    }
+
+    return tenant.defaultService;
   }
 }

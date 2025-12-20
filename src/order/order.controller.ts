@@ -75,7 +75,7 @@ export class OrderController {
               name: 'Cambio de aceite',
               description: 'Servicio de mantenimiento',
               price: 50,
-              type: 'SERVICIO'
+              type: 'MISELANEOUS'
             }
           ],
           paymentMethods: [

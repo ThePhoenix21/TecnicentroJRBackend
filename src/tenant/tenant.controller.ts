@@ -31,6 +31,23 @@ export class TenantController {
     return this.tenantService.getFeatures(tenantId);
   }
 
+  @Get('default-service')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Obtener defaultService del tenant actual',
+    description: 'Retorna únicamente el campo defaultService del tenant del usuario autenticado (solo requiere JWT).',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Default service obtenido exitosamente' })
+  async getDefaultService(@Req() req: any) {
+    const tenantId: string | undefined = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Tenant no encontrado en el token');
+    }
+
+    return this.tenantService.getDefaultService(tenantId);
+  }
+
   @Post()
   @ApiOperation({
     summary: 'Crear tenant (empresa) con admin y tienda inicial',

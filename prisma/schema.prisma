@@ -276,6 +276,7 @@ model Tenant {
   status    TenantStatus @default(ACTIVE)
   plan      TenantPlan    @default(FREE)
   features  TenantFeature[]
+  defaultService ServiceType? @default(REPAIR)
   createdAt DateTime @default(now())
 
   stores    Store[]
@@ -356,6 +357,8 @@ enum TenantFeature {
   STORE
   CASH
   SALES
+  SALESOFPRODUCTS
+  SALESOFSERVICES
   SERVICES
   PRODUCTS
   INVENTORY  
@@ -369,6 +372,8 @@ enum PaymentType {
   TRANSFERENCIA
   YAPE
   PLIN
+  DATAPHONE
+  BIZUM
   OTRO
 }
 
@@ -403,6 +408,7 @@ enum ServiceStatus {
 
 enum ServiceType {
   REPAIR
+  MISELANEOUS
   WARRANTY
 }
 
