@@ -1,9 +1,10 @@
-import { Body, Controller, HttpStatus, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { AuthService } from '../auth/auth.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('tenants')
 @Controller('tenant')
@@ -12,6 +13,23 @@ export class TenantController {
     private readonly tenantService: TenantService,
     private readonly authService: AuthService,
   ) {}
+
+  @Get('features')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Obtener features del tenant actual',
+    description: 'Retorna las features habilitadas para el tenant del usuario autenticado (solo requiere JWT).',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Features obtenidas exitosamente' })
+  async getTenantFeatures(@Req() req: any) {
+    const tenantId: string | undefined = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Tenant no encontrado en el token');
+    }
+
+    return this.tenantService.getFeatures(tenantId);
+  }
 
   @Post()
   @ApiOperation({
