@@ -51,9 +51,10 @@ export class ClientController {
   @ApiBody({ type: CreateClientDto })
   @Roles(Role.ADMIN, Role.USER) // Público también puede crear (sin autenticación)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  async create(@Body() createClientDto: CreateClientDto): Promise<Client> {
+  async create(@Body() createClientDto: CreateClientDto, @Request() req: any): Promise<Client> {
     // Si no está autenticado, se permite el registro
-    return this.clientService.create(createClientDto);
+    const tenantId = req.user?.tenantId;
+    return this.clientService.create(createClientDto, tenantId);
   }
 
   @Get()
@@ -152,8 +153,9 @@ export class ClientController {
   @ApiQuery({ name: 'query', required: true, description: 'Término de búsqueda' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Resultados de la búsqueda' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
-  async search(@Query('query') query: string) {
-    return this.clientService.search(query);
+  async search(@Query('query') query: string, @Request() req: any) {
+    const tenantId = req.user?.tenantId;
+    return this.clientService.search(query, tenantId);
   }
 
   @Get('dni/:dni')
@@ -235,7 +237,8 @@ export class ClientController {
     }
 
     // Buscar cliente por DNI
-    const client = await this.clientService.findByDni(dni);
+    const tenantId = req.user?.tenantId;
+    const client = await this.clientService.findByDni(dni, tenantId);
     
     if (!client) {
       throw new NotFoundException(`No se encontró cliente con DNI ${dni}`);

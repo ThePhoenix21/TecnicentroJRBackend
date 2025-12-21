@@ -228,11 +228,7 @@ export class OrderService {
           where: { id: clientIdToUse },
           select: {
             id: true,
-            user: {
-              select: {
-                tenantId: true,
-              },
-            },
+            tenantId: true,
           },
         });
 
@@ -240,41 +236,60 @@ export class OrderService {
           throw new NotFoundException('Cliente no encontrado');
         }
 
-        if (!existingClientById.user?.tenantId || existingClientById.user.tenantId !== user.tenantId) {
+        if (existingClientById.tenantId !== user.tenantId) {
           throw new ForbiddenException('No tienes permisos para usar este cliente');
         }
       } else if (clientInfo) {
         const dni = clientInfo.dni;
 
+        if (dni === '00000000') {
+          const existingGenericClient = await prisma.client.findFirst({
+            where: {
+              tenantId: user.tenantId,
+              dni: '00000000',
+            },
+            select: { id: true },
+          });
+
+          if (existingGenericClient) {
+            clientIdToUse = existingGenericClient.id;
+          } else {
+            const newGenericClient = await prisma.client.create({
+              data: {
+                dni: '00000000',
+                name: 'Cliente Genérico',
+                tenant: {
+                  connect: { id: user.tenantId },
+                },
+                user: {
+                  connect: { id: userIdToUse },
+                },
+              },
+              select: { id: true },
+            });
+
+            clientIdToUse = newGenericClient.id;
+          }
+        } else {
+
         let existingClientByEmail:
-          | { id: string; dni: string; email: string | null; user: { tenantId: string | null } }
+          | { id: string; dni: string; email: string | null }
           | null = null;
         if (isFilledString(clientInfo.email)) {
           existingClientByEmail = await prisma.client.findFirst({
-            where: { email: clientInfo.email.trim() },
+            where: {
+              tenantId: user.tenantId,
+              email: clientInfo.email.trim(),
+            },
             select: {
               id: true,
               dni: true,
               email: true,
-              user: {
-                select: {
-                  tenantId: true,
-                },
-              },
             },
           });
         }
 
         if (existingClientByEmail) {
-          if (!existingClientByEmail.user?.tenantId || existingClientByEmail.user.tenantId !== user.tenantId) {
-            throw new BadRequestException({
-              statusCode: 400,
-              message: 'El correo electrónico ya está registrado en otra empresa',
-              error: 'Bad Request',
-              code: 'EMAIL_ALREADY_EXISTS_OTHER_TENANT',
-            });
-          }
-
           if (existingClientByEmail.dni !== dni) {
             throw new BadRequestException({
               statusCode: 400,
@@ -286,27 +301,16 @@ export class OrderService {
         }
 
         const existingClientByDni = await prisma.client.findFirst({
-          where: { dni },
+          where: {
+            tenantId: user.tenantId,
+            dni,
+          },
           select: {
             id: true,
-            user: {
-              select: {
-                tenantId: true,
-              },
-            },
           },
         });
 
         if (existingClientByDni) {
-          if (!existingClientByDni.user?.tenantId || existingClientByDni.user.tenantId !== user.tenantId) {
-            throw new BadRequestException({
-              statusCode: 400,
-              message: 'El DNI ya está registrado en otra empresa',
-              error: 'Bad Request',
-              code: 'DNI_ALREADY_EXISTS_OTHER_TENANT',
-            });
-          }
-
           const updateData: Prisma.ClientUpdateInput = {};
           if (isFilledString(clientInfo.name)) updateData.name = clientInfo.name.trim();
           if (isFilledString(clientInfo.email)) updateData.email = clientInfo.email.trim();
@@ -325,6 +329,9 @@ export class OrderService {
         } else {
           const createData: Prisma.ClientCreateInput = {
             dni,
+            tenant: {
+              connect: { id: user.tenantId },
+            },
             user: {
               connect: { id: userIdToUse },
             },
@@ -332,8 +339,6 @@ export class OrderService {
 
           if (isFilledString(clientInfo.name)) {
             createData.name = clientInfo.name.trim();
-          } else if (dni === '00000000') {
-            createData.name = 'Cliente Genérico';
           }
 
           if (isFilledString(clientInfo.email)) createData.email = clientInfo.email.trim();
@@ -345,6 +350,7 @@ export class OrderService {
             data: createData,
           });
           clientIdToUse = newClient.id;
+        }
         }
       } else {
         throw new BadRequestException('Se requiere información del cliente');

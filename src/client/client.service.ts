@@ -20,10 +20,14 @@ type FindAllParams = {
 export class ClientService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createClientDto: CreateClientDto): Promise<Client> {
+  async create(createClientDto: CreateClientDto, tenantId?: string): Promise<Client> {
     try {
+      if (!tenantId) {
+        throw new BadRequestException('TenantId no encontrado en el token');
+      }
+
       // Verificar si ya existe un cliente con el mismo email, RUC o DNI
-      await this.checkExistingClient(createClientDto);
+      await this.checkExistingClient(createClientDto, undefined, tenantId);
 
       return await this.prisma.client.create({
         data: {
@@ -34,6 +38,9 @@ export class ClientService {
           ruc: createClientDto.ruc ?? null,
           dni: createClientDto.dni, // obligatorio, no null
           userId: createClientDto.userId,
+          tenant: {
+            connect: { id: tenantId },
+          },
         } as any,
       });
     } catch (error) {
@@ -56,16 +63,12 @@ export class ClientService {
     const [total, clients] = await Promise.all([
       this.prisma.client.count({
         where: {
-          user: {
-            tenantId,
-          },
+          tenantId,
         },
       }),
       this.prisma.client.findMany({
         where: {
-          user: {
-            tenantId,
-          },
+          tenantId,
         },
         skip,
         take: limit,
@@ -99,11 +102,11 @@ export class ClientService {
   async update(id: string, updateClientDto: UpdateClientDto): Promise<Client> {
     try {
       // Verificar si el cliente existe
-      await this.findOne(id);
+      const existingClient = await this.findOne(id);
       
       // Verificar si los nuevos datos entran en conflicto con otros clientes
       if (updateClientDto.email || updateClientDto.ruc || updateClientDto.dni) {
-        await this.checkExistingClient(updateClientDto, id);
+        await this.checkExistingClient(updateClientDto, id, (existingClient as any).tenantId);
       }
 
       return await this.prisma.client.update({
@@ -135,9 +138,13 @@ export class ClientService {
     }
   }
 
-  async search(query: string) {
+  async search(query: string, tenantId?: string) {
     if (!query || query.trim().length < 3) {
       throw new BadRequestException('El término de búsqueda debe tener al menos 3 caracteres');
+    }
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
     }
 
     const searchTerm = `%${query}%`;
@@ -146,26 +153,39 @@ export class ClientService {
     return this.prisma.$queryRaw`
       SELECT * FROM "Client" 
       WHERE 
-        LOWER("name") LIKE LOWER(${searchTerm}) OR
-        LOWER("email") LIKE LOWER(${searchTerm}) OR
-        "phone" LIKE ${searchTerm} OR
-        "dni" LIKE ${searchTerm} OR
-        "ruc" LIKE ${searchTerm}
+        "tenantId" = ${tenantId}
+        AND (
+          LOWER("name") LIKE LOWER(${searchTerm}) OR
+          LOWER("email") LIKE LOWER(${searchTerm}) OR
+          "phone" LIKE ${searchTerm} OR
+          "dni" LIKE ${searchTerm} OR
+          "ruc" LIKE ${searchTerm}
+        )
       LIMIT 20
     `;
   }
 
   // ✅ NUEVO: Buscar cliente por DNI
-  async findByDni(dni: string): Promise<Client | null> {
-    return await this.prisma.client.findUnique({
-      where: { dni },
+  async findByDni(dni: string, tenantId?: string): Promise<Client | null> {
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return await this.prisma.client.findFirst({
+      where: { tenantId, dni },
     });
   }
 
   private async checkExistingClient(
     clientData: { email?: string | null; ruc?: string | null; dni?: string | null },
     excludeId?: string
+    ,
+    tenantId?: string
   ): Promise<void> {
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
     const conditions: Prisma.ClientWhereInput[] = [];
 
     if (clientData.email) {
@@ -182,6 +202,7 @@ export class ClientService {
 
     const existingClient = await this.prisma.client.findFirst({
       where: {
+        tenantId,
         OR: conditions,
         ...(excludeId && { id: { not: excludeId } }),
       },
