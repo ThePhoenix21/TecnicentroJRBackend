@@ -47,7 +47,7 @@ export class OrderController {
   @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
   @ApiOperation({
     summary: 'Crear una orden',
-    description: 'Crea una orden con productos y/o servicios. Los pagos se registran a nivel de orden en paymentMethods. Los campos legacy products[].payments y services[].payments, si se envían, serán ignorados.'
+    description: 'Crea una orden con productos y/o servicios. Los pagos se registran a nivel de orden en paymentMethods. Los campos legacy products[].payments y services[].payments, si se envían, serán ignorados. Regla especial: si la orden contiene SOLO servicios (sin products) y el tenant tiene la feature FASTSERVICE habilitada (presente en el JWT como tenantFeatures), entonces se exige pago total: la suma de paymentMethods.amount debe ser igual a la suma de services.price y los servicios/la orden se crean como COMPLETED.'
   })
   @ApiBody({
     type: CreateOrderDto,

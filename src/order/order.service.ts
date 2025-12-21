@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompleteOrderDto } from './dto/complete-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType, ServiceType as PrismaServiceType } from '@prisma/client';
+import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType, ServiceType as PrismaServiceType, TenantFeature } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
 
@@ -12,6 +12,7 @@ type AuthUser = {
   email: string;
   role: string;
   tenantId?: string;
+  tenantFeatures?: TenantFeature[];
 };
 
 @Injectable()
@@ -165,6 +166,11 @@ export class OrderService {
     if (!user?.tenantId) {
       throw new ForbiddenException('Tenant no encontrado en el token');
     }
+
+    const hasProductsInRequest = Array.isArray(products) && products.length > 0;
+    const hasServicesInRequest = Array.isArray(services) && services.length > 0;
+    const isServicesOnlyOrder = !hasProductsInRequest && hasServicesInRequest;
+    const isFastServiceTenant = (user.tenantFeatures || []).includes(TenantFeature.FASTSERVICE);
 
     return this.prisma.$transaction(async (prisma) => {
       // 0. Validar la sesión de caja
@@ -456,17 +462,30 @@ export class OrderService {
           price: service.price,
           type: this.normalizeServiceType(service.type),
           photoUrls: service.photoUrls || [],
-          status: 'IN_PROGRESS' as const,
+          status: (isServicesOnlyOrder && isFastServiceTenant) ? ServiceStatus.COMPLETED : ServiceStatus.IN_PROGRESS,
         }));
         
         totalAmount += servicesData.reduce((sum, service) => sum + service.price, 0);
       }
 
+      if (isServicesOnlyOrder && isFastServiceTenant) {
+        const totalServicesAmount = servicesData.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+        const totalPaid = (paymentMethods || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+        if (Math.abs(totalPaid - totalServicesAmount) > 0.00001) {
+          throw new BadRequestException(
+            `El tenant tiene FASTSERVICE habilitado: el total pagado (${totalPaid}) debe ser igual al total de los servicios (${totalServicesAmount})`,
+          );
+        }
+      }
+
       // 4. Determinar el estado de la orden
       // Si hay servicios, el estado es PENDING, de lo contrario es COMPLETED
-      const orderStatus = createOrderDto.services && createOrderDto.services.length > 0 
-        ? SaleStatus.PENDING 
-        : SaleStatus.COMPLETED;
+      const orderStatus = (isServicesOnlyOrder && isFastServiceTenant)
+        ? SaleStatus.COMPLETED
+        : (createOrderDto.services && createOrderDto.services.length > 0 
+          ? SaleStatus.PENDING 
+          : SaleStatus.COMPLETED);
 
       // 5. Calcular número de tienda según orden de creación
       // Se obtienen todas las tiendas ordenadas por createdAt y se busca el índice de la tienda de la sesión

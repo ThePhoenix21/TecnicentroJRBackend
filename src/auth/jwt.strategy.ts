@@ -3,7 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy, StrategyOptions, VerifyCallback } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
-import { Role } from '@prisma/client';
+import { Role, TenantFeature } from '@prisma/client';
 
 type JwtPayload = {
   sub: string;
@@ -11,6 +11,7 @@ type JwtPayload = {
   role: string;
   tenantId?: string;
   tenantName?: string;
+  tenantFeatures?: TenantFeature[];
   permissions?: string[];
   stores?: string[];
   iat?: number;
@@ -37,7 +38,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super(strategyOptions);
   }
 
-  async validate(payload: JwtPayload): Promise<{ userId: string; email: string; role: Role; permissions: string[]; stores?: string[]; tenantId?: string; tenantName?: string }> {
+  async validate(payload: JwtPayload): Promise<{ userId: string; email: string; role: Role; permissions: string[]; stores?: string[]; tenantId?: string; tenantName?: string; tenantFeatures?: TenantFeature[] }> {
     try {
       this.logger.debug(`Validando token para usuario: ${payload.email}`);
       
@@ -81,7 +82,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         permissions: user.permissions || [], 
         stores: payload.stores || [],
         tenantId: (payload.tenantId ?? user.tenantId) ?? undefined,
-        tenantName: payload.tenantName
+        tenantName: payload.tenantName,
+        tenantFeatures: payload.tenantFeatures || [],
       };
       
     } catch (error) {
