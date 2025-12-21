@@ -52,17 +52,8 @@ export class TenantService {
     try {
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
-      const requestedOrDefaultFeatures = (features && features.length > 0
-        ? features
-        : (Object.values(TenantFeature) as TenantFeature[]));
-
-      const selectedFeatures = Array.from(
-        new Set(
-          requestedOrDefaultFeatures
-            .filter((f) => f !== TenantFeature.FASTSERVICE)
-            .concat(TenantFeature.PDFISSUANCE),
-        ),
-      );
+      const selectedFeatures = (Object.values(TenantFeature) as TenantFeature[])
+        .filter((f) => f !== TenantFeature.FASTSERVICE);
 
       const result = await this.prisma.$transaction(async (tx) => {
         const tenant = await tx.tenant.create({
