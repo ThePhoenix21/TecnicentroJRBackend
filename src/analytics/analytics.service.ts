@@ -16,7 +16,120 @@ type DateRange = { from: Date; to: Date };
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private normalizeRange(fromRaw: string, toRaw: string): DateRange {
+  private assertValidTimeZone(timeZone: string) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
+    } catch {
+      throw new BadRequestException('timeZone inválido (debe ser IANA, ej: America/Lima)');
+    }
+  }
+
+  private getPartsInTimeZone(date: Date, timeZone: string) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).formatToParts(date);
+
+    const map = new Map(parts.map((p) => [p.type, p.value] as const));
+
+    return {
+      year: Number(map.get('year')),
+      month: Number(map.get('month')),
+      day: Number(map.get('day')),
+      hour: Number(map.get('hour')),
+      minute: Number(map.get('minute')),
+      second: Number(map.get('second')),
+    };
+  }
+
+  private zonedDateTimeToUtc(
+    input: { year: number; month: number; day: number; hour: number; minute: number; second: number; ms: number },
+    timeZone: string,
+  ) {
+    // Aproximación robusta: partimos de un Date UTC y corregimos con la diferencia entre
+    // lo que ese instante representa en la TZ y lo que queremos representar.
+    let guess = new Date(
+      Date.UTC(input.year, input.month - 1, input.day, input.hour, input.minute, input.second, input.ms),
+    );
+
+    for (let i = 0; i < 2; i++) {
+      const actual = this.getPartsInTimeZone(guess, timeZone);
+      const desiredAsUtcMs = Date.UTC(
+        input.year,
+        input.month - 1,
+        input.day,
+        input.hour,
+        input.minute,
+        input.second,
+        input.ms,
+      );
+      const actualAsUtcMs = Date.UTC(
+        actual.year,
+        actual.month - 1,
+        actual.day,
+        actual.hour,
+        actual.minute,
+        actual.second,
+        0,
+      );
+
+      const diffMs = desiredAsUtcMs - actualAsUtcMs;
+      if (diffMs === 0) break;
+      guess = new Date(guess.getTime() + diffMs);
+    }
+
+    return guess;
+  }
+
+  private normalizeRange(fromRaw: string, toRaw: string, timeZone?: string): DateRange {
+    if (timeZone) {
+      this.assertValidTimeZone(timeZone);
+
+      const parseDateOnly = (raw: string) => {
+        const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(raw.trim());
+        if (!m) {
+          throw new BadRequestException('Formato de fecha inválido. Use YYYY-MM-DD');
+        }
+        return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+      };
+
+      const fromDate = parseDateOnly(fromRaw);
+      const toDate = parseDateOnly(toRaw);
+
+      const from = this.zonedDateTimeToUtc(
+        {
+          ...fromDate,
+          hour: 0,
+          minute: 0,
+          second: 0,
+          ms: 0,
+        },
+        timeZone,
+      );
+      const inclusiveTo = this.zonedDateTimeToUtc(
+        {
+          ...toDate,
+          hour: 23,
+          minute: 59,
+          second: 59,
+          ms: 999,
+        },
+        timeZone,
+      );
+
+      if (from.getTime() > inclusiveTo.getTime()) {
+        throw new BadRequestException('El parámetro from no puede ser mayor que to');
+      }
+
+      return { from, to: inclusiveTo };
+    }
+
     const from = new Date(fromRaw);
     const to = new Date(toRaw);
 
@@ -61,9 +174,9 @@ export class AnalyticsService {
     }
   }
 
-  async getNetProfit(user: AuthUser, from: string, to: string) {
+  async getNetProfit(user: AuthUser, from: string, to: string, timeZone?: string) {
     const tenantId = user?.tenantId;
-    const range = this.normalizeRange(from, to);
+    const range = this.normalizeRange(from, to, timeZone);
 
     const features = await this.getTenantFeaturesOrThrow(user);
     this.assertFeature(features, TenantFeature.CASH);
@@ -161,9 +274,9 @@ export class AnalyticsService {
     };
   }
 
-  async getIncome(user: AuthUser, from: string, to: string) {
+  async getIncome(user: AuthUser, from: string, to: string, timeZone?: string) {
     const tenantId = user?.tenantId;
-    const range = this.normalizeRange(from, to);
+    const range = this.normalizeRange(from, to, timeZone);
 
     const features = await this.getTenantFeaturesOrThrow(user);
     this.assertFeature(features, TenantFeature.CASH);
@@ -337,9 +450,9 @@ export class AnalyticsService {
     };
   }
 
-  async getExpenses(user: AuthUser, from: string, to: string) {
+  async getExpenses(user: AuthUser, from: string, to: string, timeZone?: string) {
     const tenantId = user?.tenantId;
-    const range = this.normalizeRange(from, to);
+    const range = this.normalizeRange(from, to, timeZone);
 
     const features = await this.getTenantFeaturesOrThrow(user);
     this.assertFeature(features, TenantFeature.CASH);
