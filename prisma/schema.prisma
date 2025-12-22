@@ -230,6 +230,7 @@ model CashMovement {
   sessionId     String
   type          MovementType
   amount        Float
+  payment       PaymentType?
   description   String?
   createdAt     DateTime    @default(now())
 
@@ -373,7 +374,7 @@ enum TenantFeature {
   IMAGEUPLOAD
   GENERICCLIENT
   PRODUCTS
-  INVENTORY  
+  INVENTORY
   CLIENTS
   CONFIG
 }

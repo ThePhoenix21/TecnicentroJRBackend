@@ -5,6 +5,7 @@ import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('tenants')
 @Controller('tenant')
@@ -13,6 +14,15 @@ export class TenantController {
     private readonly tenantService: TenantService,
     private readonly authService: AuthService,
   ) {}
+
+  @Get('debug-features')
+  @ApiOperation({ summary: 'Debug TenantFeature enum' })
+  debugFeatures() {
+    return {
+      features: Object.values(TenantFeature),
+      count: Object.keys(TenantFeature).length
+    };
+  }
 
   @Get('features')
   @UseGuards(JwtAuthGuard)

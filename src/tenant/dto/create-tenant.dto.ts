@@ -2,6 +2,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayNotEmpty, IsArray, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 import { ServiceType, TenantFeature, TenantPlan, TenantStatus } from '@prisma/client';
 
+console.log('DEBUG: TenantFeature cargado en DTO:', JSON.stringify(TenantFeature));
+
 export class CreateTenantDto {
   @ApiProperty({ example: 'Tecnocentro JR', description: 'Nombre del tenant (empresa)' })
   @IsString()

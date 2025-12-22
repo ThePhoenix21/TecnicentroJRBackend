@@ -155,38 +155,56 @@ export class CashMovementController {
     schema: {
       type: 'object',
       properties: {
-        cashSessionId: { type: 'string', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
-        initialBalance: { type: 'number', example: 500.00, description: 'Balance inicial de la sesión' },
-        totalIncome: { type: 'number', example: 1250.75, description: 'Total de ingresos' },
-        totalExpense: { type: 'number', example: 150.25, description: 'Total de egresos' },
-        currentBalance: { type: 'number', example: 1600.50, description: 'Balance actual' },
-        movementsCount: { type: 'number', example: 15, description: 'Cantidad total de movimientos' },
+        sessionInfo: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
+            openedAt: { type: 'string', format: 'date-time' },
+            openingAmount: { type: 'number', example: 500.0 },
+            status: { type: 'string', example: 'OPEN' },
+            user: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: 'f6a7b8c9-d0e1-2345-f012-678901234567' },
+                name: { type: 'string', example: 'Juan Pérez' },
+                email: { type: 'string', example: 'juan@email.com' }
+              }
+            },
+            store: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: 'e5f6a7b8-c9d0-1234-ef01-567890123456' },
+                name: { type: 'string', example: 'Tienda Principal' },
+                tenantId: { type: 'string', example: 'tenant_abc' }
+              }
+            }
+          }
+        },
+        balance: {
+          type: 'object',
+          description: 'Balance de efectivo (solo movimientos de caja: EFECTIVO)',
+          properties: {
+            openingAmount: { type: 'number', example: 500.0 },
+            totalIngresos: { type: 'number', example: 1250.75 },
+            totalSalidas: { type: 'number', example: 150.25 },
+            balanceActual: { type: 'number', example: 1600.5 }
+          }
+        },
         movements: {
           type: 'array',
-          description: 'Lista de todos los movimientos de la sesión',
+          description: 'Movimientos de la sesión: incluye EFECTIVO (CashMovement) y pagos NO EFECTIVO (PaymentMethod) ligados a órdenes de la sesión. EFECTIVO desde PaymentMethod se excluye.',
           items: {
             type: 'object',
             properties: {
               id: { type: 'string', example: 'd4e5f6a7-b8c9-0123-def0-456789012345' },
-              amount: { type: 'number', example: 100.50 },
               type: { type: 'string', enum: ['INCOME', 'EXPENSE'], example: 'INCOME' },
-              description: { type: 'string', example: 'Venta de productos' },
-              orderId: { type: 'string', example: 'b2c3d4e5-f6a7-8901-bcde-f23456789012' },
-              clientId: { type: 'string', example: 'c3d4e5f6-a7b8-9012-cdef-345678901234' },
+              amount: { type: 'number', example: 100.5 },
+              paymentMethod: { type: 'string', example: 'BIZUM' },
+              description: { type: 'string', example: 'Cambio de aceite' },
+              clientName: { type: 'string', example: 'Juan Pérez' },
+              clientEmail: { type: 'string', example: 'juan@email.com' },
               createdAt: { type: 'string', format: 'date-time' }
             }
-          }
-        },
-        sessionInfo: {
-          type: 'object',
-          description: 'Información adicional de la sesión',
-          properties: {
-            storeId: { type: 'string', example: 'e5f6a7b8-c9d0-1234-ef01-567890123456' },
-            storeName: { type: 'string', example: 'Tienda Principal' },
-            userId: { type: 'string', example: 'f6a7b8c9-d0e1-2345-f012-678901234567' },
-            userName: { type: 'string', example: 'Juan Pérez' },
-            openedAt: { type: 'string', format: 'date-time' },
-            closedAt: { type: 'string', format: 'date-time', nullable: true }
           }
         }
       }

@@ -18,6 +18,7 @@ import { ReceiptModule } from './receipt/receipt.module';
 import { InventoryCountModule } from './inventory-count/inventory-count.module';
 import { InventoryMovementModule } from './inventory-movement/inventory-movement.module';
 import { TenantModule } from './tenant/tenant.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { TenantFeaturesGuard } from './tenant/guards/tenant-features.guard';
 
 @Module({
@@ -47,6 +48,7 @@ import { TenantFeaturesGuard } from './tenant/guards/tenant-features.guard';
     ReceiptModule,
     InventoryCountModule,
     InventoryMovementModule,
+    DashboardModule,
     TenantModule,
   ],
   controllers: [],

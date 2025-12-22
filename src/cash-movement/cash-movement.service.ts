@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenEx
 import { CreateCashMovementDto, CreateOrderCashMovementDto } from './dto/create-cash-movement.dto';
 import { UpdateCashMovementDto } from './dto/update-cash-movement.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { MovementType, SessionStatus } from '@prisma/client';
+import { MovementType, SessionStatus, PaymentType } from '@prisma/client';
 
 type AuthUser = {
   userId: string;
@@ -319,6 +319,39 @@ export class CashMovementService {
         }
       });
 
+      // Obtener todos los paymentMethods NO EFECTIVO de órdenes ligadas a la sesión
+      const nonCashPaymentMethods = await this.prisma.paymentMethod.findMany({
+        where: {
+          type: { not: PaymentType.EFECTIVO },
+          order: {
+            cashSessionsId: cashSessionId,
+          },
+        },
+        include: {
+          order: {
+            select: {
+              id: true,
+              orderNumber: true,
+              client: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+              services: {
+                select: {
+                  name: true,
+                  description: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      });
+
       console.log('📊 [CashMovementService] Movimientos encontrados:', cashMovements.length);
       console.log('📊 [CashMovementService] Detalle de movimientos:', cashMovements.map(m => ({
         id: m.id,
@@ -388,6 +421,7 @@ export class CashMovementService {
             id: movement.id,
             type: movement.type,
             amount: movement.amount,
+            paymentMethod: PaymentType.EFECTIVO,
             description: clientInfo.description,
             clientName: clientInfo.name,
             clientEmail: clientInfo.email,
@@ -395,6 +429,32 @@ export class CashMovementService {
           };
         })
       );
+
+      const formattedPaymentMethodMovements = nonCashPaymentMethods.map((pm) => {
+        const order = pm.order;
+
+        const serviceDescriptions = (order?.services || [])
+          .map((s) => (s.description || s.name || '').trim())
+          .filter(Boolean);
+
+        const description = serviceDescriptions.length > 0
+          ? serviceDescriptions.join(', ')
+          : 'orden de venta';
+
+        return {
+          id: pm.id,
+          type: MovementType.INCOME,
+          amount: pm.amount,
+          paymentMethod: pm.type,
+          description,
+          clientName: order?.client?.name || 'Cliente sin nombre',
+          clientEmail: order?.client?.email || '',
+          createdAt: pm.createdAt,
+        };
+      });
+
+      const mergedMovements = [...formattedMovements, ...formattedPaymentMethodMovements]
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
       return {
         sessionInfo: {
@@ -411,7 +471,7 @@ export class CashMovementService {
           totalSalidas,
           balanceActual
         },
-        movements: formattedMovements
+        movements: mergedMovements
       };
 
     } catch (error) {
