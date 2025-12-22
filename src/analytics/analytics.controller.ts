@@ -22,9 +22,15 @@ export class AnalyticsController {
   })
   @ApiQuery({ name: 'from', required: true, example: '2025-01-01' })
   @ApiQuery({ name: 'to', required: true, example: '2025-01-31' })
+  @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
   @ApiResponse({ status: 200, description: 'Análisis de ganancia neta' })
-  async getNetProfit(@Req() req: any, @Query('from') from: string, @Query('to') to: string) {
-    return this.analyticsService.getNetProfit(req.user, from, to);
+  async getNetProfit(
+    @Req() req: any,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('timeZone') timeZone?: string,
+  ) {
+    return this.analyticsService.getNetProfit(req.user, from, to, timeZone);
   }
 
   @Get('income')
@@ -36,9 +42,15 @@ export class AnalyticsController {
   })
   @ApiQuery({ name: 'from', required: true, example: '2025-01-01' })
   @ApiQuery({ name: 'to', required: true, example: '2025-01-31' })
+  @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
   @ApiResponse({ status: 200, description: 'Análisis de ingresos' })
-  async getIncome(@Req() req: any, @Query('from') from: string, @Query('to') to: string) {
-    return this.analyticsService.getIncome(req.user, from, to);
+  async getIncome(
+    @Req() req: any,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('timeZone') timeZone?: string,
+  ) {
+    return this.analyticsService.getIncome(req.user, from, to, timeZone);
   }
 
   @Get('expenses')
@@ -50,8 +62,14 @@ export class AnalyticsController {
   })
   @ApiQuery({ name: 'from', required: true, example: '2025-01-01' })
   @ApiQuery({ name: 'to', required: true, example: '2025-01-31' })
+  @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
   @ApiResponse({ status: 200, description: 'Análisis de egresos' })
-  async getExpenses(@Req() req: any, @Query('from') from: string, @Query('to') to: string) {
-    return this.analyticsService.getExpenses(req.user, from, to);
+  async getExpenses(
+    @Req() req: any,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('timeZone') timeZone?: string,
+  ) {
+    return this.analyticsService.getExpenses(req.user, from, to, timeZone);
   }
 }

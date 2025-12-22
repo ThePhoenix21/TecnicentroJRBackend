@@ -17,6 +17,13 @@ export class CashMovementService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private mask(value?: string | null) {
+    if (!value) return '';
+    const s = String(value);
+    if (s.length <= 8) return '***';
+    return `${s.slice(0, 4)}***${s.slice(-4)}`;
+  }
+
   private async assertCashSessionAccess(cashSessionId: string, user: AuthUser) {
     const tenantId = user?.tenantId;
 
@@ -64,36 +71,19 @@ export class CashMovementService {
   // 1. Crear movimiento manual (fuera de órdenes)
   async createManual(createCashMovementDto: CreateCashMovementDto, user: AuthUser) {
     const { cashSessionId, amount, type, description, orderId, clientId, payment } = createCashMovementDto;
-    
-    console.log(' [CashMovementService] Creando movimiento manual:', {
-      user: user.email,
-      cashSessionId,
-      amount,
-      type,
-      payment,
-      description,
-      orderId,
-      clientId
-    });
-    
-    this.logger.log(`Creando movimiento manual para usuario: ${user.email} - Sesión: ${cashSessionId} - Monto: ${amount}`);
+
+    this.logger.log(
+      `Creando movimiento manual: session=${this.mask(cashSessionId)} type=${type} amount=${amount} payment=${payment ?? PaymentType.EFECTIVO}`,
+    );
 
     try {
       // Validar que la sesión de caja exista y esté abierta
       const cashSession = await this.assertCashSessionAccess(cashSessionId, user);
 
-      console.log(' [CashMovementService] Sesión encontrada:', {
-        exists: !!cashSession,
-        status: cashSession?.status,
-        openedById: cashSession?.openedById
-      });
-
       if (cashSession.status !== SessionStatus.OPEN) {
-        console.error(' [CashMovementService] La sesión de caja está cerrada:', cashSessionId, cashSession.status);
+        this.logger.warn(`Sesión de caja cerrada: session=${this.mask(cashSessionId)} status=${cashSession.status}`);
         throw new BadRequestException('La sesión de caja está cerrada. No se pueden realizar movimientos.');
       }
-
-      console.log(' [CashMovementService] Sesión validada, creando movimiento...');
 
       // Crear el movimiento
       const cashMovement = await this.prisma.cashMovement.create({
@@ -124,16 +114,9 @@ export class CashMovementService {
         }
       });
 
-      console.log('✅ [CashMovementService] Movimiento creado exitosamente:', {
-        id: cashMovement.id,
-        amount: cashMovement.amount,
-        type: cashMovement.type,
-        sessionId: cashMovement.sessionId,
-        relatedOrderId: cashMovement.relatedOrderId,
-        UserId: cashMovement.UserId
-      });
-
-      this.logger.log(`Movimiento manual creado exitosamente: ${cashMovement.id}`);
+      this.logger.log(
+        `Movimiento manual creado: id=${this.mask(cashMovement.id)} session=${this.mask(cashMovement.sessionId)} type=${cashMovement.type} amount=${cashMovement.amount}`,
+      );
 
       return cashMovement;
 
@@ -153,17 +136,10 @@ export class CashMovementService {
   // 2. Crear movimiento desde orden (uso interno)
   async createFromOrder(createOrderCashMovementDto: CreateOrderCashMovementDto, isRefund: boolean = false, userId?: string) {
     const { cashSessionId, amount, orderId, clientId, clientName, clientEmail } = createOrderCashMovementDto;
-    
-    console.log('🔄 [CashMovementService] Creando movimiento desde orden:', {
-      cashSessionId,
-      amount,
-      orderId,
-      clientId,
-      clientName,
-      clientEmail,
-      isRefund,
-      userId
-    });
+
+    this.logger.log(
+      `Creando movimiento desde orden: session=${this.mask(cashSessionId)} order=${this.mask(orderId)} amount=${amount} refund=${isRefund}`,
+    );
 
     try {
       // Validar que la sesión exista y esté abierta
@@ -181,17 +157,14 @@ export class CashMovementService {
       });
 
       if (!cashSession) {
-        console.error('❌ [CashMovementService] La sesión de caja no existe:', cashSessionId);
+        this.logger.warn(`Sesión de caja no existe: session=${this.mask(cashSessionId)}`);
         throw new NotFoundException('La sesión de caja especificada no existe');
       }
 
       if (cashSession.status !== SessionStatus.OPEN) {
-        console.error('❌ [CashMovementService] La sesión de caja está cerrada:', cashSessionId, cashSession.status);
+        this.logger.warn(`Sesión de caja cerrada: session=${this.mask(cashSessionId)} status=${cashSession.status}`);
         throw new BadRequestException('La sesión de caja está cerrada. No se pueden realizar movimientos.');
       }
-
-      console.log('✅ [CashMovementService] Sesión validada, usuario de sesión:', cashSession.User?.id);
-      console.log('🔍 [CashMovementService] UserId a usar:', userId || cashSession.openedById);
 
       // Determinar el tipo y descripción según si es reembolso o pago
       const movementType = isRefund ? MovementType.EXPENSE : MovementType.INCOME;
@@ -201,18 +174,15 @@ export class CashMovementService {
 
       // Crear el movimiento
       const finalUserId = userId || cashSession.openedById;
-      console.log('🔍 [CashMovementService] UserId final para CashMovement:', finalUserId);
       
       // Verificar que la orden exista antes de crear el movimiento
       if (orderId) {
-        console.log('🔍 [CashMovementService] Verificando existencia de orden:', orderId);
         const orderExists = await this.prisma.order.findUnique({
           where: { id: orderId },
           select: { id: true }
         });
-        console.log('🔍 [CashMovementService] Orden existe:', !!orderExists);
         if (!orderExists) {
-          console.error('❌ [CashMovementService] La orden no existe:', orderId);
+          this.logger.warn(`Orden no existe: order=${this.mask(orderId)}`);
           throw new NotFoundException(`La orden ${orderId} no existe`);
         }
       }
@@ -238,21 +208,13 @@ export class CashMovementService {
         }
       });
 
-      console.log('✅ [CashMovementService] Movimiento creado exitosamente:', {
-        id: cashMovement.id,
-        amount: cashMovement.amount,
-        type: cashMovement.type,
-        sessionId: cashMovement.sessionId,
-        relatedOrderId: cashMovement.relatedOrderId,
-        UserId: cashMovement.UserId
-      });
-
-      this.logger.log(`Movimiento desde orden creado exitosamente: ${cashMovement.id}`);
+      this.logger.log(
+        `Movimiento desde orden creado: id=${this.mask(cashMovement.id)} session=${this.mask(cashMovement.sessionId)} type=${cashMovement.type} amount=${cashMovement.amount}`,
+      );
 
       return cashMovement;
 
     } catch (error) {
-      console.error('❌ [CashMovementService] Error al crear movimiento:', error.message);
       this.logger.error(`Error al crear movimiento desde orden: ${error.message}`, error.stack);
       
       if (error instanceof NotFoundException || 
@@ -266,8 +228,7 @@ export class CashMovementService {
 
   // 3. Obtener cuadre de caja
   async getCashBalance(cashSessionId: string, user?: AuthUser) {
-    console.log('🔄 [CashMovementService] Obteniendo cuadre de caja para sesión:', cashSessionId);
-    this.logger.log(`Obteniendo cuadre de caja para sesión: ${cashSessionId}`);
+    this.logger.log(`Obteniendo cuadre de caja: session=${this.mask(cashSessionId)}`);
 
     try {
       if (user) {
@@ -295,15 +256,9 @@ export class CashMovementService {
       });
 
       if (!cashSession) {
-        console.error('❌ [CashMovementService] La sesión de caja no existe:', cashSessionId);
+        this.logger.warn(`Sesión de caja no existe: session=${this.mask(cashSessionId)}`);
         throw new NotFoundException('La sesión de caja especificada no existe');
       }
-
-      console.log('✅ [CashMovementService] Sesión encontrada:', {
-        id: cashSession.id,
-        status: cashSession.status,
-        openingAmount: cashSession.openingAmount
-      });
 
       // Obtener todos los movimientos de la sesión
       const cashMovements = await this.prisma.cashMovement.findMany({
@@ -355,16 +310,7 @@ export class CashMovementService {
         },
       });
 
-      console.log('📊 [CashMovementService] Movimientos encontrados:', cashMovements.length);
-      console.log('📊 [CashMovementService] Detalle de movimientos:', cashMovements.map(m => ({
-        id: m.id,
-        type: m.type,
-        amount: m.amount,
-        payment: m.payment,
-        description: m.description,
-        relatedOrderId: m.relatedOrderId,
-        createdAt: m.createdAt
-      })));
+      this.logger.log(`Detalles de movimientos: session=${this.mask(cashSessionId)}`);
 
       // Calcular totales SOLO de EFECTIVO
       // Nota: movimientos antiguos podrían tener payment null; se tratan como EFECTIVO.
@@ -382,12 +328,9 @@ export class CashMovementService {
 
       const balanceActual = cashSession.openingAmount + totalIngresos - totalSalidas;
 
-      console.log('💰 [CashMovementService] Balance calculado:', {
-        openingAmount: cashSession.openingAmount,
-        totalIngresos,
-        totalSalidas,
-        balanceActual
-      });
+      this.logger.log(
+        `Balance calculado: session=${this.mask(cashSessionId)} opening=${cashSession.openingAmount} income=${totalIngresos} expense=${totalSalidas} balance=${balanceActual}`,
+      );
 
       // Formatear movimientos para el cuadre
       const formattedMovements = await Promise.all(

@@ -7,6 +7,7 @@ type AuthUser = {
   email: string;
   role: string;
   tenantId?: string;
+  tenantFeatures?: TenantFeature[];
 };
 
 type DateRange = { from: Date; to: Date };
@@ -15,7 +16,120 @@ type DateRange = { from: Date; to: Date };
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private normalizeRange(fromRaw: string, toRaw: string): DateRange {
+  private assertValidTimeZone(timeZone: string) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
+    } catch {
+      throw new BadRequestException('timeZone inválido (debe ser IANA, ej: America/Lima)');
+    }
+  }
+
+  private getPartsInTimeZone(date: Date, timeZone: string) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).formatToParts(date);
+
+    const map = new Map(parts.map((p) => [p.type, p.value] as const));
+
+    return {
+      year: Number(map.get('year')),
+      month: Number(map.get('month')),
+      day: Number(map.get('day')),
+      hour: Number(map.get('hour')),
+      minute: Number(map.get('minute')),
+      second: Number(map.get('second')),
+    };
+  }
+
+  private zonedDateTimeToUtc(
+    input: { year: number; month: number; day: number; hour: number; minute: number; second: number; ms: number },
+    timeZone: string,
+  ) {
+    // Aproximación robusta: partimos de un Date UTC y corregimos con la diferencia entre
+    // lo que ese instante representa en la TZ y lo que queremos representar.
+    let guess = new Date(
+      Date.UTC(input.year, input.month - 1, input.day, input.hour, input.minute, input.second, input.ms),
+    );
+
+    for (let i = 0; i < 2; i++) {
+      const actual = this.getPartsInTimeZone(guess, timeZone);
+      const desiredAsUtcMs = Date.UTC(
+        input.year,
+        input.month - 1,
+        input.day,
+        input.hour,
+        input.minute,
+        input.second,
+        input.ms,
+      );
+      const actualAsUtcMs = Date.UTC(
+        actual.year,
+        actual.month - 1,
+        actual.day,
+        actual.hour,
+        actual.minute,
+        actual.second,
+        0,
+      );
+
+      const diffMs = desiredAsUtcMs - actualAsUtcMs;
+      if (diffMs === 0) break;
+      guess = new Date(guess.getTime() + diffMs);
+    }
+
+    return guess;
+  }
+
+  private normalizeRange(fromRaw: string, toRaw: string, timeZone?: string): DateRange {
+    if (timeZone) {
+      this.assertValidTimeZone(timeZone);
+
+      const parseDateOnly = (raw: string) => {
+        const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(raw.trim());
+        if (!m) {
+          throw new BadRequestException('Formato de fecha inválido. Use YYYY-MM-DD');
+        }
+        return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+      };
+
+      const fromDate = parseDateOnly(fromRaw);
+      const toDate = parseDateOnly(toRaw);
+
+      const from = this.zonedDateTimeToUtc(
+        {
+          ...fromDate,
+          hour: 0,
+          minute: 0,
+          second: 0,
+          ms: 0,
+        },
+        timeZone,
+      );
+      const inclusiveTo = this.zonedDateTimeToUtc(
+        {
+          ...toDate,
+          hour: 23,
+          minute: 59,
+          second: 59,
+          ms: 999,
+        },
+        timeZone,
+      );
+
+      if (from.getTime() > inclusiveTo.getTime()) {
+        throw new BadRequestException('El parámetro from no puede ser mayor que to');
+      }
+
+      return { from, to: inclusiveTo };
+    }
+
     const from = new Date(fromRaw);
     const to = new Date(toRaw);
 
@@ -60,9 +174,9 @@ export class AnalyticsService {
     }
   }
 
-  async getNetProfit(user: AuthUser, from: string, to: string) {
+  async getNetProfit(user: AuthUser, from: string, to: string, timeZone?: string) {
     const tenantId = user?.tenantId;
-    const range = this.normalizeRange(from, to);
+    const range = this.normalizeRange(from, to, timeZone);
 
     const features = await this.getTenantFeaturesOrThrow(user);
     this.assertFeature(features, TenantFeature.CASH);
@@ -160,12 +274,15 @@ export class AnalyticsService {
     };
   }
 
-  async getIncome(user: AuthUser, from: string, to: string) {
+  async getIncome(user: AuthUser, from: string, to: string, timeZone?: string) {
     const tenantId = user?.tenantId;
-    const range = this.normalizeRange(from, to);
+    const range = this.normalizeRange(from, to, timeZone);
 
     const features = await this.getTenantFeaturesOrThrow(user);
     this.assertFeature(features, TenantFeature.CASH);
+
+    const jwtFeatures = user?.tenantFeatures || [];
+    const includeNamedServices = jwtFeatures.includes(TenantFeature.NAMEDSERVICES);
 
     if (!tenantId) {
       throw new ForbiddenException('Tenant no encontrado en el token');
@@ -188,7 +305,11 @@ export class AnalyticsService {
         createdAt: true,
         userId: true,
         services: hasServices
-          ? { select: { id: true, price: true, status: true } }
+          ? {
+              select: includeNamedServices
+                ? { id: true, price: true, status: true, name: true, description: true }
+                : { id: true, price: true, status: true, name: true },
+            }
           : false,
         orderProducts: hasProducts
           ? { select: { id: true, quantity: true, price: true } }
@@ -200,6 +321,8 @@ export class AnalyticsService {
     let incomeProducts = 0;
 
     const servicesByUser = new Map<string, { count: number; total: number }>();
+    const servicesByName = new Map<string, { count: number; total: number; name: string }>();
+    const serviceDescriptionsByName = new Map<string, Map<string, { count: number }>>();
     const productsByUser = new Map<string, { items: number; total: number }>();
 
     for (const o of orders) {
@@ -213,6 +336,35 @@ export class AnalyticsService {
           count: current.count + services.length,
           total: current.total + servicesTotal,
         });
+
+        for (const s of services) {
+          const rawName = (s?.name ?? '').toString();
+          const normalizedName = rawName.trim().toLowerCase();
+          if (!normalizedName) continue;
+
+          const currentService = servicesByName.get(normalizedName) || {
+            count: 0,
+            total: 0,
+            name: normalizedName,
+          };
+
+          servicesByName.set(normalizedName, {
+            count: currentService.count + 1,
+            total: currentService.total + (s?.price || 0),
+            name: normalizedName,
+          });
+
+          if (includeNamedServices) {
+            const rawDescription = (s?.description ?? '').toString();
+            const normalizedDescription = rawDescription.trim();
+            const descMap = serviceDescriptionsByName.get(normalizedName) ||
+              new Map<string, { count: number }>();
+
+            const currentDesc = descMap.get(normalizedDescription) || { count: 0 };
+            descMap.set(normalizedDescription, { count: currentDesc.count + 1 });
+            serviceDescriptionsByName.set(normalizedName, descMap);
+          }
+        }
       }
 
       if (hasProducts) {
@@ -246,16 +398,26 @@ export class AnalyticsService {
     const usersById = new Map(users.map((u) => [u.id, u] as const));
 
     const topUsersServices = hasServices
-      ? Array.from(servicesByUser.entries())
-          .map(([userId, data]) => ({
-            userId,
-            userName: usersById.get(userId)?.name || 'Usuario',
-            userEmail: usersById.get(userId)?.email || '',
-            servicesCount: data.count,
-            totalAmount: data.total,
-          }))
+      ? Array.from(servicesByName.values())
+          .map((s) => {
+            let description = '';
+
+            if (includeNamedServices) {
+              const descMap = serviceDescriptionsByName.get(s.name);
+              if (descMap && descMap.size) {
+                description = Array.from(descMap.entries())
+                  .sort((a, b) => b[1].count - a[1].count)[0]?.[0] ?? '';
+              }
+            }
+
+            return {
+              Name: s.name,
+              ...(includeNamedServices ? { Description: description } : {}),
+              servicesCount: s.count,
+              totalAmount: s.total,
+            };
+          })
           .sort((a, b) => b.totalAmount - a.totalAmount)
-          .slice(0, 10)
       : [];
 
     const topUsersProducts = hasProducts
@@ -288,9 +450,9 @@ export class AnalyticsService {
     };
   }
 
-  async getExpenses(user: AuthUser, from: string, to: string) {
+  async getExpenses(user: AuthUser, from: string, to: string, timeZone?: string) {
     const tenantId = user?.tenantId;
-    const range = this.normalizeRange(from, to);
+    const range = this.normalizeRange(from, to, timeZone);
 
     const features = await this.getTenantFeaturesOrThrow(user);
     this.assertFeature(features, TenantFeature.CASH);
