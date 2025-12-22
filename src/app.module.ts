@@ -20,6 +20,7 @@ import { InventoryMovementModule } from './inventory-movement/inventory-movement
 import { TenantModule } from './tenant/tenant.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { TenantFeaturesGuard } from './tenant/guards/tenant-features.guard';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { TenantFeaturesGuard } from './tenant/guards/tenant-features.guard';
     InventoryMovementModule,
     DashboardModule,
     TenantModule,
+    AnalyticsModule,
   ],
   controllers: [],
   providers: [
