@@ -7,6 +7,7 @@ type AuthUser = {
   email: string;
   role: string;
   tenantId?: string;
+  tenantFeatures?: TenantFeature[];
 };
 
 type DateRange = { from: Date; to: Date };
@@ -167,6 +168,9 @@ export class AnalyticsService {
     const features = await this.getTenantFeaturesOrThrow(user);
     this.assertFeature(features, TenantFeature.CASH);
 
+    const jwtFeatures = user?.tenantFeatures || [];
+    const includeNamedServices = jwtFeatures.includes(TenantFeature.NAMEDSERVICES);
+
     if (!tenantId) {
       throw new ForbiddenException('Tenant no encontrado en el token');
     }
@@ -188,7 +192,11 @@ export class AnalyticsService {
         createdAt: true,
         userId: true,
         services: hasServices
-          ? { select: { id: true, price: true, status: true } }
+          ? {
+              select: includeNamedServices
+                ? { id: true, price: true, status: true, name: true, description: true }
+                : { id: true, price: true, status: true, name: true },
+            }
           : false,
         orderProducts: hasProducts
           ? { select: { id: true, quantity: true, price: true } }
@@ -200,6 +208,8 @@ export class AnalyticsService {
     let incomeProducts = 0;
 
     const servicesByUser = new Map<string, { count: number; total: number }>();
+    const servicesByName = new Map<string, { count: number; total: number; name: string }>();
+    const serviceDescriptionsByName = new Map<string, Map<string, { count: number }>>();
     const productsByUser = new Map<string, { items: number; total: number }>();
 
     for (const o of orders) {
@@ -213,6 +223,35 @@ export class AnalyticsService {
           count: current.count + services.length,
           total: current.total + servicesTotal,
         });
+
+        for (const s of services) {
+          const rawName = (s?.name ?? '').toString();
+          const normalizedName = rawName.trim().toLowerCase();
+          if (!normalizedName) continue;
+
+          const currentService = servicesByName.get(normalizedName) || {
+            count: 0,
+            total: 0,
+            name: normalizedName,
+          };
+
+          servicesByName.set(normalizedName, {
+            count: currentService.count + 1,
+            total: currentService.total + (s?.price || 0),
+            name: normalizedName,
+          });
+
+          if (includeNamedServices) {
+            const rawDescription = (s?.description ?? '').toString();
+            const normalizedDescription = rawDescription.trim();
+            const descMap = serviceDescriptionsByName.get(normalizedName) ||
+              new Map<string, { count: number }>();
+
+            const currentDesc = descMap.get(normalizedDescription) || { count: 0 };
+            descMap.set(normalizedDescription, { count: currentDesc.count + 1 });
+            serviceDescriptionsByName.set(normalizedName, descMap);
+          }
+        }
       }
 
       if (hasProducts) {
@@ -246,16 +285,26 @@ export class AnalyticsService {
     const usersById = new Map(users.map((u) => [u.id, u] as const));
 
     const topUsersServices = hasServices
-      ? Array.from(servicesByUser.entries())
-          .map(([userId, data]) => ({
-            userId,
-            userName: usersById.get(userId)?.name || 'Usuario',
-            userEmail: usersById.get(userId)?.email || '',
-            servicesCount: data.count,
-            totalAmount: data.total,
-          }))
+      ? Array.from(servicesByName.values())
+          .map((s) => {
+            let description = '';
+
+            if (includeNamedServices) {
+              const descMap = serviceDescriptionsByName.get(s.name);
+              if (descMap && descMap.size) {
+                description = Array.from(descMap.entries())
+                  .sort((a, b) => b[1].count - a[1].count)[0]?.[0] ?? '';
+              }
+            }
+
+            return {
+              Name: s.name,
+              ...(includeNamedServices ? { Description: description } : {}),
+              servicesCount: s.count,
+              totalAmount: s.total,
+            };
+          })
           .sort((a, b) => b.totalAmount - a.totalAmount)
-          .slice(0, 10)
       : [];
 
     const topUsersProducts = hasProducts
