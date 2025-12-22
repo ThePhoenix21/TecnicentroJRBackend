@@ -1,6 +1,6 @@
 import { IsString, IsNotEmpty, IsNumber, IsUUID, IsOptional, IsEnum, Min, Max } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { MovementType } from '@prisma/client';
+import { MovementType, PaymentType } from '@prisma/client';
 
 export class CreateCashMovementDto {
   @ApiProperty({
@@ -29,6 +29,16 @@ export class CreateCashMovementDto {
   })
   @IsEnum(MovementType, { message: 'El tipo de movimiento debe ser INCOME o EXPENSE' })
   type: MovementType;
+
+  @ApiProperty({
+    example: 'DATAPHONE',
+    description: 'Método de pago del movimiento (opcional). Si no se envía, se asume EFECTIVO.',
+    required: false,
+    enum: PaymentType,
+  })
+  @IsOptional()
+  @IsEnum(PaymentType, { message: 'El método de pago no es válido' })
+  payment?: PaymentType;
 
   @ApiProperty({
     example: 'Venta de productos varios',

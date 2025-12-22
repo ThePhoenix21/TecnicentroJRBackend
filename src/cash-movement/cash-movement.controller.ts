@@ -34,6 +34,7 @@ export class CashMovementController {
           cashSessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
           amount: 100.50,
           type: 'INCOME',
+          payment: 'EFECTIVO',
           description: 'Venta de productos varios'
         }
       },
@@ -44,6 +45,7 @@ export class CashMovementController {
           cashSessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
           amount: 25.00,
           type: 'EXPENSE',
+          payment: 'EFECTIVO',
           description: 'Gastos de oficina'
         }
       },
@@ -54,6 +56,7 @@ export class CashMovementController {
           cashSessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
           amount: 50.00,
           type: 'INCOME',
+          payment: 'DATAPHONE',
           description: 'Pago parcial de orden #123',
           orderId: 'b2c3d4e5-f6a7-8901-bcde-f23456789012',
           clientId: 'c3d4e5f6-a7b8-9012-cdef-345678901234'
@@ -71,6 +74,7 @@ export class CashMovementController {
         cashSessionId: { type: 'string', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
         amount: { type: 'number', example: 100.50 },
         type: { type: 'string', enum: ['INCOME', 'EXPENSE'], example: 'INCOME' },
+        paymentMethod: { type: 'string', enum: ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'YAPE', 'PLIN', 'DATAPHONE', 'BIZUM', 'OTRO'], example: 'DATAPHONE' },
         description: { type: 'string', example: 'Venta de productos varios' },
         orderId: { type: 'string', example: 'b2c3d4e5-f6a7-8901-bcde-f23456789012' },
         clientId: { type: 'string', example: 'c3d4e5f6-a7b8-9012-cdef-345678901234' },
@@ -142,7 +146,7 @@ export class CashMovementController {
   @Roles(Role.USER, Role.ADMIN)
   @ApiOperation({
     summary: 'Obtener cuadre de caja',
-    description: 'Obtiene el cuadre de caja de una sesión específica con todos los movimientos y balance actual. Requiere rol USER o ADMIN.'
+    description: 'Obtiene el cuadre de caja de una sesión específica con todos los movimientos y balance actual. El bloque "balance" corresponde únicamente a EFECTIVO (movimientos con payment EFECTIVO). Los pagos NO EFECTIVO se listan en movements pero no afectan el balance. Requiere rol USER o ADMIN.'
   })
   @ApiParam({ 
     name: 'cashSessionId', 

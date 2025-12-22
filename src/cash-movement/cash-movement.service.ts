@@ -63,13 +63,14 @@ export class CashMovementService {
 
   // 1. Crear movimiento manual (fuera de órdenes)
   async createManual(createCashMovementDto: CreateCashMovementDto, user: AuthUser) {
-    const { cashSessionId, amount, type, description, orderId, clientId } = createCashMovementDto;
+    const { cashSessionId, amount, type, description, orderId, clientId, payment } = createCashMovementDto;
     
     console.log(' [CashMovementService] Creando movimiento manual:', {
       user: user.email,
       cashSessionId,
       amount,
       type,
+      payment,
       description,
       orderId,
       clientId
@@ -100,6 +101,7 @@ export class CashMovementService {
           sessionId: cashSessionId,
           type: type,
           amount: amount,
+          payment: payment ?? PaymentType.EFECTIVO,
           description: description || 'Movimiento manual',
           relatedOrderId: orderId || null,
           CashSessionId: cashSessionId,
@@ -220,6 +222,7 @@ export class CashMovementService {
           sessionId: cashSessionId,        // Campo sessionId
           type: movementType,              // INCOME para pagos, EXPENSE para reembolsos
           amount: amount,
+          payment: PaymentType.EFECTIVO,
           description: description,
           relatedOrderId: orderId,         // Campo relacionado con orden
           CashSessionId: cashSessionId,    // FK para CashSession
@@ -357,17 +360,23 @@ export class CashMovementService {
         id: m.id,
         type: m.type,
         amount: m.amount,
+        payment: m.payment,
         description: m.description,
         relatedOrderId: m.relatedOrderId,
         createdAt: m.createdAt
       })));
 
-      // Calcular totales
-      const totalIngresos = cashMovements
+      // Calcular totales SOLO de EFECTIVO
+      // Nota: movimientos antiguos podrían tener payment null; se tratan como EFECTIVO.
+      const cashOnlyMovements = cashMovements.filter(
+        (m) => (m.payment ?? PaymentType.EFECTIVO) === PaymentType.EFECTIVO,
+      );
+
+      const totalIngresos = cashOnlyMovements
         .filter(m => m.type === MovementType.INCOME)
         .reduce((sum, m) => sum + m.amount, 0);
 
-      const totalSalidas = cashMovements
+      const totalSalidas = cashOnlyMovements
         .filter(m => m.type === MovementType.EXPENSE)
         .reduce((sum, m) => sum + m.amount, 0);
 
@@ -421,7 +430,7 @@ export class CashMovementService {
             id: movement.id,
             type: movement.type,
             amount: movement.amount,
-            paymentMethod: PaymentType.EFECTIVO,
+            paymentMethod: movement.payment ?? PaymentType.EFECTIVO,
             description: clientInfo.description,
             clientName: clientInfo.name,
             clientEmail: clientInfo.email,
