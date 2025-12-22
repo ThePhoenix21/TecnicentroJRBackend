@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompleteOrderDto } from './dto/complete-order.dto';
@@ -17,10 +17,19 @@ type AuthUser = {
 
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name);
+
   constructor(
     private prisma: PrismaService,
     private cashMovementService: CashMovementService,
   ) {}
+
+  private mask(value?: string | null) {
+    if (!value) return '';
+    const s = String(value);
+    if (s.length <= 8) return '***';
+    return `${s.slice(0, 4)}***${s.slice(-4)}`;
+  }
 
   private normalizeServiceType(type: unknown): PrismaServiceType {
     if (type === 'OTHER') {
@@ -364,10 +373,10 @@ export class OrderService {
 
       // 2. Verificar productos y calcular totales
       const productIds = products?.map(p => p.productId) || [];
-      console.log('🔍 Buscando StoreProducts con IDs:', productIds);
-      console.log('🔍 Para el userId:', userId);
-      console.log('🔍 Es ADMIN:', isAdmin);
-      console.log('🔍 StoreId de la sesión de caja:', cashSession.StoreId);
+
+      this.logger.debug(
+        `Validando productos: count=${productIds.length} admin=${isAdmin} store=${this.mask(cashSession.StoreId)}`,
+      );
       
       // Regla de acceso a productos en tienda:
       // - ADMIN: puede usar cualquier StoreProduct por ID.
@@ -390,18 +399,13 @@ export class OrderService {
         }
       });
 
-      console.log('🔍 StoreProducts encontrados:', existingStoreProducts.length);
-      console.log('🔍 IDs encontrados:', existingStoreProducts.map(sp => sp.id));
-
       if (existingStoreProducts.length !== productIds.length) {
         const foundIds = existingStoreProducts.map(sp => sp.id);
         const missingIds = productIds.filter(id => !foundIds.includes(id));
-        console.log('❌ IDs no encontrados:', missingIds);
         throw new NotFoundException(`Productos no encontrados: ${missingIds.join(', ')}`);
       }
 
       // 3. Procesar productos
-      console.log('Products recibidos en service:', JSON.stringify(products, null, 2));
       let productMap = new Map();
       if (products && products.length > 0) {
         productMap = new Map(products.map(p => [p.productId, { 
@@ -410,8 +414,6 @@ export class OrderService {
           price: ('customPrice' in p && p.customPrice !== undefined) ? Number(p.customPrice) : undefined
         }]));
       }
-      
-      console.log('ProductMap:', Array.from(productMap.entries()));
       
       let totalAmount = 0;
       const orderProductsData: Array<{
@@ -428,7 +430,6 @@ export class OrderService {
         if (!productData) continue;
         
         const { quantity, price } = productData;
-        console.log(`Procesando producto ${storeProduct.id}:`, { quantity, price, storeProductPrice: storeProduct.price });
         
         if (storeProduct.stock < quantity) {
           throw new BadRequestException(`No hay suficiente stock para el producto: ${storeProduct.product?.name || storeProduct.id}`);
@@ -436,11 +437,9 @@ export class OrderService {
         
         // Si no se proporcionó un precio personalizado, usar el precio del StoreProduct
         const finalPrice: number = price !== undefined ? price : (storeProduct.price || 0);
-        console.log(`Precio final para producto ${storeProduct.id}:`, finalPrice);
         
         // Verificar si el precio fue modificado
         if (price !== undefined && price !== storeProduct.price) {
-          console.log(`⚠️ Precio modificado para producto ${storeProduct.id}: ${storeProduct.price} -> ${price}`);
           isPriceModified = true;
         }
         
@@ -581,12 +580,12 @@ export class OrderService {
     }).then(async (result) => {
       // 8. Crear pagos y movimientos de caja FUERA de la transacción
       const { order, clientIdToUse, paymentMethodsDto } = result;
-      
-      console.log('💰 Creando pagos y movimientos de caja para la orden:', order.id);
+
+      this.logger.log(`Procesando pagos de orden: order=${this.mask(order.id)}`);
 
       const cashPayments = (paymentMethodsDto || []).filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
       if (cashPayments.length > 0) {
-        console.log('💰 Creando movimientos de caja para pagos en efectivo');
+        this.logger.log(`Creando movimientos de caja (efectivo): order=${this.mask(order.id)} count=${cashPayments.length}`);
 
         for (const cashPayment of cashPayments) {
           try {
@@ -598,10 +597,8 @@ export class OrderService {
               clientName: clientInfo?.name,
               clientEmail: clientInfo?.email
             }, false, userIdToUse);
-
-            console.log('✅ Movimiento de caja creado:', cashPayment.amount);
           } catch (error) {
-            console.error('❌ Error al crear movimiento de caja:', error.message);
+            this.logger.error(`Error al crear movimiento de caja: order=${this.mask(order.id)} amount=${cashPayment.amount} msg=${error.message}`);
           }
         }
       }
@@ -691,6 +688,14 @@ export class OrderService {
           },
         },
         services: true,
+        paymentMethods: {
+          select: {
+            id: true,
+            type: true,
+            amount: true,
+            createdAt: true,
+          },
+        },
         client: true,
         cashSession: {
           include: {
@@ -702,7 +707,7 @@ export class OrderService {
             id: true,
             email: true,
             name: true,
-          },
+          }
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -820,31 +825,18 @@ export class OrderService {
 
       // 4. Filtrar pagos en EFECTIVO (PaymentMethod) y crear movimientos de caja
       const cashPayments = (order.paymentMethods || []).filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
-      console.log('💰 [OrderService] Pagos en efectivo a reembolsar:', cashPayments.length, cashPayments.map(p => ({ amount: p.amount })));
 
-      console.log('🔍 [OrderService] Información de sesión de caja:', {
-        exists: !!order.cashSession,
-        sessionId: order.cashSession?.id,
-        status: order.cashSession?.status
-      });
+      this.logger.log(`Reembolso (efectivo) - pagos encontrados: order=${this.mask(order.id)} count=${cashPayments.length}`);
 
       if (cashPayments.length > 0 && order.cashSession) {
         // Verificar que la sesión de caja esté abierta
         if (order.cashSession.status !== SessionStatus.OPEN) {
-          console.warn('⚠️ [OrderService] La sesión de caja está cerrada, no se pueden crear movimientos de reembolso');
+          this.logger.warn(`Sesión de caja cerrada, no se crea reembolso: session=${this.mask(order.cashSession.id)} order=${this.mask(order.id)}`);
         } else {
-          console.log('✅ [OrderService] Sesión abierta, creando movimientos de reembolso...');
+          this.logger.log(`Creando movimientos de reembolso: order=${this.mask(order.id)} count=${cashPayments.length}`);
           // Crear movimientos de caja de tipo EXPENSE por cada pago en efectivo
           for (const cashPayment of cashPayments) {
             try {
-              console.log('🔄 [OrderService] Creando movimiento de reembolso:', {
-                cashSessionId: order.cashSession.id,
-                amount: cashPayment.amount,
-                orderId: order.id,
-                clientId: order.client?.id,
-                clientName: order.client?.name
-              });
-
               // Usar createFromOrder para obtener datos directamente de la orden
               await this.cashMovementService.createFromOrder({
                 cashSessionId: order.cashSession.id,
@@ -854,19 +846,18 @@ export class OrderService {
                 clientName: order.client?.name || undefined,
                 clientEmail: order.client?.email || undefined
               }, true); // isRefund: true para reembolsos
-
-              console.log('✅ [OrderService] Movimiento de reembolso creado:', cashPayment.amount);
             } catch (error) {
-              console.error('❌ [OrderService] Error al crear movimiento de reembolso:', error.message);
-              console.error('❌ [OrderService] Stack trace:', error.stack);
+              this.logger.error(
+                `Error al crear movimiento de reembolso: order=${this.mask(order.id)} amount=${cashPayment.amount} msg=${error.message}`,
+              );
               // No fallar la cancelación si falla el movimiento
             }
           }
         }
       } else if (cashPayments.length > 0 && !order.cashSession) {
-        console.warn('⚠️ [OrderService] La orden no tiene sesión de caja asociada, no se pueden crear movimientos de reembolso');
+        this.logger.warn(`Orden sin sesión de caja, no se crea reembolso: order=${this.mask(order.id)}`);
       } else if (cashPayments.length === 0) {
-        console.warn('⚠️ [OrderService] No se encontraron pagos en efectivo para reembolsar');
+        this.logger.warn(`No hay pagos en efectivo para reembolsar: order=${this.mask(order.id)}`);
       }
 
       // 5. Devolver stock de productos y registrar movimientos de inventario

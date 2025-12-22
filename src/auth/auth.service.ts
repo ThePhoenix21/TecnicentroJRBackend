@@ -310,7 +310,7 @@ export class AuthService {
       const { password: _, verifyToken: __, verifyTokenExpires: ___, ...result } = newUser;
       return result;
     } catch (error) {
-      console.error('Error en el registro:', error);
+      this.logger.error(`Error en el registro: ${error?.message || error}`, error?.stack);
       if (error instanceof ConflictException || error instanceof BadRequestException) {
         throw error;
       }
@@ -514,7 +514,7 @@ export class AuthService {
       }
     };
   } catch (error) {
-    console.error('Error al refrescar token:', error);
+    this.logger.error(`Error al refrescar token: ${error?.message || error}`, error?.stack);
     throw new UnauthorizedException('Token de refresco inválido');
   }
 
@@ -647,7 +647,7 @@ export class AuthService {
         stores: stores // Incluir tiendas actualizadas en la respuesta
       });
     } catch (error) {
-      console.error('Error al refrescar token:', error);
+      this.logger.error(`Error al refrescar token: ${error?.message || error}`, error?.stack);
       throw new UnauthorizedException('Token de refresco inválido');
     }
   }
