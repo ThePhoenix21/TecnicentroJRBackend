@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayNotEmpty, IsArray, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsEmail, IsEnum, IsIn, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 import { ServiceType, TenantFeature, TenantPlan, TenantStatus } from '@prisma/client';
 
 console.log('DEBUG: TenantFeature cargado en DTO:', JSON.stringify(TenantFeature));
@@ -20,6 +20,11 @@ export class CreateTenantDto {
   @IsEnum(TenantStatus)
   status?: TenantStatus;
 
+  @ApiPropertyOptional({ enum: ['PEN', 'USD', 'EUR'], example: 'PEN', description: 'Moneda del tenant. Si no se envía, se usa PEN.' })
+  @IsOptional()
+  @IsIn(['PEN', 'USD', 'EUR'])
+  currency?: 'PEN' | 'USD' | 'EUR';
+
   @ApiProperty({ enum: TenantPlan, example: TenantPlan.FREE, description: 'Plan del tenant' })
   @IsEnum(TenantPlan)
   plan: TenantPlan;
@@ -27,12 +32,12 @@ export class CreateTenantDto {
   @ApiProperty({
     enum: TenantFeature,
     isArray: true,
-    description: 'Features habilitados para el tenant.',
+    description: 'Features habilitados para el tenant. Si no se envía, se aplicarán features por defecto.',
   })
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   @IsEnum(TenantFeature, { each: true })
-  features: TenantFeature[];
+  features?: TenantFeature[];
 
   @ApiPropertyOptional({
     enum: ServiceType,

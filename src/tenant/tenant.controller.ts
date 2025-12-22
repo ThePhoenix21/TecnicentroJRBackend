@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpStatus, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -30,7 +30,6 @@ export class TenantController {
     summary: 'Obtener features del tenant actual',
     description: 'Retorna las features habilitadas para el tenant del usuario autenticado (solo requiere JWT).',
   })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Features obtenidas exitosamente' })
   async getTenantFeatures(@Req() req: any) {
     const tenantId: string | undefined = req.user?.tenantId;
 
@@ -47,7 +46,6 @@ export class TenantController {
     summary: 'Obtener defaultService del tenant actual',
     description: 'Retorna únicamente el campo defaultService del tenant del usuario autenticado (solo requiere JWT).',
   })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Default service obtenido exitosamente' })
   async getDefaultService(@Req() req: any) {
     const tenantId: string | undefined = req.user?.tenantId;
 
@@ -58,16 +56,27 @@ export class TenantController {
     return this.tenantService.getDefaultService(tenantId);
   }
 
+  @Get('stores/count')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Obtener cantidad de tiendas del tenant actual',
+    description: 'Devuelve el número de tiendas asociadas al tenant del usuario autenticado (solo requiere JWT).',
+  })
+  async countStores(@Req() req: any) {
+    const tenantId: string | undefined = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Tenant no encontrado en el token');
+    }
+
+    return this.tenantService.countStores(tenantId);
+  }
+
   @Post()
   @ApiOperation({
     summary: 'Crear tenant (empresa) con admin y tienda inicial',
-    description:
-      'Crea un tenant, un usuario ADMIN asociado al tenant y una tienda genérica inicial (con relación StoreUsers y StoreProducts).',
+    description: 'Crea un tenant con admin y tienda inicial. Si no envías currency, se usa PEN.',
   })
-  @ApiBody({ type: CreateTenantDto })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Tenant creado exitosamente' })
-  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Conflicto: RUC/email/username ya existen' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Datos de entrada inválidos' })
   async create(@Req() req: any, @Res() res: Response, @Body() createTenantDto: CreateTenantDto) {
     const { tenant, adminUser, store } = await this.tenantService.create(createTenantDto);
 

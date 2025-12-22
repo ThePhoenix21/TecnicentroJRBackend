@@ -285,6 +285,7 @@ model Tenant {
   plan      TenantPlan    @default(FREE)
   features  TenantFeature[]
   defaultService ServiceType? @default(REPAIR)
+  currency  CurrencyCode? @default(PEN)  
   createdAt DateTime @default(now())
 
   stores    Store[]
@@ -339,6 +340,14 @@ model InventoryCountItem {
 
   storeProductId     String
   storeProduct       StoreProduct @relation(fields: [storeProductId], references: [id])
+}
+
+//===================SECCIÓN DE ENUMS===================
+
+enum CurrencyCode {
+  PEN
+  USD
+  EUR
 }
 
 enum InventoryMovementType {

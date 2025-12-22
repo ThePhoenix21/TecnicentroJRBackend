@@ -12,6 +12,7 @@ type JwtPayload = {
   tenantId?: string;
   tenantName?: string;
   tenantFeatures?: TenantFeature[];
+  tenantCurrency?: string | null;
   permissions?: string[];
   stores?: string[];
   iat?: number;
@@ -38,7 +39,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super(strategyOptions);
   }
 
-  async validate(payload: JwtPayload): Promise<{ userId: string; email: string; role: Role; permissions: string[]; stores?: string[]; tenantId?: string; tenantName?: string; tenantFeatures?: TenantFeature[] }> {
+  async validate(payload: JwtPayload): Promise<{ userId: string; email: string; role: Role; permissions: string[]; stores?: string[]; tenantId?: string; tenantName?: string; tenantFeatures?: TenantFeature[]; tenantCurrency?: string | null }> {
     try {
       this.logger.debug(`Validando token para usuario: ${payload.email}`);
       
@@ -84,6 +85,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         tenantId: (payload.tenantId ?? user.tenantId) ?? undefined,
         tenantName: payload.tenantName,
         tenantFeatures: payload.tenantFeatures || [],
+        tenantCurrency: payload.tenantCurrency ?? null,
       };
       
     } catch (error) {

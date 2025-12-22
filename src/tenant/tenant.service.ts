@@ -16,6 +16,7 @@ export class TenantService {
       name,
       ruc,
       status,
+      currency,
       plan,
       features,
       defaultService,
@@ -68,26 +69,21 @@ export class TenantService {
         TenantFeature.CONFIG,
       ];
 
-      const requestedOrDefaultFeatures = (features && features.length > 0) ? features : defaultFeatures;
+      const requestedOrDefaultFeatures = features ?? defaultFeatures;
 
-      const selectedFeatures = Array.from(
-        new Set(
-          requestedOrDefaultFeatures
-            .filter((f) => f !== TenantFeature.FASTSERVICE)
-            .concat(TenantFeature.PDFISSUANCE),
-        ),
-      );
+      const selectedFeatures = Array.from(new Set(requestedOrDefaultFeatures));
 
       const result = await this.prisma.$transaction(async (tx) => {
         const tenant = await tx.tenant.create({
-          data: {
+          data: ({
             name,
             ruc: ruc || null,
             status: status || TenantStatus.ACTIVE,
             plan: plan || TenantPlan.FREE,
+            currency: currency ?? 'PEN',
             features: { set: selectedFeatures },
             ...(defaultService ? { defaultService } : {}),
-          },
+          } as any),
         });
 
         const adminUser = await tx.user.create({
@@ -196,5 +192,22 @@ export class TenantService {
     }
 
     return tenant.defaultService;
+  }
+
+  async countStores(tenantId: string): Promise<number> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant no encontrado');
+    }
+
+    return this.prisma.store.count({
+      where: {
+        tenantId,
+      },
+    });
   }
 }
