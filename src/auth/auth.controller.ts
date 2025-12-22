@@ -24,9 +24,8 @@ import {
   ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import { CreateUserRequestDto } from './dto/create-user-request.dto';
+import { CreateAdminFromJwtDto } from './dto/create-admin-from-jwt.dto';
 import type { Response } from 'express';
-import geoip from 'geoip-lite';
 import { CreateUserResponseDto } from './dto/create-user-response.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { TokensDto } from './dto/tokens.dto';
@@ -35,10 +34,12 @@ import { AuthChangePasswordDto } from './dto/auth-change-password.dto';
 import { UsersService } from 'src/users/users.service';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { Role } from '@prisma/client';
+import { Role } from './enums/role.enum';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ALL_PERMISSIONS } from './permissions';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
 
 @ApiTags('Autenticación')
 @Controller('auth')
@@ -76,9 +77,12 @@ export class AuthController {
   }
 
   @Post('register')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Registrar nuevo usuario',
-    description: 'Crea una nueva cuenta de usuario con detección automática de idioma y zona horaria basada en la IP del cliente',
+    summary: 'Crear un nuevo ADMIN (requiere JWT)',
+    description: 'Crea un nuevo usuario con rol ADMIN dentro del mismo tenant del ADMIN autenticado. El tenantId se toma del JWT (no del body).',
   })
   @ApiResponse({
     status: 201,
@@ -121,41 +125,33 @@ export class AuthController {
     }
   })
   @ApiBody({
-    type: CreateUserRequestDto,
-    description: 'Datos del nuevo usuario',
+    type: CreateAdminFromJwtDto,
+    description: 'Datos del nuevo admin',
     examples: {
       example: {
         value: {
-          email: 'usuario@ejemplo.com',
-          password: 'contraseñaSegura123',
-          name: 'Nombre del Usuario',
-          username: 'nombreusuario',
+          email: 'admin2@correo.com',
+          password: 'TuPassword1!',
+          name: 'Nombre Admin',
+          username: 'admin2',
           phone: '+1234567890',
-          birthdate: '1990-01-01',
-          language: 'es',
-          timezone: 'America/Mexico_City',
+          permissions: ['VIEW_DASHBOARD', 'MANAGE_ORDERS'],
         },
       },
     },
   })
   async register(
     @Req() req,
-    @Body() registerDto: CreateUserRequestDto,
+    @Body() registerDto: CreateAdminFromJwtDto,
   ): Promise<CreateUserResponseDto> {
-    // Detección de idioma
-    let language = registerDto.language;
-    if (!language) {
-      const acceptLang = req.headers['accept-language'];
-      language = acceptLang ? acceptLang.split(',')[0] : 'es';
+    const tenantId: string | undefined = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Tenant no encontrado en el token');
     }
 
-    // Detección de zona horaria
-    let timezone = registerDto.timezone || 'UTC';
-    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-    const geo = geoip.lookup(ip as string);
-    if (geo && geo.timezone) {
-      timezone = geo.timezone;
-    }
+    const language = 'es';
+    const timezone = 'UTC';
 
     // Registrar el usuario
     const user = await this.authService.register(
@@ -163,9 +159,9 @@ export class AuthController {
       registerDto.password,
       registerDto.name,
       registerDto.username,
-      registerDto.tenantId,
+      tenantId,
       registerDto.phone,
-      registerDto.birthdate,
+      undefined,
       language,
       timezone,
       registerDto.permissions || [] // Pasar permisos
