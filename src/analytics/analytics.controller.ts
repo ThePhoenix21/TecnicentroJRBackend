@@ -2,6 +2,8 @@ import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
 import { AnalyticsService } from './analytics.service';
@@ -51,6 +53,25 @@ export class AnalyticsController {
     @Query('timeZone') timeZone?: string,
   ) {
     return this.analyticsService.getIncome(req.user, from, to, timeZone);
+  }
+
+  @Get('payment-methods-summary')
+  @RequireTenantFeatures(TenantFeature.CASH)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Resumen de métodos de pago en un rango de fechas',
+  })
+  @ApiQuery({ name: 'from', required: true, example: '2025-01-01' })
+  @ApiQuery({ name: 'to', required: true, example: '2025-01-31' })
+  @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
+  @ApiResponse({ status: 200, description: 'Resumen de métodos de pago' })
+  async getPaymentMethodsSummary(
+    @Req() req: any,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('timeZone') timeZone?: string,
+  ) {
+    return this.analyticsService.getPaymentMethodsSummary(req.user, from, to, timeZone);
   }
 
   @Get('expenses')

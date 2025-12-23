@@ -174,6 +174,63 @@ export class AnalyticsService {
     }
   }
 
+  async getPaymentMethodsSummary(user: AuthUser, from: string, to: string, timeZone?: string) {
+    const tenantId = user?.tenantId;
+    const range = this.normalizeRange(from, to, timeZone);
+
+    const features = await this.getTenantFeaturesOrThrow(user);
+    this.assertFeature(features, TenantFeature.CASH);
+
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const payments = await this.prisma.paymentMethod.findMany({
+      where: {
+        createdAt: { gte: range.from, lte: range.to },
+        order: {
+          cashSession: {
+            Store: {
+              tenantId,
+            },
+          },
+        },
+      },
+      select: {
+        type: true,
+        amount: true,
+      },
+    });
+
+    const byType = new Map<string, { type: string; totalAmount: number; count: number }>();
+    let totalAmount = 0;
+    let totalCount = 0;
+
+    for (const p of payments) {
+      const key = p.type;
+      const current = byType.get(key) || { type: key, totalAmount: 0, count: 0 };
+      const amount = p.amount || 0;
+
+      current.totalAmount += amount;
+      current.count += 1;
+      byType.set(key, current);
+
+      totalAmount += amount;
+      totalCount += 1;
+    }
+
+    const methods = Array.from(byType.values()).sort((a, b) => b.totalAmount - a.totalAmount);
+
+    return {
+      summary: {
+        totalAmount,
+        totalCount,
+        methodsCount: methods.length,
+      },
+      methods,
+    };
+  }
+
   async getNetProfit(user: AuthUser, from: string, to: string, timeZone?: string) {
     const tenantId = user?.tenantId;
     const range = this.normalizeRange(from, to, timeZone);
