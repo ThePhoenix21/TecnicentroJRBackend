@@ -323,6 +323,12 @@ export class AnalyticsService {
     const servicesByUser = new Map<string, { count: number; total: number }>();
     const servicesByName = new Map<string, { count: number; total: number; name: string }>();
     const serviceDescriptionsByName = new Map<string, Map<string, { count: number }>>();
+    const totalUsersServicesRaw: Array<{
+      userId: string;
+      name: string;
+      description: string;
+      amount: number;
+    }> = [];
     const productsByUser = new Map<string, { items: number; total: number }>();
 
     for (const o of orders) {
@@ -363,6 +369,13 @@ export class AnalyticsService {
             const currentDesc = descMap.get(normalizedDescription) || { count: 0 };
             descMap.set(normalizedDescription, { count: currentDesc.count + 1 });
             serviceDescriptionsByName.set(normalizedName, descMap);
+
+            totalUsersServicesRaw.push({
+              userId: o.userId,
+              name: rawName.trim(),
+              description: normalizedDescription,
+              amount: s?.price || 0,
+            });
           }
         }
       }
@@ -420,6 +433,18 @@ export class AnalyticsService {
           .sort((a, b) => b.totalAmount - a.totalAmount)
       : [];
 
+    const totalUsersServices = includeNamedServices
+      ? totalUsersServicesRaw
+          .map((s) => ({
+            userId: s.userId,
+            userName: usersById.get(s.userId)?.name || 'Usuario',
+            Name: s.name,
+            Description: s.description,
+            Amount: s.amount,
+          }))
+          .sort((a, b) => b.Amount - a.Amount)
+      : [];
+
     const topUsersProducts = hasProducts
       ? Array.from(productsByUser.entries())
           .map(([userId, data]) => ({
@@ -440,7 +465,7 @@ export class AnalyticsService {
         totalIncome: (hasProducts ? incomeProducts : 0) + (hasServices ? incomeServices : 0),
       },
       rankings: {
-        topUsersServices,
+        ...(includeNamedServices ? { TotalUsersServices: totalUsersServices } : { topUsersServices }),
         topUsersProducts,
       },
       meta: {
