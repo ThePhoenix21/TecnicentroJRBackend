@@ -411,26 +411,34 @@ export class AnalyticsService {
     const usersById = new Map(users.map((u) => [u.id, u] as const));
 
     const topUsersServices = hasServices
-      ? Array.from(servicesByName.values())
-          .map((s) => {
-            let description = '';
+      ? includeNamedServices
+        ? Array.from(servicesByName.values())
+            .map((s) => {
+              let description = '';
 
-            if (includeNamedServices) {
               const descMap = serviceDescriptionsByName.get(s.name);
               if (descMap && descMap.size) {
                 description = Array.from(descMap.entries())
                   .sort((a, b) => b[1].count - a[1].count)[0]?.[0] ?? '';
               }
-            }
 
-            return {
-              Name: s.name,
-              ...(includeNamedServices ? { Description: description } : {}),
-              servicesCount: s.count,
-              totalAmount: s.total,
-            };
-          })
-          .sort((a, b) => b.totalAmount - a.totalAmount)
+              return {
+                Name: s.name,
+                Description: description,
+                servicesCount: s.count,
+                totalAmount: s.total,
+              };
+            })
+            .sort((a, b) => b.totalAmount - a.totalAmount)
+        : Array.from(servicesByUser.entries())
+            .map(([userId, data]) => ({
+              userId,
+              userName: usersById.get(userId)?.name || 'Usuario',
+              servicesCount: data.count,
+              totalAmount: data.total,
+            }))
+            .sort((a, b) => b.totalAmount - a.totalAmount)
+            .slice(0, 10)
       : [];
 
     const totalUsersServices = includeNamedServices
