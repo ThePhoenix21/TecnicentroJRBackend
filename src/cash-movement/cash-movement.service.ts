@@ -230,6 +230,8 @@ export class CashMovementService {
   async getCashBalance(cashSessionId: string, user?: AuthUser) {
     this.logger.log(`Obteniendo cuadre de caja: session=${this.mask(cashSessionId)}`);
 
+    const tenantId = user?.tenantId;
+
     try {
       if (user) {
         await this.assertCashSessionAccess(cashSessionId, user);
@@ -262,7 +264,18 @@ export class CashMovementService {
 
       // Obtener todos los movimientos de la sesión
       const cashMovements = await this.prisma.cashMovement.findMany({
-        where: { sessionId: cashSessionId },
+        where: {
+          sessionId: cashSessionId,
+          ...(tenantId
+            ? {
+                CashSession: {
+                  Store: {
+                    tenantId,
+                  },
+                },
+              }
+            : {}),
+        },
         include: {
           CashSession: {
             select: {
@@ -283,6 +296,15 @@ export class CashMovementService {
           type: { not: PaymentType.EFECTIVO },
           order: {
             cashSessionsId: cashSessionId,
+            ...(tenantId
+              ? {
+                  cashSession: {
+                    Store: {
+                      tenantId,
+                    },
+                  },
+                }
+              : {}),
           },
         },
         include: {
@@ -356,7 +378,26 @@ export class CashMovementService {
                 }
               });
 
-              if (order && order.client) {
+              let orderAllowedInTenant = true;
+              if (tenantId && order) {
+                const orderInTenant = await this.prisma.order.findFirst({
+                  where: {
+                    id: order.id,
+                    cashSession: {
+                      Store: {
+                        tenantId,
+                      },
+                    },
+                  },
+                  select: { id: true },
+                });
+                if (!orderInTenant) {
+                  // No exponer datos de una orden que no corresponde al tenant del usuario
+                  orderAllowedInTenant = false;
+                }
+              }
+
+              if (orderAllowedInTenant && order && order.client) {
                 clientInfo = {
                   name: order.client.name || 'Cliente sin nombre',
                   email: order.client.email || '',

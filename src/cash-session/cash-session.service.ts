@@ -437,6 +437,11 @@ export class CashSessionService {
   async getClosingReport(sessionId: string, user: AuthUser) {
     await this.assertCashSessionAccess(sessionId, user);
 
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     // 1. Obtener sesión con datos básicos
     const session = await this.prisma.cashSession.findUnique({
       where: { id: sessionId },
@@ -450,21 +455,28 @@ export class CashSessionService {
     }
 
     // 2. Obtener usuarios (abrió y cerró)
-    const openedByUser = await this.prisma.user.findUnique({
-      where: { id: session.openedById },
+    const openedByUser = await this.prisma.user.findFirst({
+      where: { id: session.openedById, tenantId },
       select: { name: true },
     });
 
     const closedByUser = session.closedById
-      ? await this.prisma.user.findUnique({
-          where: { id: session.closedById },
+      ? await this.prisma.user.findFirst({
+          where: { id: session.closedById, tenantId },
           select: { name: true },
         })
       : null;
 
     // 3. Obtener órdenes y sus items
     const orders = await this.prisma.order.findMany({
-      where: { cashSessionsId: sessionId },
+      where: {
+        cashSessionsId: sessionId,
+        cashSession: {
+          Store: {
+            tenantId,
+          },
+        },
+      },
       include: {
         paymentMethods: true,
         orderProducts: {
@@ -565,6 +577,11 @@ export class CashSessionService {
       where: {
         CashSessionId: sessionId, // Nota: Schema usa CashSessionId
         type: 'EXPENSE',
+        CashSession: {
+          Store: {
+            tenantId,
+          },
+        },
       },
       select: {
         id: true,

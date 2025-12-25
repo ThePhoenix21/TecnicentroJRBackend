@@ -87,9 +87,13 @@ export class ClientService {
     };
   }
 
-  async findOne(id: string): Promise<Client> {
-    const client = await this.prisma.client.findUnique({
-      where: { id },
+  async findOne(id: string, tenantId?: string): Promise<Client> {
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    const client = await this.prisma.client.findFirst({
+      where: { id, tenantId },
     });
 
     if (!client) {
@@ -99,10 +103,10 @@ export class ClientService {
     return client;
   }
 
-  async update(id: string, updateClientDto: UpdateClientDto): Promise<Client> {
+  async update(id: string, updateClientDto: UpdateClientDto, tenantId?: string): Promise<Client> {
     try {
       // Verificar si el cliente existe
-      const existingClient = await this.findOne(id);
+      const existingClient = await this.findOne(id, tenantId);
       
       // Verificar si los nuevos datos entran en conflicto con otros clientes
       if (updateClientDto.email || updateClientDto.ruc || updateClientDto.dni) {
@@ -123,8 +127,9 @@ export class ClientService {
     }
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, tenantId?: string): Promise<void> {
     try {
+      await this.findOne(id, tenantId);
       await this.prisma.client.delete({
         where: { id },
       });

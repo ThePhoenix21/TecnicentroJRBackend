@@ -95,7 +95,8 @@ export class ClientController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any
   ): Promise<Client> {
-    const client = await this.clientService.findOne(id);
+    const tenantId = req.user?.tenantId;
+    const client = await this.clientService.findOne(id, tenantId);
     
     // Si no es ADMIN y no es el dueño del perfil, denegar acceso
     if (req.user.role !== 'ADMIN' && req.user.userId !== client.userId) {
@@ -122,13 +123,15 @@ export class ClientController {
   ): Promise<Client> {
     // Si no es ADMIN, verificar que esté actualizando su propio perfil
     if (req.user.role !== 'ADMIN') {
-      const client = await this.clientService.findOne(id);
+      const tenantId = req.user?.tenantId;
+      const client = await this.clientService.findOne(id, tenantId);
       if (client.userId !== req.user.userId) {
         throw new ForbiddenException('Solo puedes actualizar tu propio perfil');
       }
     }
     
-    return this.clientService.update(id, updateClientDto);
+    const tenantId = req.user?.tenantId;
+    return this.clientService.update(id, updateClientDto, tenantId);
   }
 
   @Delete(':id')
@@ -143,7 +146,8 @@ export class ClientController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any
   ): Promise<void> {
-    return this.clientService.remove(id);
+    const tenantId = req.user?.tenantId;
+    return this.clientService.remove(id, tenantId);
   }
 
   @Get('search')

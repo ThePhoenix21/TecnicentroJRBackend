@@ -6,11 +6,13 @@ import {
   Patch, 
   Param, 
   Delete, 
+  UseGuards,
   UseInterceptors, 
   UploadedFile, 
   BadRequestException, 
   HttpStatus,
   HttpCode,
+  Req,
   Logger
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -29,6 +31,10 @@ import { CreateImageDto } from './dto/create-image.dto';
 import { UpdateImageDto } from './dto/update-image.dto';
 import { supabase } from '../supabase.client';
 import { ErrorResponse } from './dto/image-response.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
 /**
  * @apiDefine ImageResponse
@@ -50,6 +56,7 @@ import { ErrorResponse } from './dto/image-response.dto';
  */
 @ApiTags('images')
 @Controller('images')
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiResponse({ status: 500, description: 'Error interno del servidor', type: ErrorResponse })
 export class ImageController {
   private readonly logger = new Logger(ImageController.name);
@@ -59,6 +66,7 @@ export class ImageController {
   constructor(private readonly imageService: ImageService) {}
 
   @Post('upload')
+  @Roles(Role.ADMIN, Role.USER)
   @UseInterceptors(FileInterceptor('file'))
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Subir una imagen', description: 'Sube una imagen al bucket de Supabase' })
@@ -92,9 +100,15 @@ export class ImageController {
     type: ErrorResponse 
   })
   async uploadImage(
-    @UploadedFile() file: Express.Multer.File
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any
   ) {
     try {
+      const tenantId = req?.user?.tenantId;
+      if (!tenantId) {
+        throw new BadRequestException('TenantId no encontrado en el token');
+      }
+
       if (!file) {
         throw new BadRequestException('No se proporcionó ningún archivo');
       }
@@ -114,7 +128,7 @@ export class ImageController {
       // Generar nombre único para el archivo
       const fileExt = file.originalname.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-      const filePath = `images/${fileName}`;
+      const filePath = `tenants/${tenantId}/images/${fileName}`;
 
       // Verificar si el bucket existe y crearlo si no existe
       const { data: buckets } = await supabase.storage.listBuckets();
@@ -230,27 +244,37 @@ export class ImageController {
   }
 
   @Post()
-  create(@Body() createImageDto: CreateImageDto) {
-    return this.imageService.create(createImageDto);
+  @Roles(Role.ADMIN, Role.USER)
+  create(@Body() createImageDto: CreateImageDto, @Req() req: any) {
+    const tenantId = req?.user?.tenantId;
+    return this.imageService.create(createImageDto, tenantId);
   }
 
   @Get()
-  findAll() {
-    return this.imageService.findAll();
+  @Roles(Role.ADMIN, Role.USER)
+  findAll(@Req() req: any) {
+    const tenantId = req?.user?.tenantId;
+    return this.imageService.findAll(tenantId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.imageService.findOne(+id);
+  @Roles(Role.ADMIN, Role.USER)
+  findOne(@Param('id') id: string, @Req() req: any) {
+    const tenantId = req?.user?.tenantId;
+    return this.imageService.findOne(+id, tenantId);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateImageDto: UpdateImageDto) {
-    return this.imageService.update(+id, updateImageDto);
+  @Roles(Role.ADMIN, Role.USER)
+  update(@Param('id') id: string, @Body() updateImageDto: UpdateImageDto, @Req() req: any) {
+    const tenantId = req?.user?.tenantId;
+    return this.imageService.update(+id, updateImageDto, tenantId);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.imageService.remove(+id);
+  @Roles(Role.ADMIN, Role.USER)
+  remove(@Param('id') id: string, @Req() req: any) {
+    const tenantId = req?.user?.tenantId;
+    return this.imageService.remove(+id, tenantId);
   }
 }
