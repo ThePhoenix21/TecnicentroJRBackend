@@ -23,6 +23,7 @@ import { Role } from '../auth/enums/role.enum';
 import { Request } from 'express';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
 @ApiTags('Inventario Físico')
 @Controller('inventory-count')
@@ -91,6 +92,10 @@ export class InventoryCountController {
 
   @Get('session/:id/report')
   @Roles(Role.ADMIN, Role.USER)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 30, windowSeconds: 3600 }],
+  })
   @ApiOperation({ summary: 'Obtener reporte de la sesión' })
   getSessionReport(@Param('id') sessionId: string, @Req() req: any) {
     return this.inventoryCountService.getSessionReport(sessionId, req.user);

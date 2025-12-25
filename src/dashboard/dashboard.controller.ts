@@ -7,6 +7,7 @@ import { Role } from '../auth/enums/role.enum';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
 import { DashboardService } from './dashboard.service';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
 @ApiTags('Dashboard')
 @ApiBearerAuth('JWT-auth')
@@ -18,6 +19,10 @@ export class DashboardController {
 
   @Get('summary')
   @Roles(Role.USER, Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 120, windowSeconds: 3600 }],
+  })
   @ApiOperation({
     summary: 'Resumen del dashboard',
     description: 'Devuelve métricas resumidas del dashboard filtradas por tenant.'

@@ -1,6 +1,10 @@
 import { SetMetadata } from '@nestjs/common';
 
-export type RateLimitKeyType = 'ip' | 'user' | 'ip_user';
+export type RateLimitKeyType =
+  | 'ip'
+  | 'user'
+  | 'identity'
+  | ['ip', 'identity'];
 
 export interface RateLimitRule {
   limit: number;

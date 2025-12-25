@@ -5,6 +5,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { ReceiptService } from './receipt.service';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
 @ApiTags('Receipts')
 @ApiBearerAuth('JWT')
@@ -18,6 +19,10 @@ export class ReceiptController {
 
   @Get('service/:orderId')
   @Roles(Role.USER, Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 60, windowSeconds: 3600 }],
+  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Obtener recibo de venta de servicios',
@@ -95,6 +100,10 @@ export class ReceiptController {
 
   @Get('product/:orderId')
   @Roles(Role.USER, Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 60, windowSeconds: 3600 }],
+  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Obtener recibo de venta de productos',
@@ -122,6 +131,10 @@ export class ReceiptController {
 
   @Get('advance/:serviceId')
   @Roles(Role.USER, Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 60, windowSeconds: 3600 }],
+  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Obtener recibo de adelanto de servicio',
@@ -149,6 +162,10 @@ export class ReceiptController {
 
   @Get('completion/:serviceId')
   @Roles(Role.USER, Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 60, windowSeconds: 3600 }],
+  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Obtener recibo de servicio finalizado',
@@ -176,6 +193,10 @@ export class ReceiptController {
 
   @Get('cash-close/:sessionId')
   @Roles(Role.USER, Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 60, windowSeconds: 3600 }],
+  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Obtener recibo de cierre de caja',

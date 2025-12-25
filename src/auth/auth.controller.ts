@@ -287,7 +287,7 @@ export class AuthController {
 
   @Post('login')
   @RateLimit({
-    keyType: 'ip',
+    keyType: ['ip', 'identity'],
     rules: [
       { limit: 5, windowSeconds: 60 },
       { limit: 20, windowSeconds: 3600 },
@@ -421,7 +421,7 @@ export class AuthController {
 
   @Post('login/username')
   @RateLimit({
-    keyType: 'ip',
+    keyType: ['ip', 'identity'],
     rules: [
       { limit: 5, windowSeconds: 60 },
       { limit: 20, windowSeconds: 3600 },
@@ -614,6 +614,10 @@ export class AuthController {
 
   @Patch('change-password')
   @UseGuards(JwtAuthGuard)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 3, windowSeconds: 60 }],
+  })
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Cambiar contraseña',
@@ -748,6 +752,10 @@ export class AuthController {
   }
 
   @Post('request-password-reset')
+  @RateLimit({
+    keyType: 'identity',
+    rules: [{ limit: 3, windowSeconds: 60 }],
+  })
   @ApiOperation({
     summary: 'Solicitar restablecimiento de contraseña',
     description:
