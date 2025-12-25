@@ -13,7 +13,8 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
-  BadRequestException
+  BadRequestException,
+  Req
 } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -189,6 +190,7 @@ export class ServiceController {
   @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
   async create(
     @Body() createServiceDto: CreateServiceDto,
+    @Req() req: any,
     @UploadedFile() file?: Express.Multer.File
   ): Promise<Service> {
     try {
@@ -202,7 +204,7 @@ export class ServiceController {
         createServiceDto.photoUrls = uploadedFile;
       }
 
-      return this.serviceService.create(createServiceDto);
+      return this.serviceService.create(createServiceDto, req.user);
     } catch (error) {
       throw new BadRequestException(error.message);
     }
@@ -272,10 +274,11 @@ export class ServiceController {
   })
   @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async findAll(
+    @Req() req: any,
     @Query('status') status?: ServiceStatus,
     @Query('type') type?: ServiceType,
   ): Promise<Service[]> {
-    return this.serviceService.findAll(status, type);
+    return this.serviceService.findAll(status, type, req.user);
   }
 
   @Get('findOne/:id')
@@ -334,8 +337,8 @@ export class ServiceController {
     }
   })
   @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<Service> {
-    return this.serviceService.findOne(id);
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: any): Promise<Service> {
+    return this.serviceService.findOne(id, req.user);
   }
 
   @Patch('update/:id')
@@ -433,9 +436,10 @@ export class ServiceController {
   @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
   async update(
     @Param('id', ParseUUIDPipe) id: string, 
-    @Body() updateServiceDto: UpdateServiceDto
+    @Body() updateServiceDto: UpdateServiceDto,
+    @Req() req: any
   ): Promise<Service> {
-    return this.serviceService.update(id, updateServiceDto);
+    return this.serviceService.update(id, updateServiceDto, req.user);
   }
 
   @Patch('status/:id')
@@ -551,9 +555,10 @@ export class ServiceController {
   @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
   async updateStatus(
     @Param('id', ParseUUIDPipe) id: string, 
-    @Body() updateStatusDto: { status: 'IN_PROGRESS' | 'COMPLETED' | 'DELIVERED' | 'PAID' | 'ANNULLATED' }
+    @Body() updateStatusDto: { status: 'IN_PROGRESS' | 'COMPLETED' | 'DELIVERED' | 'PAID' | 'ANNULLATED' },
+    @Req() req: any
   ): Promise<Service> {
-    return this.serviceService.update(id, { status: updateStatusDto.status });
+    return this.serviceService.update(id, { status: updateStatusDto.status }, req.user);
   }
 
   @Delete('remove/:id')
@@ -622,8 +627,8 @@ export class ServiceController {
     }
   })
   @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.serviceService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: any): Promise<void> {
+    return this.serviceService.remove(id, req.user);
   }
 
   @Get(':id/pending-payment')
@@ -703,21 +708,8 @@ export class ServiceController {
     }
   })
   @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
-  async getPendingPayment(@Param('id', ParseUUIDPipe) id: string): Promise<{
-    serviceId: string;
-    serviceName: string;
-    servicePrice: number;
-    totalPaid: number;
-    pendingAmount: number;
-    isFullyPaid: boolean;
-    paymentBreakdown: Array<{
-      id: string;
-      type: string;
-      amount: number;
-      createdAt: string;
-    }>;
-  }> {
-    return this.serviceService.getPendingPayment(id);
+  async getPendingPayment(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.serviceService.getPendingPayment(id, req.user);
   }
 
   @Get('findAllWithClients')
@@ -813,10 +805,11 @@ export class ServiceController {
   })
   @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async findAllWithClients(
+    @Req() req: any,
     @Query('status') status?: ServiceStatus,
     @Query('type') type?: ServiceType,
     @Query('storeId') storeId?: string,
   ): Promise<any[]> {
-    return this.serviceService.findAllWithClients(status, type, storeId);
+    return this.serviceService.findAllWithClients(status, type, storeId, req.user);
   }
 }

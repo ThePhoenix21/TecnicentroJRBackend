@@ -1,14 +1,122 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { Service, ServiceStatus, ServiceType } from '@prisma/client';
 
+type AuthUser = {
+  userId: string;
+  email: string;
+  role: string;
+  tenantId?: string;
+};
+
 @Injectable()
 export class ServiceService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createServiceDto: CreateServiceDto): Promise<Service> {
+  private getTenantIdOrThrow(user: AuthUser): string {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+    return tenantId;
+  }
+
+  private async assertStoreMembership(storeId: string, user: AuthUser) {
+    if (user.role === 'ADMIN') return;
+    const storeUser = await this.prisma.storeUsers.findFirst({
+      where: {
+        storeId,
+        userId: user.userId,
+      },
+      select: { id: true },
+    });
+    if (!storeUser) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+    }
+  }
+
+  private async assertOrderAccess(orderId: string, user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        cashSession: {
+          Store: {
+            tenantId,
+          },
+        },
+      },
+      select: {
+        id: true,
+        cashSession: {
+          select: {
+            StoreId: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Orden no encontrada');
+    }
+
+    const storeId = order.cashSession?.StoreId;
+    if (!storeId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta orden');
+    }
+
+    await this.assertStoreMembership(storeId, user);
+    return { orderId: order.id, storeId };
+  }
+
+  private async assertServiceAccess(serviceId: string, user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const service = await this.prisma.service.findFirst({
+      where: {
+        id: serviceId,
+        order: {
+          cashSession: {
+            Store: {
+              tenantId,
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        orderId: true,
+        order: {
+          select: {
+            cashSession: {
+              select: {
+                StoreId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!service) {
+      throw new NotFoundException(`Servicio con ID ${serviceId} no encontrado`);
+    }
+
+    const storeId = service.order?.cashSession?.StoreId;
+    if (!storeId) {
+      throw new ForbiddenException('No tienes permisos para acceder a este servicio');
+    }
+
+    await this.assertStoreMembership(storeId, user);
+    return service;
+  }
+
+  async create(createServiceDto: CreateServiceDto, user: AuthUser): Promise<Service> {
+    await this.assertOrderAccess(createServiceDto.orderId, user);
+
     const { description, photoUrls, ...rest } = createServiceDto;
     const data: any = { ...rest };
     
@@ -28,11 +136,34 @@ export class ServiceService {
   async findAll(
     status?: ServiceStatus,
     type?: ServiceType,
+    user?: AuthUser,
   ): Promise<Service[]> {
+    if (!user) {
+      throw new ForbiddenException('Usuario no autenticado');
+    }
+
+    const tenantId = this.getTenantIdOrThrow(user);
+
     return this.prisma.service.findMany({
       where: {
         ...(status && { status }),
         ...(type && { type }),
+        order: {
+          cashSession: {
+            Store: {
+              tenantId,
+              ...(user.role !== 'ADMIN'
+                ? {
+                    storeUsers: {
+                      some: {
+                        userId: user.userId,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          },
+        },
       },
       include: {
         order: true,
@@ -40,9 +171,21 @@ export class ServiceService {
     });
   }
 
-  async findOne(id: string): Promise<Service> {
-    const service = await this.prisma.service.findUnique({
-      where: { id },
+  async findOne(id: string, user: AuthUser): Promise<Service> {
+    await this.assertServiceAccess(id, user);
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const service = await this.prisma.service.findFirst({
+      where: {
+        id,
+        order: {
+          cashSession: {
+            Store: {
+              tenantId,
+            },
+          },
+        },
+      },
       include: {
         order: true,
       },
@@ -58,8 +201,9 @@ export class ServiceService {
   async update(
     id: string,
     updateServiceDto: UpdateServiceDto,
+    user: AuthUser,
   ): Promise<Service> {
-    await this.findOne(id); // Verifica que el servicio exista
+    await this.assertServiceAccess(id, user);
 
     return this.prisma.service.update({
       where: { id },
@@ -67,13 +211,14 @@ export class ServiceService {
     });
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, user: AuthUser): Promise<void> {
+    await this.assertServiceAccess(id, user);
     await this.prisma.service.delete({
       where: { id },
     });
   }
 
-  async getPendingPayment(id: string): Promise<{
+  async getPendingPayment(id: string, user: AuthUser): Promise<{
     serviceId: string;
     serviceName: string;
     servicePrice: number;
@@ -88,8 +233,20 @@ export class ServiceService {
     }>;
   }> {
     // 1. Obtener el servicio
-    const service = await this.prisma.service.findUnique({
-      where: { id },
+    await this.assertServiceAccess(id, user);
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const service = await this.prisma.service.findFirst({
+      where: {
+        id,
+        order: {
+          cashSession: {
+            Store: {
+              tenantId,
+            },
+          },
+        },
+      },
       include: {
         order: {
           include: {
@@ -131,19 +288,36 @@ export class ServiceService {
   async findAllWithClients(
     status?: ServiceStatus,
     type?: ServiceType,
-    storeId?: string
+    storeId?: string,
+    user?: AuthUser
   ): Promise<any[]> {
+    if (!user) {
+      throw new ForbiddenException('Usuario no autenticado');
+    }
+
+    const tenantId = this.getTenantIdOrThrow(user);
+
     const services = await this.prisma.service.findMany({
       where: {
         ...(status && { status }),
         ...(type && { type }),
-        ...(storeId && { 
-          order: { 
-            cashSession: {
-              StoreId: storeId
-            }
-          } 
-        }) // Filtrar por tienda si se proporciona
+        order: {
+          cashSession: {
+            ...(storeId ? { StoreId: storeId } : {}),
+            Store: {
+              tenantId,
+              ...(user.role !== 'ADMIN'
+                ? {
+                    storeUsers: {
+                      some: {
+                        userId: user.userId,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          },
+        },
       },
       include: {
         order: {

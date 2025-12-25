@@ -133,7 +133,7 @@ export class ProductController {
     // Agregar el ID del usuario que crea el producto
     createCatalogProductDto.createdById = userId;
     
-    return this.productService.create(createCatalogProductDto);
+    return this.productService.create(createCatalogProductDto, req.user);
   }
 
   @Get('all')
@@ -180,8 +180,8 @@ export class ProductController {
     status: HttpStatus.FORBIDDEN,
     description: 'No tiene permisos para ver productos'
   })
-  async findAll(): Promise<CatalogProduct[]> {
-    return this.productService.findAll();
+  async findAll(@Req() req: any): Promise<CatalogProduct[]> {
+    return this.productService.findAll(req.user);
   }
 
   @Get('findOne/:id')
@@ -247,8 +247,9 @@ export class ProductController {
   })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
   ): Promise<CatalogProduct> {  
-    return this.productService.findOne(id);
+    return this.productService.findOne(id, req.user);
   }
 
   @Patch('update/:id')
@@ -335,8 +336,9 @@ export class ProductController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateProductDto: UpdateProductDto,
+    @Req() req: any,
   ): Promise<CatalogProduct> {
-    return this.productService.update(id, updateProductDto);
+    return this.productService.update(id, updateProductDto, req.user);
   }
 
   @Delete('remove/:id')
@@ -416,7 +418,8 @@ export class ProductController {
   })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
   ): Promise<CatalogProduct> {
-    return this.productService.remove(id);
+    return this.productService.remove(id, req.user);
   }
 }

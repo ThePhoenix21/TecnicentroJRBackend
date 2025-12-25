@@ -1,4 +1,4 @@
-import { Controller, Get, Param, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, HttpCode, HttpStatus, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -94,8 +94,8 @@ export class ReceiptController {
       }
     }
   })
-  async getServiceReceipt(@Param('orderId') orderId: string) {
-    return this.receiptService.getServiceReceipt(orderId);
+  async getServiceReceipt(@Param('orderId') orderId: string, @Req() req: any) {
+    return this.receiptService.getServiceReceipt(orderId, req.user);
   }
 
   @Get('product/:orderId')
@@ -125,8 +125,8 @@ export class ReceiptController {
     status: HttpStatus.NOT_FOUND, 
     description: 'Orden no encontrada o no contiene productos'
   })
-  async getProductReceipt(@Param('orderId') orderId: string) {
-    return this.receiptService.getProductReceipt(orderId);
+  async getProductReceipt(@Param('orderId') orderId: string, @Req() req: any) {
+    return this.receiptService.getProductReceipt(orderId, req.user);
   }
 
   @Get('advance/:serviceId')
@@ -156,8 +156,8 @@ export class ReceiptController {
     status: HttpStatus.NOT_FOUND, 
     description: 'Servicio no encontrado'
   })
-  async getAdvanceReceipt(@Param('serviceId') serviceId: string) {
-    return this.receiptService.getAdvanceReceipt(serviceId);
+  async getAdvanceReceipt(@Param('serviceId') serviceId: string, @Req() req: any) {
+    return this.receiptService.getAdvanceReceipt(serviceId, req.user);
   }
 
   @Get('completion/:serviceId')
@@ -187,8 +187,8 @@ export class ReceiptController {
     status: HttpStatus.NOT_FOUND, 
     description: 'Servicio no encontrado o no está completado'
   })
-  async getCompletionReceipt(@Param('serviceId') serviceId: string) {
-    return this.receiptService.getCompletionReceipt(serviceId);
+  async getCompletionReceipt(@Param('serviceId') serviceId: string, @Req() req: any) {
+    return this.receiptService.getCompletionReceipt(serviceId, req.user);
   }
 
   @Get('cash-close/:sessionId')
@@ -218,7 +218,7 @@ export class ReceiptController {
     status: HttpStatus.NOT_FOUND, 
     description: 'Sesión de caja no encontrada o no está cerrada'
   })
-  async getCashCloseReceipt(@Param('sessionId') sessionId: string) {
-    return this.receiptService.getCashCloseReceipt(sessionId);
+  async getCashCloseReceipt(@Param('sessionId') sessionId: string, @Req() req: any) {
+    return this.receiptService.getCashCloseReceipt(sessionId, req.user);
   }
 }
