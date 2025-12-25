@@ -489,6 +489,9 @@ export class OrderService {
       // 5. Calcular número de tienda según orden de creación
       // Se obtienen todas las tiendas ordenadas por createdAt y se busca el índice de la tienda de la sesión
       const stores = await prisma.store.findMany({
+        where: {
+          tenantId: user.tenantId,
+        },
         orderBy: { createdAt: 'asc' },
         select: { id: true }
       });
@@ -945,9 +948,21 @@ export class OrderService {
   async getOrderWithDetails(orderId: string, user: AuthUser): Promise<Order> {
     await this.assertOrderAccess(orderId, user);
 
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     // Obtener la orden completa
-    const completeOrder = await this.prisma.order.findUnique({
-      where: { id: orderId },
+    const completeOrder = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        cashSession: {
+          Store: {
+            tenantId,
+          },
+        },
+      },
       include: {
         orderProducts: {
           include: {
@@ -960,14 +975,6 @@ export class OrderService {
         },
         services: true,
         paymentMethods: true,
-        client: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
         cashSession: {
           include: {
             Store: true
@@ -981,7 +988,31 @@ export class OrderService {
       throw new NotFoundException('Orden no encontrada');
     }
 
-    const orderWithPayments = completeOrder;
+    const [orderUser, orderClient] = await Promise.all([
+      this.prisma.user.findFirst({
+        where: {
+          id: completeOrder.userId,
+          tenantId,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      }),
+      this.prisma.client.findFirst({
+        where: {
+          id: completeOrder.clientId,
+          tenantId,
+        },
+      }),
+    ]);
+
+    const orderWithPayments = {
+      ...completeOrder,
+      user: orderUser,
+      client: orderClient,
+    };
 
     // Agregar información adicional para PDF
     const pdfInfo = {
@@ -991,10 +1022,10 @@ export class OrderService {
       currentDate: new Date(completeOrder.createdAt).toLocaleDateString('es-PE'),
       currentTime: new Date(completeOrder.createdAt).toLocaleTimeString('es-PE'),
       orderNumber: completeOrder.orderNumber,
-      sellerName: completeOrder.user?.name || 'Vendedor no identificado',
-      clientName: completeOrder.client?.name || 'Cliente no identificado',
-      clientDni: completeOrder.client?.dni || 'N/A',
-      clientPhone: completeOrder.client?.phone || 'N/A',
+      sellerName: orderUser?.name || 'Vendedor no identificado',
+      clientName: orderClient?.name || 'Cliente no identificado',
+      clientDni: orderClient?.dni || 'N/A',
+      clientPhone: orderClient?.phone || 'N/A',
       paidAmount: (completeOrder.paymentMethods || []).reduce((sum, pm) => sum + pm.amount, 0)
     };
 
@@ -1007,9 +1038,14 @@ export class OrderService {
   async updateStatus(
     id: string, 
     userId: string,
-    updateOrderStatusDto: { status: SaleStatus }
+    updateOrderStatusDto: { status: SaleStatus },
+    authenticatedUser?: AuthUser,
   ): Promise<Order> {
     const { status } = updateOrderStatusDto;
+
+    if (authenticatedUser) {
+      await this.assertOrderAccess(id, authenticatedUser);
+    }
 
     return this.prisma.$transaction(async (prisma: Prisma.TransactionClient) => {
       // 1. Verificar que la orden existe y pertenece al usuario
@@ -1225,9 +1261,23 @@ export class OrderService {
   }
 
   // Método auxiliar para calcular el total adeudado de una orden
-  private async calculateTotalOwed(orderId: string): Promise<number> {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
+  private async calculateTotalOwed(orderId: string, user: AuthUser): Promise<number> {
+    await this.assertOrderAccess(orderId, user);
+
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        cashSession: {
+          Store: {
+            tenantId,
+          },
+        },
+      },
       include: {
         services: true,
         orderProducts: true
@@ -1243,9 +1293,25 @@ export class OrderService {
   }
 
   // Método auxiliar para calcular el total pagado de una orden
-  private async calculateTotalPaid(orderId: string): Promise<number> {
+  private async calculateTotalPaid(orderId: string, user: AuthUser): Promise<number> {
+    await this.assertOrderAccess(orderId, user);
+
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     const paymentMethods = await this.prisma.paymentMethod.findMany({
-      where: { orderId },
+      where: {
+        orderId,
+        order: {
+          cashSession: {
+            Store: {
+              tenantId,
+            },
+          },
+        },
+      },
       select: { amount: true }
     });
 
