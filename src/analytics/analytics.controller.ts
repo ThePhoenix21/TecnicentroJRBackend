@@ -7,6 +7,7 @@ import { Role } from '../auth/enums/role.enum';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
 import { AnalyticsService } from './analytics.service';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
 @ApiTags('Analytics')
 @ApiBearerAuth('JWT-auth')
@@ -16,6 +17,10 @@ export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get('net-profit')
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 60, windowSeconds: 3600 }],
+  })
   @RequireTenantFeatures(TenantFeature.CASH)
   @ApiOperation({
     summary: 'Ganancia neta (ingresos - egresos)',
@@ -26,6 +31,7 @@ export class AnalyticsController {
   @ApiQuery({ name: 'to', required: true, example: '2025-01-31' })
   @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
   @ApiResponse({ status: 200, description: 'Análisis de ganancia neta' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes' })
   async getNetProfit(
     @Req() req: any,
     @Query('from') from: string,
@@ -36,6 +42,10 @@ export class AnalyticsController {
   }
 
   @Get('income')
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 60, windowSeconds: 3600 }],
+  })
   @RequireTenantFeatures(TenantFeature.CASH)
   @ApiOperation({
     summary: 'Ingresos (productos/servicios) y rankings',
@@ -46,6 +56,7 @@ export class AnalyticsController {
   @ApiQuery({ name: 'to', required: true, example: '2025-01-31' })
   @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
   @ApiResponse({ status: 200, description: 'Análisis de ingresos' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes' })
   async getIncome(
     @Req() req: any,
     @Query('from') from: string,
@@ -56,6 +67,10 @@ export class AnalyticsController {
   }
 
   @Get('payment-methods-summary')
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 30, windowSeconds: 3600 }],
+  })
   @RequireTenantFeatures(TenantFeature.CASH)
   @Roles(Role.ADMIN)
   @ApiOperation({
@@ -65,6 +80,7 @@ export class AnalyticsController {
   @ApiQuery({ name: 'to', required: true, example: '2025-01-31' })
   @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
   @ApiResponse({ status: 200, description: 'Resumen de métodos de pago' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes' })
   async getPaymentMethodsSummary(
     @Req() req: any,
     @Query('from') from: string,
@@ -75,6 +91,10 @@ export class AnalyticsController {
   }
 
   @Get('expenses')
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 60, windowSeconds: 3600 }],
+  })
   @RequireTenantFeatures(TenantFeature.CASH)
   @ApiOperation({
     summary: 'Egresos',
@@ -85,6 +105,7 @@ export class AnalyticsController {
   @ApiQuery({ name: 'to', required: true, example: '2025-01-31' })
   @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
   @ApiResponse({ status: 200, description: 'Análisis de egresos' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes' })
   async getExpenses(
     @Req() req: any,
     @Query('from') from: string,

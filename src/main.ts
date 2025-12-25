@@ -10,6 +10,13 @@ async function bootstrap() {
   try {
     const app = await NestFactory.create(AppModule);
     const port = process.env.PORT || 3000;
+
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+    app.getHttpAdapter().getInstance().disable('x-powered-by');
+
+    app.use(require('express').json({ limit: '1mb' }));
+    app.use(require('express').urlencoded({ extended: true, limit: '1mb' }));
     
     // Configuración de CORS
     app.enableCors({

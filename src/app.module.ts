@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UtilityModule } from './common/utility/utility.module';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
+import { RateLimitInterceptor } from './common/rate-limit/rate-limit.interceptor';
 import { ClientModule } from './client/client.module';
 import { OrderModule } from './order/order.module';
 import { ProductModule } from './product/product.module';
@@ -34,6 +36,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     // Asegurarse de que el módulo de utilidades se cargue después de ConfigModule
     // para que las variables de entorno estén disponibles
     UtilityModule,
+    RateLimitModule,
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -58,6 +61,10 @@ import { AnalyticsModule } from './analytics/analytics.module';
     {
       provide: APP_GUARD,
       useClass: TenantFeaturesGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RateLimitInterceptor,
     },
   ],
 })

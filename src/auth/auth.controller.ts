@@ -40,6 +40,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ALL_PERMISSIONS } from './permissions';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
 @ApiTags('Autenticación')
 @Controller('auth')
@@ -285,6 +286,14 @@ export class AuthController {
   }
 
   @Post('login')
+  @RateLimit({
+    keyType: 'ip',
+    rules: [
+      { limit: 5, windowSeconds: 60 },
+      { limit: 20, windowSeconds: 3600 },
+    ],
+    cooldownSeconds: 600,
+  })
   @ApiOperation({
     summary: 'Iniciar sesión',
     description:
@@ -375,6 +384,10 @@ export class AuthController {
       }
     }
   })
+  @ApiResponse({
+    status: 429,
+    description: 'Demasiadas solicitudes',
+  })
   async login(
     @Req() req,
     @Res() res: Response,
@@ -407,6 +420,14 @@ export class AuthController {
   }
 
   @Post('login/username')
+  @RateLimit({
+    keyType: 'ip',
+    rules: [
+      { limit: 5, windowSeconds: 60 },
+      { limit: 20, windowSeconds: 3600 },
+    ],
+    cooldownSeconds: 600,
+  })
   @ApiOperation({
     summary: 'Iniciar sesión con nombre de usuario',
     description: 'Autentica un usuario usando nombre de usuario y contraseña. Devuelve access_token en JSON y establece refresh_token en cookie HttpOnly segura',
@@ -505,6 +526,10 @@ export class AuthController {
         error: { type: 'string', example: 'Not Found' }
       }
     }
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Demasiadas solicitudes',
   })
   async loginWithUsername(
     @Req() req,
