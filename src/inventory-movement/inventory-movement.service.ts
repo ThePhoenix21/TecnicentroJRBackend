@@ -179,6 +179,10 @@ export class InventoryMovementService {
       },
     };
 
+    where.user = {
+      tenantId,
+    };
+
     if (startDate || endDate) {
       where.date = {};
       if (startDate) where.date.gte = new Date(startDate);
@@ -319,8 +323,23 @@ export class InventoryMovementService {
   async getProductMovements(storeProductId: string, user: AuthUser, limit: number = 5) {
     await this.assertStoreProductAccess(storeProductId, user);
 
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     return this.prisma.inventoryMovement.findMany({
-      where: { storeProductId },
+      where: {
+        storeProductId,
+        storeProduct: {
+          store: {
+            tenantId,
+          },
+        },
+        user: {
+          tenantId,
+        },
+      },
       orderBy: { date: 'desc' },
       take: limit,
       include: {

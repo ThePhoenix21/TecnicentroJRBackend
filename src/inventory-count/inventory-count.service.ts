@@ -119,6 +119,11 @@ export class InventoryCountService {
 
     const session = await this.assertSessionAccess(sessionId, user);
 
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     if (session.finalizedAt) {
       throw new BadRequestException('La sesión de conteo ya está finalizada');
     }
@@ -138,10 +143,22 @@ export class InventoryCountService {
     // Obtener el producto de la tienda para ver el stock esperado actual
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id: storeProductId },
+      include: {
+        store: {
+          select: {
+            id: true,
+            tenantId: true,
+          },
+        },
+      },
     });
 
     if (!storeProduct) {
       throw new NotFoundException('Producto de tienda no encontrado');
+    }
+
+    if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a este producto de tienda');
     }
 
     // Verificar que el producto pertenezca a la misma tienda de la sesión
@@ -220,6 +237,11 @@ export class InventoryCountService {
   }
 
   async closeSession(sessionId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     const session = await this.assertSessionAccess(sessionId, user);
 
     if (session.finalizedAt) {
@@ -234,13 +256,6 @@ export class InventoryCountService {
       },
       include: {
         store: true,
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
         items: {
           include: {
             storeProduct: {
@@ -250,6 +265,18 @@ export class InventoryCountService {
             }
           }
         }
+      },
+    });
+
+    const createdBy = await this.prisma.user.findFirst({
+      where: {
+        id: closedSession.createdById,
+        tenantId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
       },
     });
 
@@ -273,8 +300,8 @@ export class InventoryCountService {
           name: closedSession.store.name
         },
         createdBy: {
-          id: closedSession.createdBy.id,
-          name: closedSession.createdBy.name
+          id: createdBy?.id || closedSession.createdById,
+          name: createdBy?.name || 'Desconocido'
         }
       },
       summary: {
@@ -301,19 +328,22 @@ export class InventoryCountService {
   }
 
   async getSessionReport(sessionId: string, user: AuthUser) {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
     await this.assertSessionAccess(sessionId, user);
 
-    const session = await this.prisma.inventoryCountSession.findUnique({
-      where: { id: sessionId },
+    const session = await this.prisma.inventoryCountSession.findFirst({
+      where: {
+        id: sessionId,
+        store: {
+          tenantId,
+        },
+      },
       include: {
         store: true,
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
         items: {
           include: {
             storeProduct: {
@@ -330,7 +360,22 @@ export class InventoryCountService {
       throw new NotFoundException('Sesión de conteo no encontrada');
     }
 
-    return session;
+    const createdBy = await this.prisma.user.findFirst({
+      where: {
+        id: session.createdById,
+        tenantId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    return {
+      ...session,
+      createdBy,
+    };
   }
 
   async deleteSession(sessionId: string, user: AuthUser) {
