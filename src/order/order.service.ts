@@ -1043,9 +1043,11 @@ export class OrderService {
   ): Promise<Order> {
     const { status } = updateOrderStatusDto;
 
-    if (authenticatedUser) {
-      await this.assertOrderAccess(id, authenticatedUser);
+    if (!authenticatedUser) {
+      throw new ForbiddenException('Usuario no autenticado');
     }
+
+    await this.assertOrderAccess(id, authenticatedUser);
 
     return this.prisma.$transaction(async (prisma: Prisma.TransactionClient) => {
       // 1. Verificar que la orden existe y pertenece al usuario
@@ -1057,6 +1059,15 @@ export class OrderService {
               id: true,
               role: true
             }
+          },
+          cashSession: {
+            include: {
+              Store: {
+                select: {
+                  tenantId: true,
+                },
+              },
+            },
           }
         }
       });
@@ -1066,7 +1077,7 @@ export class OrderService {
       }
 
       // Solo el propietario o un administrador pueden actualizar el estado
-      if (order.userId !== userId && order.user.role !== 'ADMIN') {
+      if (order.userId !== authenticatedUser.userId && authenticatedUser.role !== 'ADMIN') {
         throw new NotFoundException(`No tiene permisos para actualizar esta orden`);
       }
 
@@ -1076,10 +1087,31 @@ export class OrderService {
         data: { 
           status
         },
-        include: { orderProducts: true, services: true, client: true }
       });
 
-      return updatedOrder as unknown as Order;
+      const tenantId = order.cashSession?.Store?.tenantId;
+
+      const [orderProducts, services, client] = await Promise.all([
+        prisma.orderProduct.findMany({
+          where: { orderId: id },
+          include: {
+            product: true,
+          },
+        }),
+        prisma.service.findMany({
+          where: { orderId: id },
+        }),
+        tenantId && order.clientId
+          ? prisma.client.findFirst({
+              where: {
+                id: order.clientId,
+                tenantId,
+              },
+            })
+          : null,
+      ]);
+
+      return { ...updatedOrder, orderProducts, services, client } as unknown as Order;
     });
   }
 
