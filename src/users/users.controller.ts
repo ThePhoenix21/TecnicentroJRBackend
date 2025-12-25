@@ -145,7 +145,7 @@ export class UsersController {
     }
 
     try {
-      const user = await this.usersService.findOne(targetUserId);
+      const user = await this.usersService.findOne(targetUserId, req.user);
       if (!user) {
         throw new BadRequestException('Usuario no encontrado');
       }
@@ -184,7 +184,7 @@ export class UsersController {
       // Actualizar el usuario con la nueva URL del avatar
       const updatedUser = await this.usersService.update(targetUserId, { 
         avatarUrl
-      });
+      }, req.user);
 
       return {
         message: 'Avatar actualizado exitosamente',
@@ -277,7 +277,7 @@ export class UsersController {
     status: 409,
     description: 'El correo electrónico o teléfono ya está en uso',
   })
-  async createUser(@Body() createUserDto: CreateSimpleUserDto) {
+  async createUser(@Body() createUserDto: CreateSimpleUserDto, @Request() req: any) {
     this.logger.debug('Iniciando creación de usuario');
     this.logger.debug(`Datos recibidos: ${JSON.stringify(createUserDto)}`);
 
@@ -309,7 +309,7 @@ export class UsersController {
     this.logger.debug(`Datos del usuario a crear: ${JSON.stringify({...userData, password: '***'})}`);
     
     try {
-      const user = await this.usersService.create(userData);
+      const user = await this.usersService.create(userData, req.user);
       this.logger.debug(`Usuario creado exitosamente con ID: ${user.id}`);
       
       // Registrar asociación con la tienda (ahora es obligatorio)
@@ -451,7 +451,7 @@ export class UsersController {
       }
 
       // Obtener el usuario actual
-      const user = await this.usersService.findById(userId);
+      const user = await this.usersService.findById(userId, req.user);
       if (!user) {
         this.logger.warn(`Usuario no encontrado con ID: ${userId}`);
         throw new NotFoundException('Usuario no encontrado');
@@ -474,7 +474,7 @@ export class UsersController {
 
       // Actualizar la contraseña
       const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
-      await this.usersService.update(userId, { password: hashedPassword });
+      await this.usersService.update(userId, { password: hashedPassword }, req.user);
       
       this.logger.log(`Contraseña actualizada exitosamente para el usuario ID: ${userId}`);
       
@@ -569,11 +569,11 @@ export class UsersController {
       }
     }
   })
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string, @Request() req: any) {
     this.logger.debug(`Buscando usuario con ID: ${id}`);
     
     try {
-      const user = await this.usersService.findById(id);
+      const user = await this.usersService.findById(id, req.user);
       
       if (!user) {
         this.logger.warn(`Usuario no encontrado con ID: ${id}`);
@@ -582,10 +582,16 @@ export class UsersController {
 
       // Obtener tiendas asociadas al usuario
       let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
+
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        throw new UnauthorizedException('TenantId no encontrado en el token');
+      }
       
       if (user.role === 'ADMIN') {
         // ADMIN: obtener todas las tiendas
         stores = await this.prisma.store.findMany({
+          where: { tenantId },
           select: {
             id: true,
             name: true,
@@ -599,7 +605,7 @@ export class UsersController {
       } else {
         // USER: obtener tiendas asignadas
         const userStores = await this.prisma.storeUsers.findMany({
-          where: { userId: id },
+          where: { userId: id, store: { tenantId } },
           include: {
             store: {
               select: {
@@ -789,7 +795,7 @@ export class UsersController {
 
     try {
       // Verificar que el usuario exista
-      const existingUser = await this.usersService.findOne(id);
+      const existingUser = await this.usersService.findOne(id, req.user as any);
       if (!existingUser) {
         this.logger.warn(`Usuario no encontrado con ID: ${id}`);
         throw new NotFoundException('Usuario no encontrado');
@@ -845,7 +851,7 @@ export class UsersController {
         const { storeId, ...userUpdateData } = updateUserDto;
         
         // Actualizar otros datos del usuario
-        const updatedUser = await this.usersService.updateUser(id, userUpdateData);
+        const updatedUser = await this.usersService.updateUser(id, userUpdateData, req.user as any);
         
         // Obtener el usuario actualizado con su nueva tienda
         const userWithNewStore = await this.prisma.user.findUnique({
@@ -865,6 +871,7 @@ export class UsersController {
         let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
         if (userWithNewStore?.role === 'ADMIN') {
           stores = await this.prisma.store.findMany({
+            where: { tenantId: (req.user as any)?.tenantId },
             select: {
               id: true,
               name: true,
@@ -877,7 +884,7 @@ export class UsersController {
           });
         } else {
           const userStores = await this.prisma.storeUsers.findMany({
-            where: { userId: id },
+            where: { userId: id, store: { tenantId: (req.user as any)?.tenantId } },
             include: {
               store: {
                 select: {
@@ -903,12 +910,13 @@ export class UsersController {
         };
       } else {
         // Actualizar usuario sin cambiar tienda
-        const updatedUser = await this.usersService.updateUser(id, updateUserDto);
+        const updatedUser = await this.usersService.updateUser(id, updateUserDto, req.user as any);
 
         // Obtener tiendas actuales del usuario para mantener consistencia
         let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
         if (updatedUser.role === 'ADMIN') {
           stores = await this.prisma.store.findMany({
+            where: { tenantId: (req.user as any)?.tenantId },
             select: {
               id: true,
               name: true,
@@ -1032,14 +1040,14 @@ export class UsersController {
       this.logger.debug(`Usuario a actualizar validado: ${userToUpdate.email} (ID: ${userToUpdate.id})`);
 
       // Verificar que el usuario validado exista en la base de datos
-      const currentUser = await this.usersService.findOne(userToUpdate.id);
+      const currentUser = await this.usersService.findOne(userToUpdate.id, req.user);
       if (!currentUser) {
         this.logger.warn(`Usuario validado no encontrado en la base de datos: ${userToUpdate.id}`);
         throw new NotFoundException('Usuario no encontrado');
       }
 
       // Actualizar el rol del usuario validado
-      const updatedUser = await this.usersService.update(userToUpdate.id, { role: changeRoleDto.newRole });
+      const updatedUser = await this.usersService.update(userToUpdate.id, { role: changeRoleDto.newRole }, req.user);
 
       this.logger.log(`Rol actualizado exitosamente por ADMIN ${req.user.email} para usuario ${userToUpdate.email} (ID: ${userToUpdate.id}) de ${userToUpdate.role} a ${changeRoleDto.newRole}`);
 
@@ -1124,11 +1132,11 @@ export class UsersController {
       }
     }
   })
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Request() req: any) {
     this.logger.debug(`Iniciando soft delete del usuario con ID: ${id}`);
     
     try {
-      const result = await this.usersService.deleteUserById(id);
+      const result = await this.usersService.deleteUserById(id, req.user);
       this.logger.log(`Usuario con ID ${id} marcado como DELETED exitosamente`);
       return result;
     } catch (error) {

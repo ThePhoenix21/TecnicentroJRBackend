@@ -1,8 +1,15 @@
-import { Injectable, Logger, UnauthorizedException, ConflictException, InternalServerErrorException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, UnauthorizedException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
+
+type AuthUser = {
+  userId: string;
+  email: string;
+  role: string;
+  tenantId?: string;
+};
 
 @Injectable()
 export class StoreService {
@@ -12,6 +19,34 @@ export class StoreService {
     private readonly prisma: PrismaService,
     private readonly authService: AuthService
   ) {}
+
+  private getTenantIdOrThrow(user: AuthUser): string {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+    return tenantId;
+  }
+
+  private async attachCreatedByForTenant(store: any, tenantId: string) {
+    if (!store?.createdById) {
+      return { ...store, createdBy: null };
+    }
+
+    const createdBy = await this.prisma.user.findFirst({
+      where: {
+        id: store.createdById,
+        tenantId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    return { ...store, createdBy: createdBy ?? null };
+  }
 
   async create(createStoreDto: CreateStoreDto) {
     this.logger.log(`Iniciando creación de store: ${createStoreDto.name}`);
@@ -127,50 +162,46 @@ export class StoreService {
   findAll(tenantId: string) {
     return this.prisma.store.findMany({
       where: { tenantId },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
-    });
+    }).then((stores) => Promise.all(stores.map((s) => this.attachCreatedByForTenant(s, tenantId))));
   }
 
-  findOne(id: string) {
-    return this.prisma.store.findUnique({
-      where: { id },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
+  async findOne(id: string, user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+    const store = await this.prisma.store.findFirst({
+      where: { id, tenantId },
     });
+
+    if (!store) {
+      return null;
+    }
+
+    return this.attachCreatedByForTenant(store, tenantId);
   }
 
-  update(id: string, updateStoreDto: UpdateStoreDto) {
-    return this.prisma.store.update({
+  async update(id: string, updateStoreDto: UpdateStoreDto, user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const existing = await this.prisma.store.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.store.update({
       where: { id },
       data: updateStoreDto,
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
     });
+
+    return this.attachCreatedByForTenant(updated, tenantId);
   }
 
-  remove(id: string) {
+  async remove(id: string, user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const existing = await this.prisma.store.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!existing) {
+      return null;
+    }
+
     return this.prisma.store.delete({
       where: { id }
     });

@@ -11,11 +11,51 @@ import * as bcrypt from 'bcrypt';
 import { User, Role } from '@prisma/client';
 import { ALL_PERMISSIONS } from '../auth/permissions';
 
+type AuthUser = {
+  userId: string;
+  email: string;
+  role: string;
+  tenantId?: string;
+};
+
 @Injectable()
 export class UsersService {
     private readonly logger = new Logger(UsersService.name);
 
     constructor(private prisma: PrismaService) {}
+
+    private getTenantIdOrThrow(user?: AuthUser): string {
+        const tenantId = user?.tenantId;
+        if (!tenantId) {
+            throw new UnauthorizedException('Tenant no encontrado en el token');
+        }
+        return tenantId;
+    }
+
+    private assertSelfOrAdmin(targetUserId: string, user?: AuthUser) {
+        if (!user) return;
+        if (user.role !== 'ADMIN' && user.userId !== targetUserId) {
+            throw new UnauthorizedException('No tienes permisos para acceder a este usuario');
+        }
+    }
+
+    private async assertUserBelongsToTenant(targetUserId: string, user?: AuthUser) {
+        if (!user) return;
+        const tenantId = this.getTenantIdOrThrow(user);
+        this.assertSelfOrAdmin(targetUserId, user);
+
+        const exists = await this.prisma.user.findFirst({
+            where: {
+                id: targetUserId,
+                tenantId,
+            },
+            select: { id: true },
+        });
+
+        if (!exists) {
+            throw new NotFoundException('Usuario no encontrado');
+        }
+    }
 
     /**
      * Crea un nuevo usuario en la base de datos.
@@ -36,7 +76,7 @@ export class UsersService {
      *    - verifyTokenExpires: fecha de expiración del token (24 horas)
      * 6. Retorna el usuario recién creado.
      */
-    async createUser(email: string, password: string, name: string, username: string, storeId: string, phone?: string, birthdate?: Date, language?: string, timezone?: string, permissions?: string[]) {
+    async createUser(email: string, password: string, name: string, username: string, storeId: string, phone?: string, birthdate?: Date, language?: string, timezone?: string, permissions?: string[], authUser?: AuthUser) {
         return this.create({
             email,
             password,
@@ -49,7 +89,7 @@ export class UsersService {
             role: Role.USER,
             storeId,
             permissions
-        });
+        }, authUser);
     }
 
     async create(userData: {
@@ -57,6 +97,7 @@ export class UsersService {
         password: string;
         name: string;
         username: string;
+
         phone?: string;
         birthdate?: Date;
         language?: string;
@@ -65,7 +106,7 @@ export class UsersService {
         verified?: boolean;
         storeId: string;
         permissions?: string[]; // Nuevos permisos
-    }) {
+    }, authUser?: AuthUser) {
         const { email, password, name, username, phone, birthdate, language, timezone, role, verified = true, storeId, permissions = [] } = userData;
         
         this.logger.log(`Iniciando creación de usuario: ${username || email}`);
@@ -91,6 +132,13 @@ export class UsersService {
         if (!tenantId) {
             this.logger.error(`La tienda ${storeId} no tiene tenantId asociado`);
             throw new BadRequestException('La tienda especificada no tiene un tenant asociado');
+        }
+
+        if (authUser) {
+            const requesterTenantId = this.getTenantIdOrThrow(authUser);
+            if (requesterTenantId !== tenantId) {
+                throw new UnauthorizedException('No tienes permisos para crear usuarios en otra empresa');
+            }
         }
         
         this.logger.debug(`Tienda encontrada: ${store.name} (ID: ${storeId})`);
@@ -203,7 +251,8 @@ export class UsersService {
         return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     }
 
-    async updatePasswordResetToken(userId: string, token: string, expires: Date) {
+    async updatePasswordResetToken(userId: string, token: string, expires: Date, authUser?: AuthUser) {
+        await this.assertUserBelongsToTenant(userId, authUser);
         return this.prisma.user.update({
             where: { id: userId },
             data: {
@@ -214,7 +263,8 @@ export class UsersService {
     }
 
     // Elimina un usuario de la base de datos por su ID (soft delete)
-    async deleteUserById(id: string) {
+    async deleteUserById(id: string, authUser?: AuthUser) {
+        await this.assertUserBelongsToTenant(id, authUser);
         // Verificar que el usuario exista
         const user = await this.prisma.user.findUnique({ where: { id } });
         if (!user) {
@@ -235,7 +285,8 @@ export class UsersService {
         return this.prisma.user.findUnique({ where: { email } });
     }
 
-    async findById(id: string) {
+    async findById(id: string, authUser?: AuthUser) {
+        await this.assertUserBelongsToTenant(id, authUser);
         return this.prisma.user.findUnique({ where: { id } });
     }
 
@@ -253,7 +304,8 @@ export class UsersService {
     }
 
     // Actualizar cualquier campo del usuario
-    async update(userId: string, data: Partial<User>): Promise<User> {
+    async update(userId: string, data: Partial<User>, authUser?: AuthUser): Promise<User> {
+        await this.assertUserBelongsToTenant(userId, authUser);
         return this.prisma.user.update({
         where: { id: userId },
         data,
@@ -295,7 +347,8 @@ export class UsersService {
         return true;
     }
 
-    async updatePassword(userId: string, newPassword: string) {
+    async updatePassword(userId: string, newPassword: string, authUser?: AuthUser) {
+        await this.assertUserBelongsToTenant(userId, authUser);
         return this.prisma.user.update({
             where: { id: userId },
             data: {
@@ -305,13 +358,15 @@ export class UsersService {
         });
     }
 
-    async findOne(id: string) {
+    async findOne(id: string, authUser?: AuthUser) {
+        await this.assertUserBelongsToTenant(id, authUser);
         return this.prisma.user.findUnique({
             where: { id },
         });
     }
 
-    async updateUser(id: string, updateUserDto: any) {
+    async updateUser(id: string, updateUserDto: any, authUser?: AuthUser) {
+        await this.assertUserBelongsToTenant(id, authUser);
         return this.prisma.user.update({
             where: { id },
             data: updateUserDto,

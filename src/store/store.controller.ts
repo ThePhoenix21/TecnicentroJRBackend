@@ -154,8 +154,8 @@ export class StoreController {
     }
   })
   @ApiResponse({ status: 404, description: 'Tienda no encontrada' })
-  findOne(@Param('id') id: string) {
-    return this.storeService.findOne(id);
+  findOne(@Param('id') id: string, @Req() req: any) {
+    return this.storeService.findOne(id, req.user);
   }
 
   @Patch(':id')
@@ -217,8 +217,8 @@ export class StoreController {
   @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
   @ApiResponse({ status: 404, description: 'Tienda no encontrada' })
   @ApiResponse({ status: 403, description: 'No autorizado - se requiere rol ADMIN' })
-  update(@Param('id') id: string, @Body() updateStoreDto: UpdateStoreDto) {
-    return this.storeService.update(id, updateStoreDto);
+  update(@Param('id') id: string, @Body() updateStoreDto: UpdateStoreDto, @Req() req: any) {
+    return this.storeService.update(id, updateStoreDto, req.user);
   }
 
   @Delete(':id')
@@ -242,7 +242,7 @@ export class StoreController {
   @ApiResponse({ status: 404, description: 'Tienda no encontrada' })
   @ApiResponse({ status: 403, description: 'No autorizado - se requiere rol ADMIN' })
   @ApiResponse({ status: 409, description: 'No se puede eliminar la tienda - tiene dependencias activas' })
-  remove(@Param('id') id: string) {
-    return this.storeService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.storeService.remove(id, req.user);
   }
 }
