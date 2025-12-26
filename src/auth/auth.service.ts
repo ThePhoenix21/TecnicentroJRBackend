@@ -19,6 +19,7 @@ import { MailService } from '../mail/mail.service';
 import { EmailValidatorService } from '../common/validators/email-validator.service';
 import { Role } from '../common/enums/role.enum';
 import { ALL_PERMISSIONS } from './permissions';
+import { DashboardService } from '../dashboard/dashboard.service';
 
 @Injectable()
 export class AuthService {
@@ -30,10 +31,104 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
     private readonly emailValidator: EmailValidatorService,
-    private readonly schedulerRegistry: SchedulerRegistry
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly dashboardService: DashboardService,
   ) {
     // Limpiar usuarios no verificados al iniciar
     this.cleanupUnverifiedAdminsOnStartup();
+  }
+
+  private hasPermission(permissions: string[] | undefined, permission: string): boolean {
+    if (!permissions || permissions.length === 0) return false;
+    return permissions.includes(permission);
+  }
+
+  private pickLandingView(params: {
+    permissions: string[];
+    tenantFeatures: string[];
+  }): { view: string; reason: string } {
+    const { permissions, tenantFeatures } = params;
+
+    const hasFeature = (f: string) => tenantFeatures.includes(f);
+    const has = (p: string) => this.hasPermission(permissions, p);
+
+    if (has('VIEW_DASHBOARD') && hasFeature('DASHBOARD')) {
+      return { view: 'DASHBOARD', reason: 'VIEW_DASHBOARD' };
+    }
+
+    if (has('VIEW_ORDERS') && hasFeature('SALES')) {
+      return { view: 'SALES', reason: 'VIEW_ORDERS' };
+    }
+
+    if (has('VIEW_PRODUCTS') && hasFeature('PRODUCTS')) {
+      return { view: 'PRODUCTS', reason: 'VIEW_PRODUCTS' };
+    }
+
+    if (has('VIEW_SERVICES') && hasFeature('SERVICES')) {
+      return { view: 'SERVICES', reason: 'VIEW_SERVICES' };
+    }
+
+    if (has('VIEW_CLIENTS') && hasFeature('CLIENTS')) {
+      return { view: 'CLIENTS', reason: 'VIEW_CLIENTS' };
+    }
+
+    if (has('VIEW_INVENTORY') && hasFeature('INVENTORY')) {
+      return { view: 'INVENTORY', reason: 'VIEW_INVENTORY' };
+    }
+
+    if (has('VIEW_CASH') && hasFeature('CASH')) {
+      return { view: 'CASH', reason: 'VIEW_CASH' };
+    }
+
+    return { view: 'NO_ACCESS', reason: 'NO_VIEW_PERMISSIONS' };
+  }
+
+  async loginBootstrap(email: string, password: string, ipAddress?: string, res?: Response) {
+    const user = await this.validateUser(email, password);
+
+    if (!user.tenantId) {
+      throw new UnauthorizedException('Tenant no encontrado');
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: { id: true, name: true, features: true, currency: true } as any,
+    });
+
+    if (!tenant) {
+      throw new UnauthorizedException('Tenant no encontrado');
+    }
+
+    const tenantFeatures = (tenant.features || []) as unknown as string[];
+    const permissions = (user.permissions || []) as string[];
+
+    const loginResult = await this.login(user, ipAddress, res);
+
+    const authUser = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenantId,
+    };
+
+    const landing = this.pickLandingView({ permissions, tenantFeatures });
+
+    let landingData: any = null;
+    if (landing.view === 'DASHBOARD') {
+      landingData = await this.dashboardService.getSummary(authUser);
+    } else if (landing.view === 'SALES') {
+      landingData = await this.dashboardService.getSalesBootstrap(authUser);
+    }
+
+    return {
+      ...loginResult,
+      stores: (loginResult as any)?.user?.stores ?? [],
+      landing: {
+        view: landing.view,
+        reason: landing.reason,
+        data: landingData,
+      },
+    };
   }
 
   // Se ejecuta al iniciar la aplicación

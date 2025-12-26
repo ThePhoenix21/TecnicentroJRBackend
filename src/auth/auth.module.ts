@@ -12,11 +12,13 @@ import { JwtStrategy } from './jwt.strategy';
 import { EmailValidatorService } from '../common/validators/email-validator.service';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
+import { DashboardModule } from '../dashboard/dashboard.module';
 
 @Module({
   imports: [
     ConfigModule,
     forwardRef(() => UsersModule),
+    DashboardModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     MailModule,
     ScheduleModule.forRoot(),

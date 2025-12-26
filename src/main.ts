@@ -11,6 +11,32 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
     const port = process.env.PORT || 3000;
 
+    // Maintenance Mode global (sin endpoints dedicados ni polling)
+    // Se ejecuta antes de guards/interceptors/controllers.
+    app.use((req: any, res: any, next: any) => {
+      const maintenanceEnabled = process.env.MAINTENANCE_MODE === 'true';
+      if (!maintenanceEnabled) return next();
+
+      const url = String(req?.originalUrl ?? req?.url ?? '');
+      const path = url.split('?')[0] || '';
+
+      const allowlist: Array<string | RegExp> = [
+        /^\/health(?:\/|$)/,
+        /^\/api(?:\/|$)/,
+        /^\/metrics(?:\/|$)/,
+        /^\/internal(?:\/|$)/,
+        /^\/auth\/login-bootstrap(?:\/|$)/,
+      ];
+
+      const isAllowed = allowlist.some((rule) =>
+        typeof rule === 'string' ? path === rule : rule.test(path),
+      );
+
+      if (isAllowed) return next();
+
+      return res.status(503).json({ maintenance: true });
+    });
+
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
     app.getHttpAdapter().getInstance().disable('x-powered-by');

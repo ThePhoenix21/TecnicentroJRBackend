@@ -77,6 +77,66 @@ export class AuthController {
     return { permissions: ALL_PERMISSIONS };
   }
 
+  @Post('login-bootstrap')
+  @RateLimit({
+    keyType: ['ip', 'identity'],
+    rules: [
+      { limit: 5, windowSeconds: 60 },
+      { limit: 20, windowSeconds: 3600 },
+    ],
+    cooldownSeconds: 600,
+  })
+  @ApiOperation({
+    summary: 'Iniciar sesión + bootstrap (una sola llamada)',
+    description:
+      'Autentica con email/password y devuelve access_token + stores + landing(view y data inicial) para evitar múltiples llamadas desde el frontend.',
+  })
+  @ApiBody({
+    description: 'Credenciales de inicio de sesión',
+    schema: {
+      type: 'object',
+      properties: {
+        email: {
+          type: 'string',
+          format: 'email',
+          example: 'usuario@ejemplo.com',
+        },
+        password: {
+          type: 'string',
+          format: 'password',
+          example: 'contraseñaSegura123',
+        },
+      },
+      required: ['email', 'password'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Inicio de sesión + bootstrap exitoso',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Credenciales inválidas o cuenta no verificada',
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Demasiadas solicitudes',
+  })
+  async loginBootstrap(
+    @Req() req,
+    @Res() res: Response,
+    @Body('email') email: string,
+    @Body('password') password: string,
+  ) {
+    const ipAddress =
+      req.ip ||
+      req.headers['x-forwarded-for'] ||
+      req.connection.remoteAddress;
+
+    const result = await this.authService.loginBootstrap(email, password, ipAddress, res);
+    return res.status(200).json(result);
+  }
+
   @Post('register')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)

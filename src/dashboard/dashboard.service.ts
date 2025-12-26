@@ -13,6 +13,88 @@ type AuthUser = {
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getSalesBootstrap(user: AuthUser) {
+    const tenantId = user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    const salesAgg = await this.prisma.order.aggregate({
+      where: {
+        status: SaleStatus.COMPLETED,
+        client: {
+          tenantId,
+        },
+      },
+      _sum: { totalAmount: true },
+      _count: { _all: true },
+      _avg: { totalAmount: true },
+    });
+
+    const recentOrders = await this.prisma.order.findMany({
+      where: {
+        status: SaleStatus.COMPLETED,
+        client: {
+          tenantId,
+        },
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        client: {
+          select: {
+            name: true,
+          },
+        },
+        user: {
+          select: {
+            name: true,
+          },
+        },
+        _count: {
+          select: {
+            orderProducts: true,
+            services: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 15,
+    });
+
+    const salesTotal = Number(salesAgg._sum.totalAmount || 0);
+    const salesCount = Number(salesAgg._count._all || 0);
+    const salesAverage = Number(salesAgg._avg.totalAmount || 0);
+
+    const recentSales = recentOrders.map((o) => ({
+      id: o.id,
+      type: 'sale',
+      amount: o.totalAmount,
+      status: o.status,
+      description: `Venta #${o.orderNumber}`,
+      customerName: o.client?.name || 'Cliente',
+      userName: o.user?.name || 'Usuario',
+      itemsCount: (o._count?.orderProducts || 0) + (o._count?.services || 0),
+      createdAt: o.createdAt,
+      orderNumber: o.orderNumber,
+    }));
+
+    return {
+      salesSummary: {
+        total: salesTotal,
+        count: salesCount,
+        average: salesAverage,
+      },
+      recentSales,
+    };
+  }
+
   async getSummary(user: AuthUser) {
     const tenantId = user?.tenantId;
 
