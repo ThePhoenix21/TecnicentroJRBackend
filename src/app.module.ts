@@ -22,6 +22,8 @@ import { TenantModule } from './tenant/tenant.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { TenantFeaturesGuard } from './tenant/guards/tenant-features.guard';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { ApiMetricsModule } from './common/api-metrics/api-metrics.module';
+import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.interceptor';
 
 @Module({
   imports: [
@@ -53,6 +55,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     DashboardModule,
     TenantModule,
     AnalyticsModule,
+    ApiMetricsModule,
   ],
   controllers: [],
   providers: [
@@ -63,6 +66,10 @@ import { AnalyticsModule } from './analytics/analytics.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: RateLimitInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ApiMetricsInterceptor,
     },
   ],
 })

@@ -83,7 +83,7 @@ export class ApiMetricsService implements OnModuleInit, OnModuleDestroy {
 
   private getIntervalStart(now: Date): Date {
     const ms = now.getTime();
-    const rounded = Math.floor(ms / 60_000) * 60_000;
+    const rounded = Math.floor(ms / 30_000) * 30_000;
     return new Date(rounded);
   }
 
