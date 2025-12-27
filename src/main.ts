@@ -48,7 +48,7 @@ async function bootstrap() {
     app.enableCors({
       origin: (origin, callback) => {
         const allowedOrigins = [
-          'http://localhost:3000',  // Desarrollo local
+          'http://localhost:3001',  // Desarrollo local
           'https://tecnicentro-jr-frontend.vercel.app',  // Producción
           'https://tecnicentro-jr-frontend.vercel.app/'  // Por si acaso
         ];
