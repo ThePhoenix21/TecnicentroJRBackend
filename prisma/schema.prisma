@@ -342,6 +342,30 @@ model InventoryCountItem {
   storeProduct       StoreProduct @relation(fields: [storeProductId], references: [id])
 }
 
+//===================SECCIÓN DE METRICAS===================
+
+model ApiMetric {
+  id               String   @id @default(uuid())
+
+  intervalStart    DateTime // inicio del intervalo (ej. minuto)
+  intervalMinutes  Int      @default(1)
+
+  endpoint         String   // ruta normalizada: /orders/:id
+  method           String   // GET, POST, etc
+
+  requestsCount    Int
+  errorsCount      Int
+  avgLatencyMs     Float?
+
+  tenantId         String?  // relacion logica, no FK
+
+  createdAt        DateTime @default(now())
+
+  @@index([intervalStart])
+  @@index([endpoint])
+  @@index([tenantId])
+}
+
 //===================SECCIÓN DE ENUMS===================
 
 enum CurrencyCode {
