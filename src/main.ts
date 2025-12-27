@@ -49,6 +49,7 @@ async function bootstrap() {
       origin: (origin, callback) => {
         const allowedOrigins = [
           'http://localhost:3001',  // Desarrollo local
+          'http://localhost:3002',  // Desarrollo local
           'https://tecnicentro-jr-frontend.vercel.app',  // Producción
           'https://tecnicentro-jr-frontend.vercel.app/'  // Por si acaso
         ];
