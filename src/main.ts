@@ -51,7 +51,7 @@ async function bootstrap() {
           'http://localhost:3001',  // Desarrollo local
           'http://localhost:3002',  // Desarrollo local
           'https://tecnicentro-jr-frontend.vercel.app',  // Producción
-          'https://tecnicentro-jr-frontend.vercel.app/'  // Por si acaso
+          'https://v0-admin-dashboard-frontend-phi.vercel.app/dashboard'  // metricas
         ];
 
         // En producción, verifica el origen
