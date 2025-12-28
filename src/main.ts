@@ -44,28 +44,22 @@ async function bootstrap() {
     app.use(require('express').json({ limit: '1mb' }));
     app.use(require('express').urlencoded({ extended: true, limit: '1mb' }));
     
-    // Configuración de CORS
+    // Configuracion de CORS
+    const allowedOrigins =
+      process.env.CORS_ALLOWED_ORIGINS?.split(',').map(o => o.trim()) ?? [];
+
     app.enableCors({
       origin: (origin, callback) => {
-        const allowedOrigins = [
-          'http://localhost:3001',  // Desarrollo local
-          'http://localhost:3002',  // Desarrollo local
-          'https://tecnicentro-jr-frontend.vercel.app',  // Producción
-          'https://v0-admin-dashboard-frontend-phi.vercel.app/dashboard'  // metricas
-        ];
-
-        // En producción, verifica el origen
-        if (process.env.NODE_ENV === 'production') {
-          if (!origin || allowedOrigins.some(allowed => origin.startsWith(allowed.replace(/\/$/, '')))) {
-            callback(null, true);
-          } else {
-            callback(new Error('Not allowed by CORS'));
-          }
-        } 
-        // En desarrollo, permite localhost
-        else {
-          callback(null, true);
+        // Requests sin origin (Postman, curl, health checks)
+        if (!origin) {
+          return callback(null, true);
         }
+
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+
+        return callback(new Error('Not allowed by CORS'));
       },
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
       allowedHeaders: 'Content-Type, Accept, Authorization',
