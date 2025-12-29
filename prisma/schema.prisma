@@ -57,46 +57,52 @@ model User {
   storeProducts             StoreProduct[]
   inventoryMovements        InventoryMovement[]
   inventorySessions         InventoryCountSession[]
-
-  // auditoría de anulaciones
-  ordersCanceled Order[] @relation("OrderCanceledBy")
+  supportTicketsCreated     SupportTicket[] @relation("SupportTicketCreatedBy")
+  warehousesCreated         Warehouse[] @relation("WarehouseCreatedBy")
+  supplyOrders              SupplyOrder[] @relation("SupplyOrderCreatedBy")
+  provider                  Provider[] @relation("ProviderCreatedBy")
+  employed                  Employed? @relation("EmployedUser")
+  employedCreated           Employed[] @relation("EmployedCreatedBy")
+  ordersCanceled            Order[] @relation("OrderCanceledBy")
 }
 
 model Product {
-  id          String   @id @default(uuid())
-  name        String
-  description String?  
-  basePrice   Float?   // precio de venta sugerido
-  buyCost     Float?   // costo de adquisición del producto
-  isDeleted   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdById String?  // si quieres registrar quién lo creó
-  createdBy   User?    @relation(fields: [createdById], references: [id])
+  id                        String   @id @default(uuid())
+  name                      String
+  description               String?  
+  basePrice                 Float?   // precio de venta sugerido
+  buyCost                   Float?   // costo de adquisición del producto
+  isDeleted                 Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  createdById               String?  // si quieres registrar quién lo creó
+  createdBy                 User?    @relation(fields: [createdById], references: [id])
 
-  storeProducts StoreProduct[]
+  storeProducts             StoreProduct[]
+  supplyOrderProducts       SupplyOrderProduct[]
+  providerProducts          ProviderProduct[]
 }
 
 model StoreProduct {
-  id            String   @id @default(uuid())
-  price         Float    // precio que esta tienda aplica
-  stock         Int      @default(0) // unidades disponibles en esta tienda
-  stockThreshold Int     @default(1) // alerta de stock mínimo
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                        String   @id @default(uuid())
+  price                     Float    // precio que esta tienda aplica
+  stock                     Int      @default(0) // unidades disponibles en esta tienda
+  stockThreshold            Int     @default(1) // alerta de stock mínimo
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId                 String
+  product                   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  storeId String
-  store   Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeId                   String
+  store                     Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                    String
+  user                      User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  orderProducts OrderProduct[]
-  inventoryMovements     InventoryMovement[]
-  inventoryCountItems    InventoryCountItem[]
+  orderProducts             OrderProduct[]
+  inventoryMovements        InventoryMovement[]
+  inventoryCountItems       InventoryCountItem[]
 }
 
 model OrderProduct {
@@ -263,6 +269,9 @@ model Store {
   storeUsers              StoreUsers[]
   storeProducts           StoreProduct[]
   inventorySessions       InventoryCountSession[]
+  storeEmployees          StoreEmployed[]
+  warehouseStores         WarehouseStore[]
+  storeSupplyOrders       StoreSupplyOrder[]
 }
 
 model StoreUsers {
@@ -291,6 +300,7 @@ model Tenant {
   stores    Store[]
   users     User[]
   clients   Client[]
+  warehouses Warehouse[]
 }
 
 //===================SECCIÓN DE INVENTARIO===================
@@ -340,6 +350,268 @@ model InventoryCountItem {
 
   storeProductId     String
   storeProduct       StoreProduct @relation(fields: [storeProductId], references: [id])
+}
+
+//===================WAREHOUSE===================
+
+model Warehouse {
+  id                        String   @id @default(uuid())
+  name                      String
+  address                   String?
+  phone                     String?
+
+  tenantId                  String
+  tenant                    Tenant   @relation(fields: [tenantId], references: [id])
+
+  createdById               String?
+  createdBy                 User? @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
+
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  warehouseEmployees        WarehouseEmployed[]
+  warehouseStores           WarehouseStore[]
+  warehouseSupplyOrders     WarehouseSupplyOrder[]
+}
+
+//===================EMPLOYED===================
+
+model Employed {
+  id                     String   @id @default(uuid())
+  firstName              String
+  lastName               String
+
+  document               String?
+  phone                  String?
+  email                  String?
+
+  position               String?
+  status                 EmployedStatus @default(ACTIVE)
+
+  hiredAt                DateTime?
+  endedAt                DateTime?
+
+  // acceso al sistema (opcional)
+  userId                 String? @unique
+  user                   User? @relation("EmployedUser", fields: [userId], references: [id])
+
+  // auditoria
+  createdByUserId        String
+  createdByUser          User @relation("EmployedCreatedBy", fields: [createdByUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  warehouseAssignments WarehouseEmployed[]
+  storeAssignments     StoreEmployed[]
+}
+
+enum EmployedStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+//===================SUPPORT===================
+
+model SupportTicket {
+  id        String   @id @default(uuid())
+  subject   String
+  message   String
+
+  status    SupportStatus   @default(OPEN)
+  priority  SupportPriority @default(NORMAL)  
+
+  createdByUserId String?
+  createdByUser   User? @relation("SupportTicketCreatedBy", fields: [createdByUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  closedAt  DateTime?
+}
+
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
+enum SupportPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+//===================PROVEEDORES=======================
+
+model Provider {
+  id                          String   @id @default(uuid())
+  name                        String
+  ruc                         String?
+  phone                       String?
+  email                       String?
+  address                     String?
+
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  createdById                 String
+  createdBy                   User @relation(fields: [createdById], references: [id])
+
+  supplyOrders                SupplyOrder[]
+  providerProducts            ProviderProduct[]
+
+  @@unique([createdById, ruc])
+}
+
+//===================ORDENES DE SUMINISTRO=======================
+
+model SupplyOrder {
+  id                          String   @id @default(uuid())
+  code                        String   
+  status                      SupplyOrderStatus @default(PENDING)
+  description                 String?
+
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  providerId                  String
+  provider                    Provider @relation(fields: [providerId], references: [id])
+
+  createdById                 String
+  createdBy                   User @relation(fields: [createdById], references: [id])
+
+  // productos de la orden
+  products                    SupplyOrderProduct[]
+
+  // relaciones con almacenes y tiendas
+  warehouseLinks              WarehouseSupplyOrder[]
+  storeLinks                  StoreSupplyOrder[]
+
+  @@unique([createdById, code])
+}
+
+enum SupplyOrderStatus {  
+  ISSUED
+  PENDING
+  RECEIVED
+  DELIVERED
+  COMPLETED
+  ANNULLATED
+}
+
+//===================PRODUCTOS DE LA ORDEN=======================
+
+model SupplyOrderProduct {
+  id                         String @id @default(uuid())
+
+  supplyOrderId              String
+  supplyOrder                SupplyOrder @relation(fields: [supplyOrderId], references: [id])
+
+  productId                  String
+  product                    Product @relation(fields: [productId], references: [id])
+
+  quantity                   Int
+  note                       String?
+
+  @@unique([supplyOrderId, productId])
+}
+
+//===================PRODUCTOS DEL PROVEEDOR=======================
+
+model ProviderProduct {
+  id                         String @id @default(uuid())
+
+  providerId                 String
+  provider                   Provider @relation(fields: [providerId], references: [id])
+
+  productId                  String
+  product                    Product @relation(fields: [productId], references: [id])
+
+  buyCost                    Float?
+
+  @@unique([providerId, productId])
+}
+
+//===================ORDEN DE SUMINISTRO PARA ALMACEN=======================
+
+model WarehouseSupplyOrder {
+  id            String @id @default(uuid())
+
+  warehouseId   String
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
+
+  supplyOrderId String
+  supplyOrder   SupplyOrder @relation(fields: [supplyOrderId], references: [id])
+
+  receivedAt    DateTime?
+  notes         String?
+
+  @@unique([warehouseId, supplyOrderId])
+}
+
+//===================ORDEN DE SUMINISTRO PARA TIENDA=======================
+
+model StoreSupplyOrder {
+  id            String @id @default(uuid())
+
+  storeId       String
+  store         Store @relation(fields: [storeId], references: [id])
+
+  supplyOrderId String
+  supplyOrder   SupplyOrder @relation(fields: [supplyOrderId], references: [id])
+
+  receivedAt    DateTime?
+  notes         String?
+
+  @@unique([storeId, supplyOrderId])
+}
+
+//===================EMPLEADOS DEL ALMACEN=======================
+
+model WarehouseEmployed {
+  id          String @id @default(uuid())
+
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  employedId  String
+  employed    Employed  @relation(fields: [employedId], references: [id])
+
+  role        String?
+  assignedAt  DateTime @default(now())
+
+  @@unique([warehouseId, employedId])
+}
+
+model WarehouseStore {
+  id          String @id @default(uuid())
+
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  storeId     String
+  store       Store @relation(fields: [storeId], references: [id])
+
+  priority    Int?
+  createdAt   DateTime @default(now())
+
+  @@unique([warehouseId, storeId])
+}
+
+model StoreEmployed {
+  id          String @id @default(uuid())
+
+  employedId  String
+  employed    Employed @relation(fields: [employedId], references: [id])
+
+  storeId     String
+  store       Store @relation(fields: [storeId], references: [id])
+
+  role        String?
+  assignedAt  DateTime @default(now())
+
+  @@unique([employedId, storeId])
 }
 
 //===================SECCIÓN DE METRICAS===================
