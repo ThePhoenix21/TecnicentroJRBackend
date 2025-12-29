@@ -456,7 +456,7 @@ model Provider {
   updatedAt                   DateTime @updatedAt
 
   createdById                 String
-  createdBy                   User @relation(fields: [createdById], references: [id])
+  createdBy                   User @relation("ProviderCreatedBy", fields: [createdById], references: [id])
 
   supplyOrders                SupplyOrder[]
   providerProducts            ProviderProduct[]
@@ -479,7 +479,7 @@ model SupplyOrder {
   provider                    Provider @relation(fields: [providerId], references: [id])
 
   createdById                 String
-  createdBy                   User @relation(fields: [createdById], references: [id])
+  createdBy                   User @relation("SupplyOrderCreatedBy", fields: [createdById], references: [id])
 
   // productos de la orden
   products                    SupplyOrderProduct[]
