@@ -15,6 +15,12 @@ type AuthUser = {
   tenantFeatures?: TenantFeature[];
 };
 
+type HardDeleteOrdersByDateRangeInput = {
+  fromDate: string;
+  toDate: string;
+  reason?: string;
+};
+
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
@@ -941,6 +947,131 @@ export class OrderService {
 
       // 8. Devolver la orden actualizada
       return updatedOrder as unknown as Order;
+    });
+  }
+
+  async hardDeleteOrdersByDateRange(
+    input: HardDeleteOrdersByDateRangeInput,
+    user: AuthUser,
+    ipAddress?: string,
+  ) {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    if (user.role !== 'ADMIN') {
+      throw new ForbiddenException('Solo un ADMIN puede ejecutar hard delete de historial');
+    }
+
+    const from = new Date(input.fromDate);
+    const to = new Date(input.toDate);
+
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException('Rango de fechas inválido');
+    }
+
+    if (from.getTime() > to.getTime()) {
+      throw new BadRequestException('fromDate no puede ser mayor que toDate');
+    }
+
+    this.logger.warn(
+      `Hard delete solicitado: tenant=${tenantId} by=${this.mask(user.userId)} range=[${from.toISOString()}..${to.toISOString()}]`,
+    );
+
+    return this.prisma.$transaction(async (prisma) => {
+      const orders = await prisma.order.findMany({
+        where: {
+          createdAt: {
+            gte: from,
+            lte: to,
+          },
+          cashSession: {
+            Store: {
+              tenantId,
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      const orderIds = orders.map((o) => o.id);
+
+      if (orderIds.length === 0) {
+        await (prisma as any).orderHardDeleteAudit.create({
+          data: {
+            tenantId,
+            executedByUserId: user.userId,
+            executedByEmail: user.email,
+            fromDate: from,
+            toDate: to,
+            deletedOrdersCount: 0,
+            ipAddress: ipAddress ?? null,
+            reason: input.reason ?? null,
+          },
+        });
+
+        return {
+          deletedOrdersCount: 0,
+          fromDate: from.toISOString(),
+          toDate: to.toISOString(),
+        };
+      }
+
+      await prisma.inventoryMovement.deleteMany({
+        where: {
+          orderId: { in: orderIds },
+        },
+      });
+
+      await prisma.cashMovement.deleteMany({
+        where: {
+          relatedOrderId: { in: orderIds },
+        },
+      });
+
+      await prisma.paymentMethod.deleteMany({
+        where: {
+          orderId: { in: orderIds },
+        },
+      });
+
+      await prisma.service.deleteMany({
+        where: {
+          orderId: { in: orderIds },
+        },
+      });
+
+      await prisma.orderProduct.deleteMany({
+        where: {
+          orderId: { in: orderIds },
+        },
+      });
+
+      const deletedOrders = await prisma.order.deleteMany({
+        where: {
+          id: { in: orderIds },
+        },
+      });
+
+      await (prisma as any).orderHardDeleteAudit.create({
+        data: {
+          tenantId,
+          executedByUserId: user.userId,
+          executedByEmail: user.email,
+          fromDate: from,
+          toDate: to,
+          deletedOrdersCount: deletedOrders.count,
+          ipAddress: ipAddress ?? null,
+          reason: input.reason ?? null,
+        },
+      });
+
+      return {
+        deletedOrdersCount: deletedOrders.count,
+        fromDate: from.toISOString(),
+        toDate: to.toISOString(),
+      };
     });
   }
 
