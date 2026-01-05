@@ -19,59 +19,88 @@ model RefreshToken {
 }
 
 model User {
-  id                        String         @id @default(uuid())
-  email                     String         @unique
-  password                  String
-  name                      String
-  birthdate                 DateTime?
-  language                  String?        @default("indeterminado")
-  timezone                  String?        @default("UTC")
-  phone                     String?        @default("sin_telefono")
-  username                  String         @unique @default("default_username")
-  status                    UserStatus     @default(ACTIVE)
-  role                      Role           @default(USER)
-  permissions               String[]       @default([]) // Permisos granulares
-  lastLoginAt               DateTime?
-  lastLoginIp               String?
-  createdAt                 DateTime       @default(now())
-  updatedAt                 DateTime       @default(now()) @updatedAt
-  verified                  Boolean        @default(false)
-  verifyToken               String?
-  verifyTokenExpires        DateTime?
-  avatarUrl                 String?
-  passwordChangedAt         DateTime?
-  passwordResetToken        String?
-  passwordResetTokenExpires DateTime?
+  id                          String         @id @default(uuid())
+  email                       String         @unique
+  password                    String
+  name                        String
+  birthdate                   DateTime?
+  language                    String?        @default("indeterminado")
+  timezone                    String?        @default("UTC")
+  phone                       String?        @default("sin_telefono")
+  username                    String         @unique @default("default_username")
+  status                      UserStatus     @default(ACTIVE)
+  role                        Role           @default(USER)
+  permissions                 String[]       @default([]) // Permisos granulares
+  lastLoginAt                 DateTime?
+  lastLoginIp                 String?
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @default(now()) @updatedAt
+  verified                    Boolean        @default(false)
+  verifyToken                 String?
+  verifyTokenExpires          DateTime?
+  avatarUrl                   String?
+  passwordChangedAt           DateTime?
+  passwordResetToken          String?
+  passwordResetTokenExpires   DateTime?
 
-  tenantId                  String?
-  tenant                    Tenant?        @relation(fields: [tenantId], references: [id])
+  tenantId                    String?
+  tenant                      Tenant?        @relation(fields: [tenantId], references: [id])
 
-  clients                   Client[]
-  orders                    Order[]
-  products                  Product[]
-  refreshTokens             RefreshToken[]
-  cashSessions              CashSession[]
-  cashMovements             CashMovement[]
-  storeUsers                StoreUsers[]
-  stores                    Store[]
-  storeProducts             StoreProduct[]
-  inventoryMovements        InventoryMovement[]
-  inventorySessions         InventoryCountSession[]
-  supportTicketsCreated     SupportTicket[] @relation("SupportTicketCreatedBy")
-  warehousesCreated         Warehouse[] @relation("WarehouseCreatedBy")
-  supplyOrders              SupplyOrder[] @relation("SupplyOrderCreatedBy")
-  provider                  Provider[] @relation("ProviderCreatedBy")
-  employed                  Employed? @relation("EmployedUser")
-  employedCreated           Employed[] @relation("EmployedCreatedBy")
-  ordersCanceled            Order[] @relation("OrderCanceledBy")
+  accessProfileId             String?
+  accessProfile               AccessProfile? @relation(fields: [accessProfileId], references: [id])
+
+  clients                     Client[]
+  orders                      Order[]
+  products                    Product[]
+  refreshTokens               RefreshToken[]
+  cashSessions                CashSession[]
+  cashMovements               CashMovement[]
+  storeUsers                  StoreUsers[]
+  stores                      Store[]
+  storeProducts               StoreProduct[]
+  inventoryMovements          InventoryMovement[]
+  inventorySessions           InventoryCountSession[]  
+  employedHistories           EmployedHistory[]
+  storeReceptionsCreated      StoreReception[]
+  warehouseReceptionsCreated  WarehouseReception[]
+
+  supportTicketsCreated       SupportTicket[] @relation("SupportTicketCreatedBy")
+  warehousesCreated           Warehouse[] @relation("WarehouseCreatedBy")
+  supplyOrders                SupplyOrder[] @relation("SupplyOrderCreatedBy")
+  provider                    Provider[] @relation("ProviderCreatedBy")
+  employed                    Employed? @relation("EmployedUser")
+  employedCreated             Employed[] @relation("EmployedCreatedBy")
+  ordersCanceled              Order[] @relation("OrderCanceledBy")
 }
+
+////===================PERFILES DE ACCESO===================
+
+model AccessProfile {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+
+  // Lista de permisos (keys: VIEW_INVENTORY, MANAGE_PRODUCTS, etc)
+  permissions String[]
+
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+}
+
 
 model Product {
   id                        String   @id @default(uuid())
   name                      String
   description               String?  
-  basePrice                 Float?   // precio de venta sugerido
-  buyCost                   Float?   // costo de adquisición del producto
+  basePrice                 Decimal?   // precio de venta sugerido
+  buyCost                   Decimal?   // costo de adquisición del producto
   isDeleted                 Boolean  @default(false)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
@@ -81,11 +110,37 @@ model Product {
   storeProducts             StoreProduct[]
   supplyOrderProducts       SupplyOrderProduct[]
   providerProducts          ProviderProduct[]
+  warehouseProducts         WarehouseProduct[]
+  warehouseReceptions       WarehouseReceptionProduct[]
+  storeReceptions           StoreReceptionProduct[]
 }
+
+//=================== Product Batches ===================
+
+model ProductBatch {
+  id                            String   @id @default(uuid())
+
+  warehouseProductId            String? 
+  warehouseProduct              WarehouseProduct? @relation(fields: [warehouseProductId], references: [id])
+
+  storeProductId                String?
+  storeProduct                  StoreProduct? @relation(fields: [storeProductId], references: [id])
+
+  quantity                      Int
+
+  productionDate                DateTime?
+  expirationDate                DateTime?
+
+  receivedAt                    DateTime @default(now())
+
+  createdAt                     DateTime @default(now())
+}
+
+//=================== Store Products ===================
 
 model StoreProduct {
   id                        String   @id @default(uuid())
-  price                     Float    // precio que esta tienda aplica
+  price                     Decimal    // precio que esta tienda aplica
   stock                     Int      @default(0) // unidades disponibles en esta tienda
   stockThreshold            Int     @default(1) // alerta de stock mínimo
   createdAt                 DateTime @default(now())
@@ -100,38 +155,42 @@ model StoreProduct {
   userId                    String
   user                      User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  tenantId                  String?
+  tenant                    Tenant? @relation(fields: [tenantId], references: [id])
+
   orderProducts             OrderProduct[]
   inventoryMovements        InventoryMovement[]
   inventoryCountItems       InventoryCountItem[]
+  productBatches            ProductBatch[]
 }
 
 model OrderProduct {
-  id        String  @id @default(uuid())
-  quantity  Int     @default(1)
-  price     Float
-  buycost   Float   @default(0)
-  productId String
-  orderId   String
-  order     Order        @relation(fields: [orderId], references: [id])
-  product   StoreProduct @relation(fields: [productId], references: [id])
+  id                               String  @id @default(uuid())
+  quantity                         Int     @default(1)
+  price                            Decimal
+  buycost                          Decimal   @default(0)
+  productId                        String
+  orderId                          String
+  order                            Order        @relation(fields: [orderId], references: [id])
+  product                          StoreProduct @relation(fields: [productId], references: [id])
 }
 
 model Client {
-  id        String   @id @default(uuid())
-  name      String?
-  email     String?
-  phone     String?
-  address   String?
-  ruc       String?
-  dni       String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                               String   @id @default(uuid())
+  name                             String?
+  email                            String?
+  phone                            String?
+  address                          String?
+  ruc                              String?
+  dni                              String
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId                           String
+  user                             User     @relation(fields: [userId], references: [id], onDelete: Restrict)
 
-  tenantId  String?
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  tenantId                         String?
+  tenant                           Tenant?  @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, dni])
   @@unique([tenantId, email])
@@ -142,8 +201,8 @@ model Client {
 
 model Order {
   id            String         @id @default(uuid())
-  orderNumber   String         @unique @default("ORD-0000")
-  totalAmount   Float
+  orderNumber   String         @unique
+  totalAmount   Decimal
   status        SaleStatus     @default(PENDING)
   isPriceModified Boolean       @default(false)
   createdAt     DateTime       @default(now())
@@ -177,7 +236,7 @@ model Service {
   name        String
   description String
   photoUrls   String[]      @default([])
-  price       Float
+  price       Decimal
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -188,7 +247,7 @@ model Service {
 model Payment {
   id        String            @id @default(uuid())
   type      PaymentType       @default(EFECTIVO)
-  amount    Float
+  amount    Decimal
 
   sourceType PaymentSourceType
   sourceId   String
@@ -200,7 +259,7 @@ model Payment {
 model PaymentMethod {
   id        String      @id @default(uuid())
   type      PaymentType @default(EFECTIVO)
-  amount    Float
+  amount    Decimal
 
   orderId   String
   order     Order       @relation(fields: [orderId], references: [id])
@@ -216,9 +275,9 @@ model CashSession {
   openedById      String
   closedById      String?
   status          SessionStatus @default(OPEN)
-  openingAmount   Float
-  declaredAmount  Float    @default(0)
-  closingAmount   Float?
+  openingAmount   Decimal
+  declaredAmount  Decimal    @default(0)
+  closingAmount   Decimal?
 
   StoreId         String
   Store           Store         @relation(fields: [StoreId], references: [id])
@@ -235,7 +294,7 @@ model CashMovement {
   id            String      @id @default(uuid())
   sessionId     String
   type          MovementType
-  amount        Float
+  amount        Decimal
   payment       PaymentType?
   description   String?
   createdAt     DateTime    @default(now())
@@ -271,7 +330,34 @@ model Store {
   inventorySessions       InventoryCountSession[]
   storeEmployees          StoreEmployed[]
   warehouseStores         WarehouseStore[]
-  storeSupplyOrders       StoreSupplyOrder[]
+  storeReceptions         StoreReception[]
+  supplyOrders            SupplyOrder[]
+}
+
+//===================RECEPCIONES DE TIENDA=======================
+
+model StoreReception {
+  id              String   @id @default(uuid())
+
+  storeId         String
+  store           Store @relation(fields: [storeId], references: [id])
+
+  supplyOrderId   String?
+  supplyOrder     SupplyOrder? @relation(fields: [supplyOrderId], references: [id])
+
+  tenantId        String?
+  tenant          Tenant? @relation(fields: [tenantId], references: [id])
+
+  receivedAt      DateTime @default(now())
+  reference       String?
+  notes           String?
+
+  createdById     String
+  createdBy       User @relation(fields: [createdById], references: [id])
+
+  products        StoreReceptionProduct[]
+
+  createdAt       DateTime @default(now())
 }
 
 model StoreUsers {
@@ -284,44 +370,72 @@ model StoreUsers {
   user      User        @relation(fields: [userId], references: [id])
 }
 
+//=================== STORE RECEPTION PRODUCTS ===================
+
+model StoreReceptionProduct {
+  id                              String @id @default(uuid())
+
+  storeReceptionId                String
+  storeReception                  StoreReception @relation(fields: [storeReceptionId], references: [id])
+
+  productId                       String
+  product                         Product @relation(fields: [productId], references: [id])
+
+  quantity                        Int
+
+  createdAt                       DateTime @default(now())
+}
+
 //===================SECCIÓN DE EMPRESA===================
 
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  ruc       String?
-  status    TenantStatus @default(ACTIVE)
-  plan      TenantPlan    @default(FREE)
-  features  TenantFeature[]
-  defaultService ServiceType? @default(REPAIR)
-  currency  CurrencyCode? @default(PEN)  
-  createdAt DateTime @default(now())
+  id                              String   @id @default(uuid())
+  name                            String
+  ruc                             String?
+  status                          TenantStatus @default(ACTIVE)
+  plan                            TenantPlan    @default(FREE)
+  features                        TenantFeature[]
+  defaultService                  ServiceType? @default(REPAIR)
+  currency                        CurrencyCode? @default(PEN)  
+  createdAt                       DateTime @default(now())
 
-  stores    Store[]
-  users     User[]
-  clients   Client[]
-  warehouses Warehouse[]
+  stores                          Store[]
+  warehouses                      Warehouse[]
+
+  users                           User[]
+  clients                         Client[]
+  
+  storeProducts                   StoreProduct[]
+  warehouseProducts               WarehouseProduct[]
+  inventoryMovements              InventoryMovement[]
+  supplyOrders                    SupplyOrder[]
+  warehouseReceptions             WarehouseReception[]
+  storeReceptions                 StoreReception[]
+  accessProfiles                  AccessProfile[]
 }
 
 //===================SECCIÓN DE INVENTARIO===================
 
 model InventoryMovement {
-  id          String      @id @default(uuid())
-  type        InventoryMovementType
-  quantity    Int
-  description String?
-  date        DateTime    @default(now())
+  id                              String      @id @default(uuid())
+  type                            InventoryMovementType
+  quantity                        Int
+  description                     String?
+  date                            DateTime    @default(now())
 
   // relación con StoreProduct (producto en una tienda específica)
-  storeProductId String
-  storeProduct   StoreProduct @relation(fields: [storeProductId], references: [id])
+  storeProductId                  String
+  storeProduct                    StoreProduct @relation(fields: [storeProductId], references: [id])
+
+  tenantId                        String?
+  tenant                          Tenant? @relation(fields: [tenantId], references: [id])
 
   // usuario que realizó el movimiento
-  userId String
-  user   User @relation(fields: [userId], references: [id])
+  userId                          String
+  user                            User @relation(fields: [userId], references: [id])
 
-  orderId     String?
-  order       Order?      @relation(fields: [orderId], references: [id])
+  orderId                         String?
+  order                           Order?      @relation(fields: [orderId], references: [id])
 }
 
 model InventoryCountSession {
@@ -370,14 +484,33 @@ model Warehouse {
   updatedAt                 DateTime @updatedAt
 
   warehouseEmployees        WarehouseEmployed[]
-  warehouseStores           WarehouseStore[]
-  warehouseSupplyOrders     WarehouseSupplyOrder[]
+  warehouseStores           WarehouseStore[]  
+  warehouseProducts         WarehouseProduct[]
+  warehouseReceptions       WarehouseReception[]
+  supplyOrders              SupplyOrder[]
+}
+
+//===================WAREHOUSE RECEPTION===================
+
+model WarehouseReceptionProduct {
+  id                    String @id @default(uuid())
+
+  warehouseReceptionId  String
+  warehouseReception    WarehouseReception @relation(fields: [warehouseReceptionId], references: [id])  
+
+  productId             String
+  product               Product @relation(fields: [productId], references: [id])
+
+  quantity              Int
+
+  createdAt             DateTime @default(now())
 }
 
 //===================EMPLOYED===================
 
 model Employed {
   id                     String   @id @default(uuid())
+
   firstName              String
   lastName               String
 
@@ -387,9 +520,6 @@ model Employed {
 
   position               String?
   status                 EmployedStatus @default(ACTIVE)
-
-  hiredAt                DateTime?
-  endedAt                DateTime?
 
   // acceso al sistema (opcional)
   userId                 String? @unique
@@ -404,12 +534,34 @@ model Employed {
 
   warehouseAssignments WarehouseEmployed[]
   storeAssignments     StoreEmployed[]
+  employedHistories    EmployedHistory[]
+
+  @@unique([createdByUserId, document])
 }
 
 enum EmployedStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+}
+
+//===================EMPLOYED HISTORY===================
+
+model EmployedHistory {
+  id          String   @id @default(uuid())
+
+  employedId  String
+  employed    Employed @relation(fields: [employedId], references: [id])
+
+  hiredAt     DateTime
+  endedAt     DateTime?
+
+  reason      String? // renuncia, despido, reingreso, etc
+
+  createdById String
+  createdBy   User @relation(fields: [createdById], references: [id])
+
+  createdAt   DateTime @default(now())
 }
 
 //===================SUPPORT===================
@@ -433,7 +585,9 @@ model SupportTicket {
 enum SupportStatus {
   OPEN
   IN_PROGRESS
-  CLOSED
+  CANCELLED
+  REFUSED
+  COMPLETED
 }
 
 enum SupportPriority {
@@ -478,15 +632,23 @@ model SupplyOrder {
   providerId                  String
   provider                    Provider @relation(fields: [providerId], references: [id])
 
+  tenantId                    String?
+  tenant                      Tenant? @relation(fields: [tenantId], references: [id])
+
   createdById                 String
   createdBy                   User @relation("SupplyOrderCreatedBy", fields: [createdById], references: [id])
 
+  warehouseId                 String?
+  warehouse                   Warehouse? @relation(fields: [warehouseId], references: [id])
+
+  storeId                     String?
+  store                       Store? @relation(fields: [storeId], references: [id])
+
   // productos de la orden
   products                    SupplyOrderProduct[]
-
-  // relaciones con almacenes y tiendas
-  warehouseLinks              WarehouseSupplyOrder[]
-  storeLinks                  StoreSupplyOrder[]
+  
+  warehouseReceptions       WarehouseReception[]
+  storeReceptions           StoreReception[]
 
   @@unique([createdById, code])
 }
@@ -498,6 +660,57 @@ enum SupplyOrderStatus {
   DELIVERED
   COMPLETED
   ANNULLATED
+}
+
+//===================PRODUCTOS DEL ALMACEN=======================
+
+model WarehouseProduct {
+  id                       String   @id @default(uuid())
+
+  warehouseId              String
+  warehouse                Warehouse @relation(fields: [warehouseId], references: [id])
+
+  productId                String
+  product                  Product  @relation(fields: [productId], references: [id])
+
+  tenantId                 String?
+  tenant                   Tenant? @relation(fields: [tenantId], references: [id])
+
+  stock                    Int      @default(0)
+  stockThreshold           Int      @default(0)
+
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  productBatches           ProductBatch[]
+
+  @@unique([warehouseId, productId])
+}
+
+//===================RECEPCIONES DE ALMACÉN=======================
+
+model WarehouseReception {
+  id              String   @id @default(uuid())
+
+  warehouseId     String
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
+
+  supplyOrderId   String?
+  supplyOrder     SupplyOrder? @relation(fields: [supplyOrderId], references: [id])
+
+  tenantId        String?
+  tenant          Tenant? @relation(fields: [tenantId], references: [id])
+
+  receivedAt      DateTime @default(now())
+  reference       String?  // guia, factura, remito, etc
+  notes           String?
+
+  createdById     String
+  createdBy       User @relation(fields: [createdById], references: [id])
+
+  products        WarehouseReceptionProduct[]
+
+  createdAt       DateTime @default(now())
 }
 
 //===================PRODUCTOS DE LA ORDEN=======================
@@ -528,43 +741,9 @@ model ProviderProduct {
   productId                  String
   product                    Product @relation(fields: [productId], references: [id])
 
-  buyCost                    Float?
+  buyCost                    Decimal?
 
   @@unique([providerId, productId])
-}
-
-//===================ORDEN DE SUMINISTRO PARA ALMACEN=======================
-
-model WarehouseSupplyOrder {
-  id            String @id @default(uuid())
-
-  warehouseId   String
-  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
-
-  supplyOrderId String
-  supplyOrder   SupplyOrder @relation(fields: [supplyOrderId], references: [id])
-
-  receivedAt    DateTime?
-  notes         String?
-
-  @@unique([warehouseId, supplyOrderId])
-}
-
-//===================ORDEN DE SUMINISTRO PARA TIENDA=======================
-
-model StoreSupplyOrder {
-  id            String @id @default(uuid())
-
-  storeId       String
-  store         Store @relation(fields: [storeId], references: [id])
-
-  supplyOrderId String
-  supplyOrder   SupplyOrder @relation(fields: [supplyOrderId], references: [id])
-
-  receivedAt    DateTime?
-  notes         String?
-
-  @@unique([storeId, supplyOrderId])
 }
 
 //===================EMPLEADOS DEL ALMACEN=======================
@@ -627,7 +806,7 @@ model ApiMetric {
 
   requestsCount    Int
   errorsCount      Int
-  avgLatencyMs     Float?
+  avgLatencyMs     Decimal?
 
   tenantId         String?  // relacion logica, no FK
 
