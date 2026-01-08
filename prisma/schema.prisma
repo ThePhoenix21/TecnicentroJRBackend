@@ -62,8 +62,11 @@ model User {
   inventorySessions           InventoryCountSession[]  
   employedHistories           EmployedHistory[]
   storeReceptionsCreated      StoreReception[]
-  warehouseReceptionsCreated  WarehouseReception[]
-
+  warehouseReceptionsCreated  WarehouseReception[]    
+  quotationsCreated           Quotation[]
+  storeServicesCreated        StoreService[]
+  servicesDefinitionsCreated  ServiceDefinition[]
+  
   supportTicketsCreated       SupportTicket[] @relation("SupportTicketCreatedBy")
   warehousesCreated           Warehouse[] @relation("WarehouseCreatedBy")
   supplyOrders                SupplyOrder[] @relation("SupplyOrderCreatedBy")
@@ -229,6 +232,8 @@ model Order {
   canceledBy     User?       @relation("OrderCanceledBy", fields: [canceledById], references: [id])
 }
 
+//===================SERVICIOS===================
+
 model Service {
   id          String        @id @default(uuid())
   type        ServiceType   @default(REPAIR)
@@ -240,9 +245,91 @@ model Service {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  storeServiceId String?
+  storeService   StoreService? @relation(fields: [storeServiceId], references: [id])
+
+  serviceCategoryId String
+  serviceCategory   ServiceCategory @relation(fields: [serviceCategoryId], references: [id])
+
   orderId     String
   order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
+
+//===================SERVICIOS PERSONALIZADOS===================
+
+model StoreService {
+  id                           String        @id @default(uuid())
+  name                         String
+  description                  String?
+  price                        Decimal
+  type                         ServiceType
+
+  isActive                     Boolean       @default(true)
+  deletedAt                    DateTime?
+
+  tenantId                     String
+  tenant                       Tenant        @relation(fields: [tenantId], references: [id])
+
+  createdById                  String
+  createdBy                    User          @relation(fields: [createdById], references: [id])
+
+  storeId                      String
+  store                        Store         @relation(fields: [storeId], references: [id])
+
+  ServiceDefinitionId          String
+  ServiceDefinition            ServiceDefinition @relation(fields: [ServiceDefinitionId], references: [id])
+
+  ServiceCategoryId            String
+  ServiceCategory              ServiceCategory @relation(fields: [ServiceCategoryId], references: [id])
+
+  services                     Service[]
+
+  createdAt                    DateTime      @default(now())
+  updatedAt                    DateTime      @updatedAt
+}
+
+//===================CATEGORIAS DE SERVICIOS===================
+
+model ServiceCategory {
+  id                           String   @id @default(uuid())
+  name                         String
+
+  tenantId                     String
+  tenant                       Tenant   @relation(fields: [tenantId], references: [id])
+
+  isActive                     Boolean  @default(true)
+
+  services                     Service[]
+  storeServices                StoreService[]
+
+  createdAt                    DateTime @default(now())
+}
+
+
+//===================DEFINICION DE SERVICIOS===================
+
+model ServiceDefinition {
+  id                          String   @id @default(uuid())
+  name                        String
+  description                 String?
+  basePrice                   Decimal
+
+  isActive                    Boolean  @default(true)
+  deletedAt                   DateTime?
+
+  tenantId                    String
+  tenant                      Tenant   @relation(fields: [tenantId], references: [id])
+
+  createdById                 String
+  createdBy                   User     @relation(fields: [createdById], references: [id])
+
+  StoreService                StoreService[]
+
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+}
+
+//===================PAGOS===================
 
 model Payment {
   id        String            @id @default(uuid())
@@ -309,6 +396,8 @@ model CashMovement {
   User          User        @relation(fields: [UserId], references: [id])
 }
 
+//===================SECCIÓN DE TIENDAS===================
+
 model Store {
   id        String      @id @default(uuid())
   name      String
@@ -332,6 +421,7 @@ model Store {
   warehouseStores         WarehouseStore[]
   storeReceptions         StoreReception[]
   supplyOrders            SupplyOrder[]
+  storeServices           StoreService[]
 }
 
 //===================RECEPCIONES DE TIENDA=======================
@@ -412,6 +502,9 @@ model Tenant {
   warehouseReceptions             WarehouseReception[]
   storeReceptions                 StoreReception[]
   accessProfiles                  AccessProfile[]
+  storeServices                   StoreService[]
+  serviceCategories               ServiceCategory[]
+  serviceDefinitions              ServiceDefinition[]
 }
 
 //===================SECCIÓN DE INVENTARIO===================
@@ -563,6 +656,63 @@ model EmployedHistory {
 
   createdAt   DateTime @default(now())
 }
+
+//===================COTIZACIONES===================
+
+model Quotation {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  status      QuotationStatus  @default(DRAFT)
+  notes       String?
+  subtotal    Decimal
+  tax         Decimal          @default(0)
+  total       Decimal
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+
+  items       QuotationItem[]
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+//===================COTIZACIONES ITEM===================
+
+model QuotationItem {
+  id            String        @id @default(uuid())
+  quotationId   String
+  quotation     Quotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  type          QuotationItemType // PRODUCT | SERVICE
+
+  name          String
+  description   String?
+  quantity      Int             @default(1)
+
+  unitPrice     Decimal
+  subtotal      Decimal
+
+  buycost       Decimal         @default(0) // solo aplica a productos
+  photoUrls     String[]        @default([])
+
+  // referencias historicas (opcional)
+  productId     String?
+  serviceId     String?
+}
+
+enum QuotationItemType {
+  PRODUCT
+  SERVICE
+}
+
 
 //===================SUPPORT===================
 
