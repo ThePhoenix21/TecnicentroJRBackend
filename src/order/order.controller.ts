@@ -29,6 +29,8 @@ import { PERMISSIONS } from '../auth/permissions';
 import { OrderCreateResponseDto } from './dto/order-create-response.dto';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
+import { AuthService } from '../auth/auth.service';
+import { HardDeleteOrdersByDateRangeDto } from './dto/hard-delete-orders-by-date-range.dto';
 
 @ApiTags('Órdenes')
 @ApiBearerAuth('JWT-auth')
@@ -38,7 +40,54 @@ import { TenantFeature } from '@prisma/client';
 export class OrderController {
   constructor(
     private readonly orderService: OrderService,
+    private readonly authService: AuthService,
   ) {}
+  
+  @Post('hard-delete/by-date-range')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
+  @RequireTenantFeatures(TenantFeature.SALES, TenantFeature.HARD_DELETE_SALES_HISTORY)
+  @ApiOperation({
+    summary: 'Hard delete de órdenes por rango de fechas (irreversible)',
+    description: 'Elimina físicamente órdenes y entidades relacionadas dentro del rango indicado, solo si el tenant tiene habilitada la feature HARD_DELETE_SALES_HISTORY. Requiere re-autenticación (email y password) y ejecuta auditoría mínima no borrable.'
+  })
+  @ApiBody({ type: HardDeleteOrdersByDateRangeDto })
+  async hardDeleteOrdersByDateRange(
+    @Req() req: Request & { user: { userId: string; email: string; role: Role; tenantId?: string } },
+    @Body(new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    })) dto: HardDeleteOrdersByDateRangeDto,
+  ) {
+    const userId = req.user?.userId;
+    const tenantId = (req.user as any)?.tenantId;
+
+    if (!userId) {
+      throw new UnauthorizedException('No se pudo autenticar al usuario');
+    }
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Tenant no encontrado en el token');
+    }
+
+    const validated = await this.authService.validateAnyUser(dto.email, dto.password);
+    if (validated.id !== userId || validated.email !== req.user.email) {
+      throw new UnauthorizedException('Re-autenticación inválida');
+    }
+
+    return this.orderService.hardDeleteOrdersByDateRange(
+      {
+        fromDate: dto.fromDate,
+        toDate: dto.toDate,
+        reason: dto.reason,
+      },
+      req.user as any,
+      (req as any)?.ip,
+    );
+  }
 
   @Post('create')
   @HttpCode(HttpStatus.CREATED)

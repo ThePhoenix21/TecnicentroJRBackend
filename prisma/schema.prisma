@@ -66,6 +66,7 @@ model User {
   quotationsCreated          Quotation[]
   storeServicesCreated       StoreService[]
   servicesDefinitionsCreated ServiceDefinition[]
+  orderHardDeleteAudits      OrderHardDeleteAudit[]
 
   supportTicketsCreated SupportTicket[] @relation("SupportTicketCreatedBy")
   warehousesCreated     Warehouse[]     @relation("WarehouseCreatedBy")
@@ -711,6 +712,29 @@ enum QuotationItemType {
   SERVICE
 }
 
+//===================AUDITORIA DE BORRADO EN MASIVO===================
+
+model OrderHardDeleteAudit {
+  id                String   @id @default(uuid())
+  tenantId           String
+
+  executedByUserId   String
+  executedByUser     User     @relation(fields: [executedByUserId], references: [id], onDelete: Restrict)
+  executedByEmail    String
+
+  fromDate           DateTime
+  toDate             DateTime
+
+  deletedOrdersCount Int
+
+  ipAddress          String?
+  reason             String?
+
+  createdAt          DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
 //===================SUPPORT===================
 
 model SupportTicket {
@@ -1009,6 +1033,8 @@ enum TenantFeature {
   INVENTORY
   CLIENTS
   CONFIG
+
+  HARD_DELETE_SALES_HISTORY
 }
 
 enum PaymentType {

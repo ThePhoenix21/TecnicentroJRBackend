@@ -15,6 +15,12 @@ type AuthUser = {
   tenantFeatures?: TenantFeature[];
 };
 
+type HardDeleteOrdersByDateRangeInput = {
+  fromDate: string;
+  toDate: string;
+  reason?: string;
+};
+
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
@@ -29,6 +35,12 @@ export class OrderService {
     const s = String(value);
     if (s.length <= 8) return '***';
     return `${s.slice(0, 4)}***${s.slice(-4)}`;
+  }
+
+  private toNumber(value: Prisma.Decimal | number | null | undefined): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
   }
 
   private normalizeServiceType(type: unknown): PrismaServiceType {
@@ -525,7 +537,7 @@ export class OrderService {
         },
         paymentMethods: {
           create: (paymentMethods || []).map((pm) => ({
-            type: pm.type as any,
+            type: pm.type as PaymentType,
             amount: pm.amount,
           })),
         },
@@ -579,14 +591,17 @@ export class OrderService {
         servicesDto: services,
         clientIdToUse,
         paymentMethodsDto: paymentMethods,
+        clientInfo: clientInfo,
       };
     }).then(async (result) => {
       // 8. Crear pagos y movimientos de caja FUERA de la transacción
-      const { order, clientIdToUse, paymentMethodsDto } = result;
+      const { order, clientIdToUse, paymentMethodsDto, clientInfo } = result;
 
       this.logger.log(`Procesando pagos de orden: order=${this.mask(order.id)}`);
 
-      const cashPayments = (paymentMethodsDto || []).filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
+      const cashPayments = (paymentMethodsDto || []).filter(
+        (pm) => pm.type === PaymentType.EFECTIVO && this.toNumber(pm.amount) > 0,
+      );
       if (cashPayments.length > 0) {
         this.logger.log(`Creando movimientos de caja (efectivo): order=${this.mask(order.id)} count=${cashPayments.length}`);
 
@@ -597,8 +612,8 @@ export class OrderService {
               amount: cashPayment.amount,
               orderId: order.id,
               clientId: clientIdToUse,
-              clientName: clientInfo?.name,
-              clientEmail: clientInfo?.email
+              clientName: order.client?.name || undefined,
+              clientEmail: order.client?.email || undefined
             }, false, userIdToUse);
           } catch (error) {
             this.logger.error(`Error al crear movimiento de caja: order=${this.mask(order.id)} amount=${cashPayment.amount} msg=${error.message}`);
@@ -827,7 +842,9 @@ export class OrderService {
       }
 
       // 4. Filtrar pagos en EFECTIVO (PaymentMethod) y crear movimientos de caja
-      const cashPayments = (order.paymentMethods || []).filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
+      const cashPayments = (order.paymentMethods || []).filter(
+        (pm) => pm.type === PaymentType.EFECTIVO && this.toNumber(pm.amount) > 0,
+      );
 
       this.logger.log(`Reembolso (efectivo) - pagos encontrados: order=${this.mask(order.id)} count=${cashPayments.length}`);
 
@@ -843,7 +860,7 @@ export class OrderService {
               // Usar createFromOrder para obtener datos directamente de la orden
               await this.cashMovementService.createFromOrder({
                 cashSessionId: order.cashSession.id,
-                amount: cashPayment.amount,
+                amount: this.toNumber(cashPayment.amount),
                 orderId: order.id,
                 clientId: order.client?.id || undefined,
                 clientName: order.client?.name || undefined,
@@ -944,6 +961,132 @@ export class OrderService {
     });
   }
 
+  async hardDeleteOrdersByDateRange(
+    input: HardDeleteOrdersByDateRangeInput,
+    user: AuthUser,
+    ipAddress?: string,
+  ) {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    if (user.role !== 'ADMIN') {
+      throw new ForbiddenException('Solo un ADMIN puede ejecutar hard delete de historial');
+    }
+
+    const from = new Date(input.fromDate);
+    const to = new Date(input.toDate);
+
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException('Rango de fechas inválido');
+    }
+
+    if (from.getTime() > to.getTime()) {
+      throw new BadRequestException('fromDate no puede ser mayor que toDate');
+    }
+
+    this.logger.warn(
+      `Hard delete solicitado: tenant=${tenantId} by=${this.mask(user.userId)} range=[${from.toISOString()}..${to.toISOString()}]`,
+    );
+
+    return this.prisma.$transaction(async (prisma) => {
+      const orders = await prisma.order.findMany({
+        where: {
+          createdAt: {
+            gte: from,
+            lte: to,
+          },
+          cashSession: {
+            Store: {
+              tenantId,
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      const orderIds = orders.map((o) => o.id);
+
+      if (orderIds.length === 0) {
+        await (prisma as any).orderHardDeleteAudit.create({
+          data: {
+            tenantId,
+            executedByUserId: user.userId,
+            executedByEmail: user.email,
+            fromDate: from,
+            toDate: to,
+            deletedOrdersCount: 0,
+            ipAddress: ipAddress ?? null,
+            reason: input.reason ?? null,
+          },
+        });
+
+        return {
+          deletedOrdersCount: 0,
+          fromDate: from.toISOString(),
+          toDate: to.toISOString(),
+        };
+      }
+
+      await prisma.inventoryMovement.deleteMany({
+        where: {
+          orderId: { in: orderIds },
+        },
+      });
+
+      await prisma.cashMovement.deleteMany({
+        where: {
+          relatedOrderId: { in: orderIds },
+        },
+      });
+
+      await prisma.paymentMethod.deleteMany({
+        where: {
+          orderId: { in: orderIds },
+        },
+      });
+
+      await prisma.service.deleteMany({
+        where: {
+          orderId: { in: orderIds },
+        },
+      });
+
+      await prisma.orderProduct.deleteMany({
+        where: {
+          orderId: { in: orderIds },
+        },
+      });
+
+      const deletedOrders = await prisma.order.deleteMany({
+        where: {
+          id: { in: orderIds },
+        },
+      });
+
+      await (prisma as any).orderHardDeleteAudit.create({
+        data: {
+          tenantId,
+          executedByUserId: user.userId,
+          executedByEmail: user.email,
+          fromDate: from,
+          toDate: to,
+          deletedOrdersCount: deletedOrders.count,
+          ipAddress: ipAddress ?? null,
+          reason: input.reason ?? null,
+        },
+      });
+
+      return {
+        deletedOrdersCount: deletedOrders.count,
+        fromDate: from.toISOString(),
+        toDate: to.toISOString(),
+      };
+    });
+  }
+
+
   // Método auxiliar para obtener la orden con todos los detalles necesarios para la respuesta (PDF, pagos, etc.)
   async getOrderWithDetails(orderId: string, user: AuthUser): Promise<Order> {
     await this.assertOrderAccess(orderId, user);
@@ -1026,7 +1169,10 @@ export class OrderService {
       clientName: orderClient?.name || 'Cliente no identificado',
       clientDni: orderClient?.dni || 'N/A',
       clientPhone: orderClient?.phone || 'N/A',
-      paidAmount: (completeOrder.paymentMethods || []).reduce((sum, pm) => sum + pm.amount, 0)
+      paidAmount: (completeOrder.paymentMethods || []).reduce(
+        (sum, pm) => sum + this.toNumber(pm.amount),
+        0,
+      )
     };
 
     return {
@@ -1169,7 +1315,7 @@ export class OrderService {
       for (const servicePayment of services) {
         for (const payment of (servicePayment.payments || [])) {
           newPaymentMethods.push({
-            type: payment.type as unknown as PaymentType,
+            type: payment.type as PaymentType,
             amount: payment.amount,
           });
         }
@@ -1208,15 +1354,22 @@ export class OrderService {
       }
 
       // 5. Calcular totales para determinar si la orden puede completarse
-      const totalOwed = order.services.reduce((sum, s) => sum + (s.price || 0), 0)
-        + order.orderProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0);
+      const totalOwed =
+        order.services.reduce((sum, s) => sum + this.toNumber(s.price), 0) +
+        order.orderProducts.reduce(
+          (sum, p) => sum + this.toNumber(p.price) * p.quantity,
+          0,
+        );
 
       const existingPaymentMethods = await prisma.paymentMethod.findMany({
         where: { orderId },
         select: { amount: true }
       });
 
-      const totalPaid = existingPaymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
+      const totalPaid = existingPaymentMethods.reduce(
+        (sum, pm) => sum + this.toNumber(pm.amount),
+        0,
+      );
       
       console.log('💰 Estado financiero:', { totalOwed, totalPaid, balance: totalPaid - totalOwed });
 
@@ -1318,8 +1471,8 @@ export class OrderService {
 
     if (!order) return 0;
 
-    const servicesTotal = order.services.reduce((sum, service) => sum + service.price, 0);
-    const productsTotal = order.orderProducts.reduce((sum, product) => sum + (product.price * product.quantity), 0);
+    const servicesTotal = order.services.reduce((sum, service) => sum + this.toNumber(service.price), 0);
+    const productsTotal = order.orderProducts.reduce((sum, product) => sum + this.toNumber(product.price) * product.quantity, 0);
     
     return servicesTotal + productsTotal;
   }
@@ -1347,6 +1500,6 @@ export class OrderService {
       select: { amount: true }
     });
 
-    return paymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
+    return paymentMethods.reduce((sum, pm) => sum + this.toNumber(pm.amount), 0);
   }
 }
