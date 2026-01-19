@@ -20,6 +20,12 @@ export class ReceiptService {
     return tenantId;
   }
 
+  private toNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
+  }
+
   async getServiceReceipt(orderId: string, user: any): Promise<ServiceReceiptResponseDto> {
     const tenantId = this.getTenantIdOrThrow(user);
     // Obtener la orden con toda la información necesaria
@@ -70,7 +76,7 @@ export class ReceiptService {
     ]);
 
     // Calcular monto total pagado
-    const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const paidAmount = payments.reduce((sum, payment) => sum + this.toNumber(payment.amount), 0);
 
     // Formatear fecha y hora
     const now = new Date(order.createdAt);
@@ -160,7 +166,7 @@ export class ReceiptService {
     ]);
 
     // Calcular monto total pagado
-    const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const paidAmount = payments.reduce((sum, payment) => sum + this.toNumber(payment.amount), 0);
 
     // Formatear fecha y hora
     const now = new Date(order.createdAt);
@@ -252,7 +258,7 @@ export class ReceiptService {
       }),
     ]);
 
-    const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const paidAmount = payments.reduce((sum, payment) => sum + this.toNumber(payment.amount), 0);
 
     const now = new Date(service.createdAt);
     const currentDate = now.toLocaleDateString('es-PE');
@@ -344,7 +350,7 @@ export class ReceiptService {
     ]);
 
     // Calcular monto total pagado
-    const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const paidAmount = payments.reduce((sum, payment) => sum + this.toNumber(payment.amount), 0);
 
     // Formatear fecha y hora
     const now = new Date(service.updatedAt); // Usar updatedAt para completados

@@ -24,6 +24,7 @@ import { TenantFeaturesGuard } from './tenant/guards/tenant-features.guard';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ApiMetricsModule } from './common/api-metrics/api-metrics.module';
 import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.interceptor';
+import { EmployedModule } from './employed/employed.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.intercep
     TenantModule,
     AnalyticsModule,
     ApiMetricsModule,
+    EmployedModule,
   ],
   controllers: [],
   providers: [

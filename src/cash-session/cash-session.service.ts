@@ -17,6 +17,12 @@ export class CashSessionService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private toNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
+  }
+
   private async assertStoreAccess(storeId: string, user: AuthUser) {
     const tenantId = user?.tenantId;
 
@@ -527,7 +533,7 @@ export class CashSessionService {
           quantity: op.quantity,
           description: op.product.product.name,
           paymentMethod: paymentMethods,
-          price: op.price * op.quantity,
+          price: this.toNumber(op.price) * op.quantity,
           status: statusShort,
         });
       }
@@ -568,7 +574,7 @@ export class CashSessionService {
       methods.forEach((p) => {
         const type = p.type;
         const amount = p.amount;
-        paymentSummary[type] = (paymentSummary[type] || 0) + amount;
+        paymentSummary[type] = (paymentSummary[type] || 0) + this.toNumber(amount);
       });
     }
 
@@ -599,7 +605,7 @@ export class CashSessionService {
       openingAmount: session.openingAmount,
       closingAmount: session.closingAmount,
       declaredAmount: session.declaredAmount,
-      difference: (session.declaredAmount || 0) - (session.closingAmount || 0),
+      difference: this.toNumber(session.declaredAmount || 0) - this.toNumber(session.closingAmount || 0),
       storeName: session.Store.name,
       storeAddress: session.Store.address,
       storePhone: session.Store.phone,

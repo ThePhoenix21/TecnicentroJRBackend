@@ -15,6 +15,12 @@ type AuthUser = {
 export class ServiceService {
   constructor(private prisma: PrismaService) {}
 
+  private toNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
+  }
+
   private getTenantIdOrThrow(user: AuthUser): string {
     const tenantId = user?.tenantId;
     if (!tenantId) {
@@ -264,22 +270,22 @@ export class ServiceService {
     const payments = service.order?.paymentMethods || [];
 
     // 3. Calcular totales
-    const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
-    const pendingAmount = service.price - totalPaid;
+    const totalPaid = payments.reduce((sum, payment) => sum + this.toNumber(payment.amount), 0);
+    const pendingAmount = this.toNumber(service.price) - totalPaid;
     const isFullyPaid = pendingAmount <= 0;
 
     // 4. Formatear respuesta
     return {
       serviceId: service.id,
       serviceName: service.name,
-      servicePrice: service.price,
+      servicePrice: this.toNumber(service.price),
       totalPaid,
       pendingAmount: Math.max(0, pendingAmount), // Evitar negativos
       isFullyPaid,
       paymentBreakdown: payments.map(payment => ({
         id: payment.id,
         type: payment.type,
-        amount: payment.amount,
+        amount: this.toNumber(payment.amount),
         createdAt: payment.createdAt.toISOString(),
       })),
     };

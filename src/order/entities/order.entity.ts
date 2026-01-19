@@ -1,8 +1,9 @@
 import { Order as PrismaOrder, SaleStatus, Service, OrderProduct, PaymentMethod, Client, User } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/binary';
 
 export class Order implements PrismaOrder {
   id: string;
-  totalAmount: number;
+  totalAmount: Decimal;
   status: SaleStatus;
   isPriceModified: boolean;
   createdAt: Date;

@@ -601,32 +601,38 @@ model WarehouseReceptionProduct {
 //===================EMPLOYED===================
 
 model Employed {
-  id String @id @default(uuid())
+  id                                String @id @default(uuid())
 
-  firstName String
-  lastName  String
+  firstName                         String
+  lastName                          String
 
-  document String?
-  phone    String?
-  email    String?
+  document                          String?
+  phone                             String?
+  email                             String?
 
-  position String?
-  status   EmployedStatus @default(ACTIVE)
+  position                          String?
+  status                            EmployedStatus @default(ACTIVE)
+  
+  // nuevos campos para documentos
+  documentUrls                      String[]  @default([])
+
+  //soft delete
+  deletedAt                         DateTime?
 
   // acceso al sistema (opcional)
-  userId String? @unique
-  user   User?   @relation("EmployedUser", fields: [userId], references: [id])
+  userId                            String? @unique
+  user                              User?   @relation("EmployedUser", fields: [userId], references: [id])
 
   // auditoria
-  createdByUserId String
-  createdByUser   User   @relation("EmployedCreatedBy", fields: [createdByUserId], references: [id])
+  createdByUserId                   String
+  createdByUser                     User   @relation("EmployedCreatedBy", fields: [createdByUserId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt                         DateTime @default(now())
+  updatedAt                         DateTime @updatedAt
 
-  warehouseAssignments WarehouseEmployed[]
-  storeAssignments     StoreEmployed[]
-  employedHistories    EmployedHistory[]
+  warehouseAssignments              WarehouseEmployed[]
+  storeAssignments                  StoreEmployed[]
+  employedHistories                 EmployedHistory[]
 
   @@unique([createdByUserId, document])
 }

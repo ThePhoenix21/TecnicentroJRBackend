@@ -16,6 +16,12 @@ type DateRange = { from: Date; to: Date };
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private toNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
+  }
+
   private assertValidTimeZone(timeZone: string) {
     try {
       new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
@@ -209,7 +215,7 @@ export class AnalyticsService {
     for (const p of payments) {
       const key = p.type;
       const current = byType.get(key) || { type: key, totalAmount: 0, count: 0 };
-      const amount = p.amount || 0;
+      const amount = this.toNumber(p.amount || 0);
 
       current.totalAmount += amount;
       current.count += 1;
@@ -289,8 +295,8 @@ export class AnalyticsService {
       }),
     ]);
 
-    const totalIncome = incomePaymentMethods.reduce((sum, p) => sum + p.amount, 0);
-    const totalExpenses = expenseCashMovements.reduce((sum, e) => sum + e.amount, 0);
+    const totalIncome = incomePaymentMethods.reduce((sum, p) => sum + this.toNumber(p.amount), 0);
+    const totalExpenses = expenseCashMovements.reduce((sum, e) => sum + this.toNumber(e.amount), 0);
     const netProfit = totalIncome - totalExpenses;
 
     const timeline = [
@@ -573,7 +579,7 @@ export class AnalyticsService {
       orderBy: { createdAt: 'asc' },
     });
 
-    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + this.toNumber(e.amount), 0);
 
     return {
       totals: {

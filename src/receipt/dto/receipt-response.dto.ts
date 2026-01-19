@@ -1,3 +1,5 @@
+import { Decimal } from '@prisma/client/runtime/binary';
+
 export class ReceiptInfoDto {
   businessName: string;
   address: string;
@@ -9,7 +11,7 @@ export class ReceiptInfoDto {
   clientName: string;
   clientDni: string;
   clientPhone: string;
-  paidAmount: number;
+  paidAmount: number | Decimal;
   order: any;
 }
 

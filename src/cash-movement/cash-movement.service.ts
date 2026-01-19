@@ -24,6 +24,12 @@ export class CashMovementService {
     return `${s.slice(0, 4)}***${s.slice(-4)}`;
   }
 
+  private toNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
+  }
+
   private async assertCashSessionAccess(cashSessionId: string, user: AuthUser) {
     const tenantId = user?.tenantId;
 
@@ -342,13 +348,13 @@ export class CashMovementService {
 
       const totalIngresos = cashOnlyMovements
         .filter(m => m.type === MovementType.INCOME)
-        .reduce((sum, m) => sum + m.amount, 0);
+        .reduce((sum, m) => sum + this.toNumber(m.amount), 0);
 
       const totalSalidas = cashOnlyMovements
         .filter(m => m.type === MovementType.EXPENSE)
-        .reduce((sum, m) => sum + m.amount, 0);
+        .reduce((sum, m) => sum + this.toNumber(m.amount), 0);
 
-      const balanceActual = cashSession.openingAmount + totalIngresos - totalSalidas;
+      const balanceActual = this.toNumber(cashSession.openingAmount) + totalIngresos - totalSalidas;
 
       this.logger.log(
         `Balance calculado: session=${this.mask(cashSessionId)} opening=${cashSession.openingAmount} income=${totalIngresos} expense=${totalSalidas} balance=${balanceActual}`,

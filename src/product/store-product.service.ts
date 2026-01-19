@@ -14,6 +14,12 @@ export class StoreProductService {
     private productService: ProductService
   ) {}
 
+  private toNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
+  }
+
   async create(userId: string, tenantId: string, createStoreProductDto: CreateStoreProductDto): Promise<StoreProduct[]> {
     if (!userId) {
       throw new Error('Se requiere un ID de usuario válido para crear un producto en tienda');
@@ -37,8 +43,8 @@ export class StoreProductService {
         const createCatalogProductDto: CreateCatalogProductDto = {
           name: createStoreProductDto.name,
           description: createStoreProductDto.description,
-          basePrice: createStoreProductDto.basePrice,
-          buyCost: createStoreProductDto.buyCost,
+          basePrice: this.toNumber(createStoreProductDto.basePrice),
+          buyCost: this.toNumber(createStoreProductDto.buyCost),
           createdById: userId
         };
 
@@ -115,7 +121,7 @@ export class StoreProductService {
       }
 
       // Determinar el precio para la tienda origen (si no se envía, usar 0)
-      const originPrice = createStoreProductDto.price ?? 0;
+      const originPrice = this.toNumber(createStoreProductDto.price ?? 0);
 
       // Crear los StoreProducts en todas las tiendas necesarias
       const storeProductsToCreate = storesToCreate.map(store => ({
@@ -486,7 +492,7 @@ export class StoreProductService {
       }
       if (updateData.basePrice !== undefined) {
         console.log('Agregando basePrice a productFields:', updateData.basePrice);
-        productFields.basePrice = updateData.basePrice;
+        productFields.basePrice = this.toNumber(updateData.basePrice);
       }
     }
 
