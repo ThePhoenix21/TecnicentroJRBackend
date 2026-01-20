@@ -34,6 +34,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { CreateEmployedDto } from './dto/create-employed.dto';
+import { BulkChangeEmployedStatusDto } from './dto/bulk-change-employed-status.dto';
 import { UpdateEmployedDto } from './dto/update-employed.dto';
 import { ChangeEmployedStatusDto } from './dto/change-employed-status.dto';
 import { ReassignEmployedDto } from './dto/reassign-employed.dto';
@@ -88,6 +89,32 @@ export class EmployedController {
   @ApiOperation({ summary: 'Listar empleados eliminados (deletedAt != null)' })
   async listDeleted(@Req() req: Request & { user: any }) {
     return this.employedService.listDeleted(req.user);
+  }
+
+  @Post('bulk/status')
+  @Roles(Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 10, windowSeconds: 60 }],
+  })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cambiar estado de empleados en grupo',
+    description: 'Aplica un status a una lista de empleados del tenant. Si el status es INACTIVE se cierra el historial abierto con updatedByUserId.',
+  })
+  @ApiBody({ type: BulkChangeEmployedStatusDto })
+  async bulkChangeStatus(
+    @Req() req: Request & { user: any },
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    dto: BulkChangeEmployedStatusDto,
+  ) {
+    return this.employedService.bulkChangeStatus(dto, req.user);
   }
 
   @Get(':id/simple')

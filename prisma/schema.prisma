@@ -60,7 +60,6 @@ model User {
   storeProducts              StoreProduct[]
   inventoryMovements         InventoryMovement[]
   inventorySessions          InventoryCountSession[]
-  employedHistories          EmployedHistory[]
   storeReceptionsCreated     StoreReception[]
   warehouseReceptionsCreated WarehouseReception[]
   quotationsCreated          Quotation[]
@@ -68,13 +67,15 @@ model User {
   servicesDefinitionsCreated ServiceDefinition[]
   orderHardDeleteAudits      OrderHardDeleteAudit[]
 
-  supportTicketsCreated SupportTicket[] @relation("SupportTicketCreatedBy")
-  warehousesCreated     Warehouse[]     @relation("WarehouseCreatedBy")
-  supplyOrders          SupplyOrder[]   @relation("SupplyOrderCreatedBy")
-  provider              Provider[]      @relation("ProviderCreatedBy")
-  employed              Employed?       @relation("EmployedUser")
-  employedCreated       Employed[]      @relation("EmployedCreatedBy")
-  ordersCanceled        Order[]         @relation("OrderCanceledBy")
+  supportTicketsCreated               SupportTicket[] @relation("SupportTicketCreatedBy")
+  warehousesCreated                   Warehouse[]     @relation("WarehouseCreatedBy")
+  supplyOrders                        SupplyOrder[]   @relation("SupplyOrderCreatedBy")
+  provider                            Provider[]      @relation("ProviderCreatedBy")
+  employed                            Employed?       @relation("EmployedUser")
+  employedCreated                     Employed[]      @relation("EmployedCreatedBy")
+  employedHistoriesCreated            EmployedHistory[] @relation("EmployedHistoryCreatedBy")
+  employedHistoriesUpdated            EmployedHistory[] @relation("EmployedUpdatedBy")
+  ordersCanceled                      Order[]         @relation("OrderCanceledBy")
 }
 
 ////===================PERFILES DE ACCESO===================
@@ -573,7 +574,7 @@ model Warehouse {
   createdBy   User?   @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @updatedAt  
 
   warehouseEmployees  WarehouseEmployed[]
   warehouseStores     WarehouseStore[]
@@ -627,12 +628,14 @@ model Employed {
   createdByUserId                   String
   createdByUser                     User   @relation("EmployedCreatedBy", fields: [createdByUserId], references: [id])
 
+  // relaciones de historia
+  employedHistories                 EmployedHistory[]
+
   createdAt                         DateTime @default(now())
   updatedAt                         DateTime @updatedAt
 
   warehouseAssignments              WarehouseEmployed[]
   storeAssignments                  StoreEmployed[]
-  employedHistories                 EmployedHistory[]
 
   @@unique([createdByUserId, document])
 }
@@ -656,8 +659,11 @@ model EmployedHistory {
 
   reason String? // renuncia, despido, reingreso, etc
 
+  updatedByUserId String?
+  updatedByUser   User?   @relation("EmployedUpdatedBy", fields: [updatedByUserId], references: [id])
+
   createdById String
-  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdBy   User   @relation("EmployedHistoryCreatedBy", fields: [createdById], references: [id])
 
   createdAt DateTime @default(now())
 }

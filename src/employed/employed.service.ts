@@ -28,6 +28,102 @@ export class EmployedService {
     private readonly supabaseStorage: SupabaseStorageService,
   ) {}
 
+  private async closeOpenHistory(
+    prisma: PrismaService | any,
+    employedId: string,
+    input: { endedAt: Date; reason: string },
+    actorUserId: string,
+  ) {
+    const open = await prisma.employedHistory.findFirst({
+      where: {
+        employedId,
+        endedAt: null,
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!open) {
+      return;
+    }
+
+    await (prisma.employedHistory as any).update({
+      where: { id: open.id },
+      data: {
+        endedAt: input.endedAt,
+        reason: input.reason,
+        updatedByUserId: actorUserId,
+      },
+    });
+  }
+
+  async bulkChangeStatus(
+    input: { ids: string[]; status: string; reason?: string },
+    user: AuthUser,
+  ) {
+    const tenantId = this.getTenantIdOrThrow(user);
+    const actorUserId = this.getAuthUserIdOrThrow(user);
+
+    const targetStatus = input.status as EmployedStatus;
+    const now = new Date();
+
+    const employees = await (this.prisma.employed as any).findMany({
+      where: {
+        id: { in: input.ids },
+        OR: [
+          { createdByUser: { tenantId } },
+          { storeAssignments: { some: { store: { tenantId } } } },
+          { warehouseAssignments: { some: { warehouse: { tenantId } } } },
+        ],
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    const foundIds = new Set(employees.map((e: any) => e.id));
+    const notFoundOrForbiddenIds = input.ids.filter((id) => !foundIds.has(id));
+
+    await this.prisma.$transaction(async (prisma) => {
+      for (const e of employees) {
+        if (targetStatus === EmployedStatus.INACTIVE) {
+          await this.closeOpenHistory(
+            prisma,
+            e.id,
+            { endedAt: now, reason: input.reason ?? 'cambio_masivo' },
+            actorUserId,
+          );
+        }
+
+        if (targetStatus === EmployedStatus.ACTIVE && e.status === EmployedStatus.INACTIVE) {
+          await prisma.employedHistory.create({
+            data: {
+              employedId: e.id,
+              hiredAt: now,
+              endedAt: null,
+              reason: input.reason ?? 'reingreso',
+              createdById: actorUserId,
+            },
+          });
+        }
+
+        await prisma.employed.update({
+          where: { id: e.id },
+          data: { status: targetStatus },
+        });
+      }
+    });
+
+    return {
+      requestedCount: input.ids.length,
+      updatedCount: employees.length,
+      notFoundOrForbiddenIds,
+      statusApplied: targetStatus,
+    };
+  }
+
   private getAuthUserIdOrThrow(user: AuthUser): string {
     const anyUser = user as any;
     const userId = user?.userId ?? anyUser?.sub ?? anyUser?.id;
@@ -300,7 +396,17 @@ export class EmployedService {
           where: { warehouse: { tenantId } },
           include: { warehouse: true },
         },
-        employedHistories: { orderBy: { createdAt: 'desc' } },
+        employedHistories: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            createdBy: {
+              select: { id: true, email: true, name: true },
+            },
+            updatedByUser: {
+              select: { id: true, email: true, name: true },
+            },
+          },
+        },
       },
     });
 
@@ -375,7 +481,17 @@ export class EmployedService {
           where: { warehouse: { tenantId } },
           include: { warehouse: true },
         },
-        employedHistories: { orderBy: { createdAt: 'desc' } },
+        employedHistories: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            createdBy: {
+              select: { id: true, email: true, name: true },
+            },
+            updatedByUser: {
+              select: { id: true, email: true, name: true },
+            },
+          },
+        },
       },
       orderBy: { deletedAt: 'desc' },
     });
@@ -427,15 +543,12 @@ export class EmployedService {
         data: { status: EmployedStatus.INACTIVE },
       });
 
-      await prisma.employedHistory.create({
-        data: {
-          employedId,
-          hiredAt: new Date(),
-          endedAt: new Date(),
-          reason: reason ?? 'despido',
-          createdById: creatorUserId,
-        },
-      });
+      await this.closeOpenHistory(
+        prisma,
+        employedId,
+        { endedAt: new Date(), reason: reason ?? 'despido' },
+        creatorUserId,
+      );
 
       return updated;
     });
@@ -555,6 +668,13 @@ export class EmployedService {
     }
 
     return this.prisma.$transaction(async (prisma) => {
+      await this.closeOpenHistory(
+        prisma,
+        employedId,
+        { endedAt: new Date(), reason: 'correccion_dni' },
+        creatorUserId,
+      );
+
       await (prisma.employed as any).update({
         where: { id: employedId },
         data: {
