@@ -66,6 +66,43 @@ export class ProductService {
     return (await Promise.all(products.map((p) => this.attachCreatedByForTenant(p, tenantId)))) as unknown as CatalogProduct[];
   }
 
+  async lookup(user?: AuthUser, search?: string): Promise<Array<{ id: string; name: string }>> {
+    const tenantId = this.getTenantIdOrUndefined(user);
+
+    const whereCondition: any = {
+      isDeleted: false,
+    };
+
+    // Si hay tenant, filtrar por productos creados por usuarios del tenant
+    if (tenantId) {
+      whereCondition.createdBy = {
+        tenantId,
+      };
+    }
+
+    // Si hay búsqueda, filtrar por nombre que contenga el término (case insensitive)
+    if (search) {
+      whereCondition.name = {
+        contains: search,
+        mode: 'insensitive',
+      };
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: whereCondition,
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+      take: 50, // Limitar a 50 resultados para lookup
+    });
+
+    return products;
+  }
+
   async findOne(id: string, user?: AuthUser): Promise<CatalogProduct> {
     const tenantId = this.getTenantIdOrUndefined(user);
 

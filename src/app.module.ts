@@ -25,6 +25,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { ApiMetricsModule } from './common/api-metrics/api-metrics.module';
 import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.interceptor';
 import { EmployedModule } from './employed/employed.module';
+import { ProviderModule } from './provider/provider.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { EmployedModule } from './employed/employed.module';
     AnalyticsModule,
     ApiMetricsModule,
     EmployedModule,
+    ProviderModule,
   ],
   controllers: [],
   providers: [

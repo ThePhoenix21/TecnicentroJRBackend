@@ -11,6 +11,7 @@ import {
   HttpStatus,
   HttpCode,
   ParseUUIDPipe,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -19,6 +20,7 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -28,6 +30,8 @@ import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { Role } from '../auth/enums/role.enum';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
+import { ValidationPipe } from '@nestjs/common';
 import { ProductService } from './product.service';
 import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -182,6 +186,52 @@ export class ProductController {
   })
   async findAll(@Req() req: any): Promise<CatalogProduct[]> {
     return this.productService.findAll(req.user);
+  }
+
+  @Get('lookup')
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 200, windowSeconds: 60 }],
+  })
+  @ApiOperation({
+    summary: 'Lookup de productos (solo ID y nombre)',
+    description: 'Retorna una lista simplificada de productos del tenant con solo ID y nombre, ideal para selects y autocompletados.',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Término de búsqueda para filtrar productos por nombre',
+    example: 'aceite',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Lista de productos simplificada obtenida exitosamente',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
+          name: { type: 'string', example: 'Aceite de Motor 10W40' },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'No autorizado - Token JWT inválido o ausente',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'No tiene permisos para ver productos',
+  })
+  async lookup(
+    @Req() req: any,
+    @Query('search') search?: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    return this.productService.lookup(req.user, search);
   }
 
   @Get('findOne/:id')
