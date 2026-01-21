@@ -27,6 +27,7 @@ import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.intercep
 import { EmployedModule } from './employed/employed.module';
 import { ProviderModule } from './provider/provider.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { WarehouseModule } from './warehouse/warehouse.module';
     EmployedModule,
     ProviderModule,
     WarehouseModule,
+    SupportModule,
   ],
   controllers: [],
   providers: [
