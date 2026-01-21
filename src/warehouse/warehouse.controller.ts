@@ -83,6 +83,13 @@ export class WarehouseController {
     return this.warehouseService.list(req.user);
   }
 
+  @Get('simple')
+  @ApiOperation({ summary: 'Listar almacenes del tenant (solo IDs y nombres)' })
+  @ApiResponse({ status: 200 })
+  async listSimple(@Req() req: Request & { user: any }) {
+    return this.warehouseService.listSimple(req.user);
+  }
+
   @Get(':id/stores')
   @ApiOperation({ summary: 'Listar stores abastecidas por un warehouse' })
   @ApiResponse({ status: 200 })

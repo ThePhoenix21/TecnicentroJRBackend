@@ -175,6 +175,22 @@ export class WarehouseService {
     return links.map((l) => l.store);
   }
 
+  async listSimple(user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    return (this.prisma.warehouse as any).findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async getDetails(warehouseId: string, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
     await this.findWarehouseOrThrow(warehouseId, tenantId);
