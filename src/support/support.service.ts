@@ -41,6 +41,7 @@ export class SupportService {
     return (this.prisma.supportTicket as any).findMany({
       where: { createdByUserId },
       select: {
+        id: true,
         status: true,
         priority: true,
         subject: true,
@@ -74,5 +75,74 @@ export class SupportService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async listAllTickets() {
+    return (this.prisma.supportTicket as any).findMany({
+      select: {
+        status: true,
+        priority: true,
+        subject: true,
+        message: true,
+        createdByUserId: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getTicketById(ticketId: string, user: AuthUser) {
+    const userId = this.getAuthUserIdOrThrow(user);
+
+    const ticket = await (this.prisma.supportTicket as any).findFirst({
+      where: {
+        id: ticketId,
+        OR: [
+          { createdByUserId: userId },
+          { createdByUserId: undefined }
+        ]
+      },
+      select: {
+        subject: true,
+        message: true,
+        priority: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket no encontrado');
+    }
+
+    return ticket;
+  }
+
+  async cancelTicket(ticketId: string, user: AuthUser) {
+    const userId = this.getAuthUserIdOrThrow(user);
+
+    const ticket = await (this.prisma.supportTicket as any).findFirst({
+      where: {
+        id: ticketId,
+        createdByUserId: userId,
+      },
+      select: { id: true, status: true },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket no encontrado o no tienes permiso para cancelarlo');
+    }
+
+    if (ticket.status === 'CANCELLED') {
+      return { success: true, message: 'El ticket ya estaba cancelado' };
+    }
+
+    await (this.prisma.supportTicket as any).update({
+      where: { id: ticketId },
+      data: { status: 'CANCELLED' },
+      select: { id: true },
+    });
+
+    return { success: true, message: 'Ticket cancelado correctamente' };
   }
 }

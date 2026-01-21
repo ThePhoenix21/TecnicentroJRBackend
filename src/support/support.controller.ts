@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -49,11 +50,39 @@ export class SupportController {
     return this.supportService.listMyTickets(req.user);
   }
 
+  @Get('tickets/:id')
+  @ApiOperation({ summary: 'Obtener detalles de un ticket por ID' })
+  @ApiResponse({ status: 200 })
+  async getTicketById(
+    @Req() req: Request & { user: any },
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.supportService.getTicketById(id, req.user);
+  }
+
   @Get('tickets/user/:userId')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Listar tickets por ID de usuario (administrativo)' })
   @ApiResponse({ status: 200 })
   async listTicketsByUserId(@Param('userId', new ParseUUIDPipe()) userId: string) {
     return this.supportService.listTicketsByUserId(userId);
+  }
+
+  @Get('tickets/all')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Listar todos los tickets de todos los usuarios (administrativo)' })
+  @ApiResponse({ status: 200 })
+  async listAllTickets() {
+    return this.supportService.listAllTickets();
+  }
+
+  @Delete('tickets/:id')
+  @ApiOperation({ summary: 'Cancelar ticket de soporte (cambiar status a CANCELLED)' })
+  @ApiResponse({ status: 200 })
+  async cancelTicket(
+    @Req() req: Request & { user: any },
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.supportService.cancelTicket(id, req.user);
   }
 }
