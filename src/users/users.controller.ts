@@ -1,10 +1,10 @@
-import { 
-  Controller, 
-  Post, 
+import {
+  Controller,
+  Post,
   Get,
   Put,
   Delete,
-  Body, 
+  Body,
   Param,
   Request,
   UseGuards,
@@ -19,10 +19,11 @@ import {
   NotFoundException,
   UnauthorizedException,
   InternalServerErrorException,
+  ValidationPipe,
 } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateSimpleUserDto } from '../auth/dto/create-simple-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -41,8 +42,8 @@ import { supabase } from '../supabase.client';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
-import { RequirePermissions } from '../auth/decorators/permissions.decorator';
-import { PERMISSIONS } from '../auth/permissions';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
+import { CreateUserFromEmployedDto } from './dto/create-user-from-employed.dto';
 
 @ApiTags('Users')
 @Controller('users')
@@ -95,34 +96,30 @@ export class UsersController {
     }
   }
 
+  @Post('from-employed')
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 20, windowSeconds: 60 }],
+  })
+  async createFromEmployed(
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    dto: CreateUserFromEmployedDto,
+    @Request() req: any,
+  ) {
+    return this.usersService.createFromEmployed(dto, req.user);
+  }
+
   @Post('upload-avatar')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({ 
-    summary: 'Subir avatar de usuario', 
-    description: 'Sube una imagen como avatar. Los administradores pueden subir para cualquier usuario especificando userId, los usuarios regulares solo pueden subir su propio avatar.' 
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-          description: 'Archivo de imagen (JPG, JPEG, PNG) hasta 5MB'
-        },
-        userId: {
-          type: 'string',
-          description: 'ID del usuario al que se le asignará el avatar (solo para administradores)'
-        }
-      },
-      required: ['file']
-    }
-  })
-  @ApiResponse({ status: 200, description: 'Avatar actualizado exitosamente' })
-  @ApiResponse({ status: 400, description: 'Archivo no válido o usuario no encontrado' })
-  @ApiResponse({ status: 403, description: 'No autorizado para actualizar este perfil' })
   async uploadAvatar(
     @UploadedFile(
       new ParseFilePipe({
@@ -200,26 +197,6 @@ export class UsersController {
   @Post('me/avatar')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({ 
-    summary: 'Subir mi avatar', 
-    description: 'Sube una imagen como avatar del usuario autenticado' 
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-          description: 'Archivo de imagen (JPG, JPEG, PNG) hasta 5MB'
-        }
-      },
-      required: ['file']
-    }
-  })
-  @ApiResponse({ status: 200, description: 'Avatar actualizado exitosamente' })
-  @ApiResponse({ status: 400, description: 'Archivo no válido' })
   async uploadMyAvatar(
     @UploadedFile(
       new ParseFilePipe({
@@ -267,16 +244,6 @@ export class UsersController {
   @Post('create')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiOperation({
-    summary: 'Crear nuevo usuario',
-    description: 'Crea un nuevo usuario con los datos proporcionados. El username se generará automáticamente si no se especifica. Requiere rol de ADMIN',
-  })
-  @ApiResponse({ status: 201, description: 'Usuario creado exitosamente' })
-  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
-  @ApiResponse({
-    status: 409,
-    description: 'El correo electrónico o teléfono ya está en uso',
-  })
   async createUser(@Body() createUserDto: CreateSimpleUserDto, @Request() req: any) {
     this.logger.debug('Iniciando creación de usuario');
     this.logger.debug(`Datos recibidos: ${JSON.stringify(createUserDto)}`);
@@ -325,52 +292,6 @@ export class UsersController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiOperation({ 
-    summary: 'Obtener todos los usuarios',
-    description: 'Obtiene una lista de todos los usuarios registrados. Requiere rol ADMIN'
-  })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Lista de usuarios obtenida exitosamente',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
-          email: { type: 'string', example: 'usuario@ejemplo.com' },
-          name: { type: 'string', example: 'Nombre del Usuario' },
-          role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
-          status: { 
-            type: 'string', 
-            enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DELETED'], 
-            example: 'ACTIVE',
-            description: 'Estado actual del usuario'
-          },
-          phone: { type: 'string', example: '+123456789' },
-          createdAt: { type: 'string', format: 'date-time' },
-          updatedAt: { type: 'string', format: 'date-time' },
-          stores: {
-            type: 'array',
-            description: 'Tiendas asociadas al usuario (para ADMIN: todas las tiendas, para USER: tiendas asignadas)',
-            items: {
-              type: 'object',
-              properties: {
-                id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
-                name: { type: 'string', example: 'Tienda Principal' },
-                address: { type: 'string', example: 'Av. Principal 123' },
-                phone: { type: 'string', example: '+123456789' },
-                createdAt: { type: 'string', format: 'date-time' },
-                updatedAt: { type: 'string', format: 'date-time' },
-                createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
-              }
-            }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({ status: 403, description: 'No autorizado' })
   async findAll(@Request() req: any) {
     const tenantId = req.user?.tenantId;
 
@@ -384,107 +305,47 @@ export class UsersController {
   @Put('change-password')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER)
-  @ApiOperation({
-    summary: 'Cambiar contraseña de usuario',
-    description: 'Permite a un usuario con rol USER cambiar su contraseña. Se requiere la contraseña actual para realizar el cambio.'
-  })
-  @ApiBody({
-    description: 'Datos requeridos para el cambio de contraseña',
-    type: ChangePasswordDto,
-    examples: {
-      example: {
-        value: {
-          currentPassword: 'contraseñaActual123',
-          newPassword: 'nuevaContraseñaSegura123',
-          confirmNewPassword: 'nuevaContraseñaSegura123'
-        },
-      },
-    },
-  })
-  @UseGuards(JwtAuthGuard)
-  @ApiResponse({
-    status: 200,
-    description: 'Contraseña actualizada exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        message: { type: 'string', example: 'Contraseña actualizada exitosamente' },
-      }
-    }
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Datos de entrada inválidos',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 400 },
-        message: { type: 'string', example: 'Las contraseñas no coinciden' },
-        error: { type: 'string', example: 'Bad Request' }
-      }
-    }
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Credenciales inválidas',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 401 },
-        message: { type: 'string', example: 'La contraseña actual es incorrecta' },
-        error: { type: 'string', example: 'Unauthorized' }
-      }
-    }
-  })
-  @Put('change-password')
-  async changePassword(
-    @Body() changePasswordDto: ChangePasswordDto,
-    @Request() req: any
-  ) {
-    const userId = req.user.userId;    
-    this.logger.log(`Iniciando cambio de contraseña para el usuario ID: ${userId}`);
-
+  async changePassword(@Body() changePasswordDto: ChangePasswordDto, @Request() req: any) {
     try {
-      // Validar que las nuevas contraseñas coincidan
+      const userId = req.user?.id || req.user?.sub || req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException('No se pudo autenticar al usuario');
+      }
+
       if (changePasswordDto.newPassword !== changePasswordDto.confirmNewPassword) {
         throw new BadRequestException('Las contraseñas no coinciden');
       }
 
-      // Obtener el usuario actual
       const user = await this.usersService.findById(userId, req.user);
       if (!user) {
         this.logger.warn(`Usuario no encontrado con ID: ${userId}`);
         throw new NotFoundException('Usuario no encontrado');
       }
 
-      // Verificar que el usuario tenga el rol USER
       if (user.role !== Role.USER) {
         throw new ForbiddenException('Este endpoint es solo para usuarios con rol USER');
       }
 
-      // Validar la contraseña actual
       const isPasswordValid = await bcrypt.compare(
         changePasswordDto.currentPassword,
-        user.password
+        user.password,
       );
 
       if (!isPasswordValid) {
         throw new UnauthorizedException('La contraseña actual es incorrecta');
       }
 
-      // Actualizar la contraseña
       const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
       await this.usersService.update(userId, { password: hashedPassword }, req.user);
-      
+
       this.logger.log(`Contraseña actualizada exitosamente para el usuario ID: ${userId}`);
-      
+
       return {
-        message: 'Contraseña actualizada exitosamente'
+        message: 'Contraseña actualizada exitosamente',
       };
     } catch (error) {
       this.logger.error(`Error al cambiar la contraseña: ${error.message}`, error.stack);
-      
-      // Reenviar el error si ya es una excepción conocida
+
       if (
         error instanceof BadRequestException ||
         error instanceof UnauthorizedException ||
@@ -493,82 +354,13 @@ export class UsersController {
       ) {
         throw error;
       }
-      
+
       throw new InternalServerErrorException('Error al cambiar la contraseña');
     }
   }
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({
-    summary: 'Obtener usuario por ID',
-    description: 'Obtiene los datos de un usuario específico por su ID. Requiere autenticación JWT pero no requiere rol específico.'
-  })
-  @ApiParam({ 
-    name: 'id', 
-    description: 'ID del usuario a consultar',
-    example: '550e8400-e29b-41d4-a716-446655440001'
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Usuario encontrado exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
-        email: { type: 'string', example: 'usuario@ejemplo.com' },
-        name: { type: 'string', example: 'Nombre del Usuario' },
-        role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
-        status: { 
-          type: 'string', 
-          enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DELETED'], 
-          example: 'ACTIVE',
-          description: 'Estado actual del usuario'
-        },
-        phone: { type: 'string', example: '+123456789' },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
-        stores: {
-          type: 'array',
-          description: 'Tiendas asociadas al usuario (para ADMIN: todas las tiendas, para USER: tiendas asignadas)',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
-              name: { type: 'string', example: 'Tienda Principal' },
-              address: { type: 'string', example: 'Av. Principal 123' },
-              phone: { type: 'string', example: '+123456789' },
-              createdAt: { type: 'string', format: 'date-time' },
-              updatedAt: { type: 'string', format: 'date-time' },
-              createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
-            }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Usuario no encontrado',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 404 },
-        message: { type: 'string', example: 'Usuario no encontrado' }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: 401, 
-    description: 'No autorizado - Se requiere autenticación JWT',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 401 },
-        message: { type: 'string', example: 'Unauthorized' }
-      }
-    }
-  })
   async findOne(@Param('id') id: string, @Request() req: any) {
     this.logger.debug(`Buscando usuario con ID: ${id}`);
     
@@ -645,149 +437,6 @@ export class UsersController {
   @Put('update/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.USER)
-  @ApiOperation({
-    summary: 'Actualizar perfil de usuario',
-    description: 'Actualiza los datos del perfil de un usuario existente. ADMIN puede editar cualquier usuario, USER solo puede editar sus propios datos. No permite cambiar rol ni contraseña.'
-  })
-  @ApiParam({ 
-    name: 'id', 
-    description: 'ID del usuario a actualizar (USER solo puede usar su propio ID)',
-    example: '550e8400-e29b-41d4-a716-446655440001'
-  })
-  @ApiBody({
-    description: 'Datos del usuario a actualizar (sin rol ni contraseña). Todos los campos son opcionales.',
-    type: UpdateUserDto,
-    examples: {
-      ejemplo_actualizacion_user: {
-        summary: 'Actualización de usuario normal (USER)',
-        description: 'Ejemplo de lo que un USER puede editar de su propio perfil (campos restringidos no permitidos)',
-        value: {
-          name: 'Juan Pérez Actualizado',
-          phone: '+346987654321',
-          language: 'es',
-          timezone: 'Europe/Madrid',
-          birthdate: '1990-01-01'
-        }
-      },
-      ejemplo_actualizacion_admin: {
-        summary: 'Actualización completa por ADMIN',
-        description: 'Ejemplo de lo que un ADMIN puede editar de cualquier usuario (incluyendo campos restringidos)',
-        value: {
-          name: 'María García López',
-          email: 'maria.garcia@ejemplo.com',
-          phone: '+346123456789',
-          username: 'maria.garcia',
-          birthdate: '1990-01-01',
-          language: 'es',
-          timezone: 'Europe/Madrid',
-          status: 'ACTIVE',
-          avatarUrl: 'https://example.com/avatars/maria.jpg',
-          verified: true,
-          storeId: '550e8400-e29b-41d4-a716-446655440003'
-        }
-      },
-      ejemplo_cambio_tienda: {
-        summary: 'Cambiar tienda asignada al usuario',
-        description: 'Ejemplo para cambiar la tienda a la que pertenece un usuario (solo para USER)',
-        value: {
-          storeId: '550e8400-e29b-41d4-a716-446655440003'
-        }
-      },
-      ejemplo_cambio_estado: {
-        summary: 'Cambiar estado del usuario',
-        description: 'Ejemplo para activar/desactivar un usuario',
-        value: {
-          status: 'INACTIVE'
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Usuario actualizado exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
-        email: { type: 'string', example: 'usuario@ejemplo.com' },
-        name: { type: 'string', example: 'Nombre del Usuario' },
-        role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
-        phone: { type: 'string', example: '+123456789' },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
-        stores: {
-          type: 'array',
-          description: 'Tiendas asociadas al usuario',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
-              name: { type: 'string', example: 'Tienda Principal' },
-              address: { type: 'string', example: 'Av. Principal 123' },
-              phone: { type: 'string', example: '+123456789' },
-              createdAt: { type: 'string', format: 'date-time' },
-              updatedAt: { type: 'string', format: 'date-time' },
-              createdById: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440002' }
-            }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Usuario no encontrado',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 404 },
-        message: { type: 'string', example: 'Usuario no encontrado' }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: 400, 
-    description: 'Datos de entrada inválidos',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 400 },
-        message: { type: 'string', example: 'Datos de entrada inválidos' },
-        details: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              field: { type: 'string', example: 'email' },
-              message: { type: 'string', example: 'Email inválido' }
-            }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: 403, 
-    description: 'No autorizado - Requiere rol de ADMIN',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 403 },
-        message: { type: 'string', example: 'No autorizado' }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: 409, 
-    description: 'Conflicto - Email o username ya existen',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 409 },
-        message: { type: 'string', example: 'El correo electrónico ya está en uso' }
-      }
-    }
-  })
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Request() req: Request & { user: { userId: string; email: string; role: Role } }) {
     this.logger.debug(`Iniciando actualización de usuario con ID: ${id}`);
     this.logger.debug(`Datos recibidos: ${JSON.stringify(updateUserDto)}`);
@@ -974,54 +623,6 @@ export class UsersController {
   @Put('change-role')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiOperation({
-    summary: 'Cambiar rol de usuario',
-    description: 'Cambia el rol de un usuario existente. REQUIERE: 1) Usuario ADMIN autenticado con JWT, 2) Credenciales válidas (email/password) del usuario cuyo rol se cambiará. Incluye auditoría completa de quién realizó el cambio.'
-  })
-  @ApiBody({
-    description: 'Credenciales del usuario y nuevo rol',
-    type: ChangeRoleDto,
-    examples: {
-      example: {
-        value: {
-          email: 'usuario@example.com',
-          password: 'contraseñaSegura123',
-          newRole: 'ADMIN'
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Rol actualizado exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        message: { type: 'string', example: 'Rol actualizado exitosamente' },
-        user: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', example: 'uuid' },
-            email: { type: 'string', example: 'usuario@example.com' },
-            name: { type: 'string', example: 'Nombre Usuario' },
-            role: { type: 'string', example: 'ADMIN' }
-          }
-        },
-        changedBy: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', example: 'admin-uuid' },
-            email: { type: 'string', example: 'admin@example.com' },
-            role: { type: 'string', example: 'ADMIN' }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
-  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
-  @ApiResponse({ status: 403, description: 'No autorizado' })
   async changeRole(@Body() changeRoleDto: ChangeRoleDto, @Request() req: any) {
     this.logger.debug(`Iniciando cambio de rol para el email: ${changeRoleDto.email}`);
     this.logger.debug(`Nuevo rol solicitado: ${changeRoleDto.newRole}`);
@@ -1085,53 +686,6 @@ export class UsersController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiOperation({ 
-    summary: 'Eliminar usuario (Soft Delete)',
-    description: 'Realiza un soft delete de un usuario cambiando su status a DELETED. El usuario no se elimina físicamente de la base de datos. Requiere rol de ADMIN.'
-  })
-  @ApiParam({ 
-    name: 'id', 
-    description: 'ID del usuario a eliminar (soft delete)',
-    example: '550e8400-e29b-41d4-a716-446655440001'
-  })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Usuario eliminado exitosamente (soft delete)',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
-        email: { type: 'string', example: 'usuario@ejemplo.com' },
-        name: { type: 'string', example: 'Nombre del Usuario' },
-        role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
-        status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DELETED'], example: 'DELETED' },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Usuario no encontrado',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 404 },
-        message: { type: 'string', example: 'Usuario no encontrado' }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: 403, 
-    description: 'No autorizado - Requiere rol de ADMIN',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 403 },
-        message: { type: 'string', example: 'No autorizado' }
-      }
-    }
-  })
   async remove(@Param('id') id: string, @Request() req: any) {
     this.logger.debug(`Iniciando soft delete del usuario con ID: ${id}`);
     
