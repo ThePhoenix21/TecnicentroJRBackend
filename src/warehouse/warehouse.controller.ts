@@ -90,14 +90,23 @@ export class WarehouseController {
     return this.warehouseService.listSimple(req.user);
   }
 
-  @Get(':id/stores')
-  @ApiOperation({ summary: 'Listar stores abastecidas por un warehouse' })
+  @Put(':id/stores')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Editar lista de tiendas abastecidas por un warehouse' })
   @ApiResponse({ status: 200 })
-  async listStores(
+  async updateStores(
     @Req() req: Request & { user: any },
     @Param('id', new ParseUUIDPipe()) id: string,
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    dto: { storeIds: string[] },
   ) {
-    return this.warehouseService.listStores(id, req.user);
+    return this.warehouseService.updateStores(id, dto.storeIds, req.user);
   }
 
   @Get(':id')

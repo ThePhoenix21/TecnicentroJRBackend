@@ -175,6 +175,46 @@ export class WarehouseService {
     return links.map((l) => l.store);
   }
 
+  async updateStores(warehouseId: string, storeIds: string[], user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+    await this.findWarehouseOrThrow(warehouseId, tenantId);
+
+    return this.prisma.$transaction(async (prisma) => {
+      // Eliminar todas las relaciones existentes
+      await (prisma.warehouseStore as any).deleteMany({
+        where: { warehouseId },
+      });
+
+      // Crear nuevas relaciones si hay storeIds
+      if (storeIds.length > 0) {
+        // Verificar que todas las tiendas existan y pertenezcan al tenant
+        const stores = await (prisma.store as any).findMany({
+          where: {
+            id: { in: storeIds },
+            tenantId,
+          },
+          select: { id: true },
+        });
+
+        if (stores.length !== storeIds.length) {
+          throw new BadRequestException('Algunas tiendas no existen o no pertenecen a tu tenant');
+        }
+
+        // Crear las nuevas relaciones
+        await (prisma.warehouseStore as any).createMany({
+          data: storeIds.map((storeId) => ({
+            warehouseId,
+            storeId,
+            priority: null,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      return { success: true, message: 'Tiendas actualizadas correctamente' };
+    });
+  }
+
   async listSimple(user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
 
