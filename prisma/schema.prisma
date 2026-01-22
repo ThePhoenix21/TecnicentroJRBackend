@@ -839,12 +839,12 @@ model SupplyOrder {
 }
 
 enum SupplyOrderStatus {
-  ISSUED
-  PENDING
-  RECEIVED
-  DELIVERED
-  COMPLETED
-  ANNULLATED
+  ISSUED // Emitida
+  PENDING // Pendiente
+  RECEIVED // Recibida
+  DELIVERED // Entregada
+  COMPLETED // Completada
+  ANNULLATED // Anulada
 }
 
 //===================PRODUCTOS DEL ALMACEN=======================
