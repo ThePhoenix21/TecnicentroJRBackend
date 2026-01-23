@@ -123,6 +123,39 @@ export class StoreController {
     return this.storeService.findAll(tenantId);
   }
 
+  @Get('simple')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Obtener lista simple de tiendas',
+    description: 'Obtiene una lista simplificada de tiendas del tenant con solo id, nombre y dirección'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Lista simple de tiendas obtenida exitosamente',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+          name: { type: 'string', example: 'Tienda Principal' },
+          address: { type: 'string', example: 'Av. Principal 123' }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'No autorizado - token inválido o expirado' })
+  findAllSimple(@Req() req: any) {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.storeService.findAllSimple(tenantId);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Obtener tienda por ID',

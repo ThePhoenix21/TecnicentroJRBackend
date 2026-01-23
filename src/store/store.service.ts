@@ -159,10 +159,24 @@ export class StoreService {
     }
   }
 
-  findAll(tenantId: string) {
+  async findAll(tenantId: string) {
     return this.prisma.store.findMany({
       where: { tenantId },
     }).then((stores) => Promise.all(stores.map((s) => this.attachCreatedByForTenant(s, tenantId))));
+  }
+
+  findAllSimple(tenantId: string) {
+    return this.prisma.store.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
   }
 
   async findOne(id: string, user: AuthUser) {
