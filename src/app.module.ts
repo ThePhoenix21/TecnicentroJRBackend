@@ -28,6 +28,7 @@ import { EmployedModule } from './employed/employed.module';
 import { ProviderModule } from './provider/provider.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { SupportModule } from './support/support.module';
+import { SupplyOrderModule } from './supply-order/supply-order.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { SupportModule } from './support/support.module';
     ProviderModule,
     WarehouseModule,
     SupportModule,
+    SupplyOrderModule,
   ],
   controllers: [],
   providers: [
