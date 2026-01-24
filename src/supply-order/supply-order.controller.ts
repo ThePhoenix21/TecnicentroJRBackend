@@ -3,12 +3,13 @@ import {
   Controller,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Req,
   UseGuards,
   ValidationPipe,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -21,6 +22,7 @@ import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.deco
 import { TenantFeature } from '@prisma/client';
 import { SupplyOrderService } from './supply-order.service';
 import { CreateSupplyOrderDto } from './dto/create-supply-order.dto';
+import { ReceiveSupplyOrderDto } from './dto/receive-supply-order.dto';
 
 @ApiTags('Órdenes de Suministro')
 @ApiBearerAuth()
@@ -34,6 +36,8 @@ export class SupplyOrderController {
   @HttpCode(HttpStatus.CREATED)
   @Roles(Role.ADMIN)
   @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @ApiOperation({ summary: 'Crear orden de suministro' })
+  @ApiBody({ type: CreateSupplyOrderDto })
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 30, windowSeconds: 60 }],
@@ -50,5 +54,30 @@ export class SupplyOrderController {
     dto: CreateSupplyOrderDto,
   ) {
     return this.supplyOrderService.create(dto, req.user);
+  }
+
+  @Post(':id/receive')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @ApiOperation({ summary: 'Registrar recepción de orden de suministro' })
+  @ApiBody({ type: ReceiveSupplyOrderDto })
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 20, windowSeconds: 60 }],
+  })
+  async receive(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    dto: ReceiveSupplyOrderDto,
+  ) {
+    return this.supplyOrderService.receive(id, dto, req.user);
   }
 }
