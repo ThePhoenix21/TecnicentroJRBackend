@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -54,6 +55,15 @@ export class ReceiveSupplyOrderDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiProperty({
+    example: false,
+    required: false,
+    description: 'Si es true, cierra la orden como PARTIALLY_RECEIVED cuando no se recibe todo.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  closePartial?: boolean;
 
   @ApiProperty({ type: [ReceiveSupplyOrderProductDto] })
   @IsArray()

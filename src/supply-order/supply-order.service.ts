@@ -213,6 +213,10 @@ export class SupplyOrderService {
       throw new BadRequestException('La orden está anulada');
     }
 
+    if (supplyOrder.status === SupplyOrderStatus.PARTIALLY_RECEIVED) {
+      throw new BadRequestException('La orden ya fue cerrada con recepción parcial');
+    }
+
     if (
       supplyOrder.status !== SupplyOrderStatus.PENDING &&
       supplyOrder.status !== SupplyOrderStatus.PARTIAL
@@ -301,6 +305,12 @@ export class SupplyOrderService {
     const allReceived = Array.from(orderProductsMap.entries()).every(([productId, qty]) => {
       return (receivedTotals.get(productId) ?? 0) >= qty;
     });
+
+    const nextStatus = allReceived
+      ? SupplyOrderStatus.RECEIVED
+      : input.closePartial
+        ? SupplyOrderStatus.PARTIALLY_RECEIVED
+        : SupplyOrderStatus.PARTIAL;
 
     const receivedAt = new Date();
 
@@ -445,7 +455,7 @@ export class SupplyOrderService {
       await prisma.supplyOrder.update({
         where: { id: supplyOrder.id },
         data: {
-          status: allReceived ? SupplyOrderStatus.RECEIVED : SupplyOrderStatus.PARTIAL,
+          status: nextStatus,
         },
         select: { id: true },
       });
