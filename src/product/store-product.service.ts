@@ -261,6 +261,71 @@ export class StoreProductService {
     };
   }
 
+  async findByStoreSimple(tenantId: string, storeId: string, page: number = 1, limit: number = 20, search: string = ''): Promise<any> {
+    const skip = (page - 1) * limit;
+
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: { tenantId: true },
+    });
+
+    if (!store) {
+      throw new NotFoundException(`Tienda con ID ${storeId} no encontrada`);
+    }
+
+    if (!store.tenantId || store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tiene permisos para ver productos de esta tienda');
+    }
+    
+    // Construir where clause para búsqueda
+    let whereCondition: any = { storeId, store: { tenantId } };
+    
+    if (search) {
+      whereCondition.product = {
+        name: {
+          contains: search,
+          mode: 'insensitive' // Búsqueda case-insensitive
+        }
+      };
+    }
+    
+    // Obtener el total de productos para paginación
+    const total = await this.prisma.storeProduct.count({
+      where: whereCondition
+    });
+
+    // Obtener los productos con paginación (solo campos básicos)
+    const storeProducts = await this.prisma.storeProduct.findMany({
+      where: whereCondition,
+      select: {
+        id: true,
+        price: true,
+        stock: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      skip,
+      take: limit
+    });
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data: storeProducts,
+      total,
+      page,
+      limit,
+      totalPages
+    };
+  }
+
   async updateStock(tenantId: string, userId: string, id: string, newStock: number, isAdmin: boolean = false, bypassOwnership: boolean = false): Promise<StoreProduct> {
     // Verificar que el StoreProduct existe
     const storeProduct = await this.prisma.storeProduct.findUnique({

@@ -443,9 +443,10 @@ export class OrderService {
         
         const { quantity, price } = productData;
         
-        if (storeProduct.stock < quantity) {
-          throw new BadRequestException(`No hay suficiente stock para el producto: ${storeProduct.product?.name || storeProduct.id}`);
-        }
+        // Permitir stock negativo (vender incluso con stock 0)
+        // if (storeProduct.stock < quantity) {
+        //   throw new BadRequestException(`No hay suficiente stock para el producto: ${storeProduct.product?.name || storeProduct.id}`);
+        // }
         
         // Si no se proporcionó un precio personalizado, usar el precio del StoreProduct
         const finalPrice: number = price !== undefined ? price : (storeProduct.price || 0);
@@ -647,10 +648,46 @@ export class OrderService {
           },
         },
       },
-      include: {
-        orderProducts: true,
-        services: true,
-        client: true,
+      select: {
+        id: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        orderProducts: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
+            product: {
+              select: {
+                id: true,
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        services: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            status: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     }) as unknown as Promise<Order[]>;
@@ -670,10 +707,46 @@ export class OrderService {
           },
         },
       },
-      include: {
-        orderProducts: true,
-        services: true,
-        client: true,
+      select: {
+        id: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        orderProducts: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
+            product: {
+              select: {
+                id: true,
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        services: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            status: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
         user: {
           select: {
             id: true,
@@ -689,23 +762,55 @@ export class OrderService {
   async findByStore(storeId: string, user: AuthUser): Promise<Order[]> {
     await this.assertStoreAccess(storeId, user);
 
+    // Construir el where base
+    const baseWhere = {
+      cashSession: {
+        StoreId: storeId
+      }
+    };
+
+    // Si no es ADMIN, filtrar por userId del usuario autenticado
+    const whereClause = user.role === 'ADMIN' 
+      ? baseWhere
+      : {
+          ...baseWhere,
+          userId: user.userId
+        };
+
     return this.prisma.order.findMany({
-      where: {
-        cashSession: {
-          StoreId: storeId
-        }
-      },
-      include: {
+      where: whereClause,
+      select: {
+        id: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
         orderProducts: {
-          include: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
             product: {
-              include: {
-                product: true, // Incluir el producto del catálogo
+              select: {
+                id: true,
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
               },
             },
           },
         },
-        services: true,
+        services: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            status: true,
+          },
+        },
         paymentMethods: {
           select: {
             id: true,
@@ -714,18 +819,31 @@ export class OrderService {
             createdAt: true,
           },
         },
-        client: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
         cashSession: {
-          include: {
-            Store: true
-          }
+          select: {
+            id: true,
+            Store: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
         },
         user: {
           select: {
             id: true,
             email: true,
             name: true,
-          }
+          },
         },
       },
       orderBy: { createdAt: 'desc' },

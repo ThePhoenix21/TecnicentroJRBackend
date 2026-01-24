@@ -426,6 +426,106 @@ export class StoreProductController {
     return this.storeProductService.findByStore(tenantId, storeId, Number(page), Number(limit), search);
   }
 
+  @Get('store/:storeId/simple')
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
+  @ApiOperation({ 
+    summary: 'Obtener productos simples de una tienda específica',
+    description: 'Retorna una lista paginada de productos básicos de una tienda con solo id, nombre, precio en tienda y stock. Ideal para selectores y listados ligeros.'
+  })
+  @ApiParam({ 
+    name: 'storeId', 
+    description: 'UUID de la tienda a consultar',
+    example: '456e7890-e12b-34d5-a678-426614174000'
+  })
+  @ApiQuery({ 
+    name: 'page', 
+    required: false, 
+    description: 'Número de página (default: 1)', 
+    example: 1 
+  })
+  @ApiQuery({ 
+    name: 'limit', 
+    required: false, 
+    description: 'Cantidad de resultados por página (default: 20)', 
+    example: 20 
+  })
+  @ApiQuery({ 
+    name: 'search', 
+    required: false, 
+    description: 'Buscar productos por nombre', 
+    example: 'aceite' 
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Lista simple de productos de la tienda obtenida exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: 'store-product-id-123' },
+              price: { type: 'number', example: 29.99 },
+              stock: { type: 'number', example: 50 },
+              product: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
+                  name: { type: 'string', example: 'Aceite de Motor 10W40' }
+                }
+              }
+            }
+          }
+        },
+        total: { type: 'number', example: 45, description: 'Total de productos' },
+        page: { type: 'number', example: 1, description: 'Página actual' },
+        limit: { type: 'number', example: 20, description: 'Resultados por página' },
+        totalPages: { type: 'number', example: 3, description: 'Total de páginas' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Tienda no encontrada',
+    schema: {
+      example: {
+        statusCode: 404,
+        message: 'Tienda con ID 456e7890-e12b-34d5-a678-426614174000 no encontrada',
+        error: 'Not Found'
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'ID de tienda inválido - debe ser un UUID válido'
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'No autorizado - Token JWT inválido o ausente'
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'No tiene permisos para ver productos de esta tienda'
+  })
+  async findByStoreSimple(
+    @Req() req: any,
+    @Param('storeId') storeId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+    @Query('search') search: string = ''
+  ): Promise<any> {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.storeProductService.findByStoreSimple(tenantId, storeId, Number(page), Number(limit), search);
+  }
+
   @Patch(':id/stock')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ 
