@@ -809,6 +809,7 @@ model SupplyOrder {
   id          String            @id @default(uuid())
   code        String
   status      SupplyOrderStatus @default(PENDING)
+
   description String?
 
   createdAt DateTime @default(now())
@@ -841,6 +842,8 @@ model SupplyOrder {
 enum SupplyOrderStatus {
   ISSUED // Emitida
   PENDING // Pendiente
+  PARTIAL // Parcial
+  PARTIALLY_RECEIVED // Parcialmente Recibida
   RECEIVED // Recibida
   DELIVERED // Entregada
   COMPLETED // Completada

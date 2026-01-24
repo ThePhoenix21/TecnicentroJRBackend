@@ -80,4 +80,17 @@ export class SupplyOrderController {
   ) {
     return this.supplyOrderService.receive(id, dto, req.user);
   }
+
+  @Post(':id/approve')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @ApiOperation({ summary: 'Aprobar orden de suministro' })
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 20, windowSeconds: 60 }],
+  })
+  async approve(@Param('id') id: string, @Req() req: any) {
+    return this.supplyOrderService.approve(id, req.user);
+  }
 }

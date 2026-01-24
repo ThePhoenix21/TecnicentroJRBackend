@@ -134,7 +134,7 @@ export class SupplyOrderService {
       const supplyOrder = await prisma.supplyOrder.create({
         data: {
           code: this.generateCode(),
-          status: SupplyOrderStatus.PENDING,
+          status: SupplyOrderStatus.ISSUED,
           description: input.description ?? null,
           providerId: input.providerId,
           tenantId,
@@ -209,7 +209,14 @@ export class SupplyOrderService {
       throw new NotFoundException('Orden de suministro no encontrada');
     }
 
-    if (supplyOrder.status !== SupplyOrderStatus.PENDING) {
+    if (supplyOrder.status === SupplyOrderStatus.ANNULLATED) {
+      throw new BadRequestException('La orden está anulada');
+    }
+
+    if (
+      supplyOrder.status !== SupplyOrderStatus.PENDING &&
+      supplyOrder.status !== SupplyOrderStatus.PARTIAL
+    ) {
       throw new BadRequestException('La orden no está pendiente de recepción');
     }
 
@@ -411,6 +418,16 @@ export class SupplyOrderService {
                 select: { id: true },
               });
 
+          await prisma.inventoryMovement.create({
+            data: {
+              type: 'INCOMING',
+              quantity: product.quantity,
+              description: 'Ingreso por recepción de orden de suministro',
+              storeProductId: storeProduct.id,
+              userId: receivedById,
+            },
+          });
+
           if (product.batches && product.batches.length > 0) {
             await prisma.productBatch.createMany({
               data: product.batches.map((batch) => ({
@@ -428,10 +445,42 @@ export class SupplyOrderService {
       await prisma.supplyOrder.update({
         where: { id: supplyOrder.id },
         data: {
-          status: allReceived ? SupplyOrderStatus.RECEIVED : SupplyOrderStatus.PENDING,
+          status: allReceived ? SupplyOrderStatus.RECEIVED : SupplyOrderStatus.PARTIAL,
         },
         select: { id: true },
       });
+    });
+
+    return { success: true };
+  }
+
+  async approve(orderId: string, user?: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+    const approverId = this.getAuthUserIdOrThrow(user);
+
+    const supplyOrder = await this.prisma.supplyOrder.findFirst({
+      where: { id: orderId, tenantId },
+      select: { id: true, status: true },
+    });
+
+    if (!supplyOrder) {
+      throw new NotFoundException('Orden de suministro no encontrada');
+    }
+
+    if (supplyOrder.status === SupplyOrderStatus.ANNULLATED) {
+      throw new BadRequestException('La orden está anulada');
+    }
+
+    if (supplyOrder.status !== SupplyOrderStatus.ISSUED) {
+      throw new BadRequestException('La orden ya fue aprobada o procesada');
+    }
+
+    await this.prisma.supplyOrder.update({
+      where: { id: supplyOrder.id },
+      data: {
+        status: SupplyOrderStatus.PENDING,
+      },
+      select: { id: true },
     });
 
     return { success: true };
