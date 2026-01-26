@@ -177,6 +177,22 @@ export class ProviderService {
     });
   }
 
+  async lookup(user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    return (this.prisma.provider as any).findMany({
+      where: {
+        deletedAt: null,
+        createdBy: { tenantId },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async getDetail(providerId: string, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
 

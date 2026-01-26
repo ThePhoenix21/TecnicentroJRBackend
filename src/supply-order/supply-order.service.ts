@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSupplyOrderDto } from './dto/create-supply-order.dto';
+import { ListSupplyOrdersDto } from './dto/list-supply-orders.dto';
+import { ListSupplyOrdersResponseDto } from './dto/list-supply-orders-response.dto';
 import { ReceiveSupplyOrderDto } from './dto/receive-supply-order.dto';
 import { SupplyOrderStatus } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
@@ -181,6 +183,171 @@ export class SupplyOrderService {
     });
 
     return { success: true };
+  }
+
+  async list(query: ListSupplyOrdersDto, user?: AuthUser): Promise<ListSupplyOrdersResponseDto> {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 12;
+    const skip = (page - 1) * pageSize;
+
+    const where: any = { tenantId };
+
+    if (query.userId) {
+      where.createdById = query.userId;
+    }
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.fromDate || query.toDate) {
+      where.createdAt = {
+        ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+        ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+      };
+    }
+
+    const [total, orders] = await Promise.all([
+      this.prisma.supplyOrder.count({ where }),
+      this.prisma.supplyOrder.findMany({
+        where,
+        select: {
+          id: true,
+          code: true,
+          status: true,
+          createdAt: true,
+          providerId: true,
+          storeId: true,
+          warehouseId: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    return {
+      data: orders,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      page,
+      pageSize,
+    };
+  }
+
+  async findOne(orderId: string, user?: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const order = await this.prisma.supplyOrder.findFirst({
+      where: {
+        id: orderId,
+        tenantId,
+      },
+      select: {
+        id: true,
+        code: true,
+        status: true,
+        description: true,
+        createdAt: true,
+        updatedAt: true,
+        providerId: true,
+        createdById: true,
+        warehouseId: true,
+        storeId: true,
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            username: true,
+            status: true,
+            avatarUrl: true,
+            accessProfileId: true,
+          },
+        },
+        provider: {
+          select: {
+            id: true,
+            name: true,
+            ruc: true,
+            phone: true,
+            email: true,
+            address: true,
+          },
+        },
+        store: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+          },
+        },
+        warehouse: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            productId: true,
+            quantity: true,
+            note: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        warehouseReceptions: {
+          select: {
+            id: true,
+            receivedAt: true,
+            reference: true,
+            notes: true,
+            products: {
+              select: {
+                id: true,
+                productId: true,
+                quantity: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+        storeReceptions: {
+          select: {
+            id: true,
+            receivedAt: true,
+            reference: true,
+            notes: true,
+            products: {
+              select: {
+                id: true,
+                productId: true,
+                quantity: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Orden de suministro no encontrada');
+    }
+
+    return order;
   }
 
   async receive(orderId: string, input: ReceiveSupplyOrderDto, user?: AuthUser) {
@@ -490,6 +657,34 @@ export class SupplyOrderService {
       data: {
         status: SupplyOrderStatus.PENDING,
       },
+      select: { id: true },
+    });
+
+    return { success: true };
+  }
+
+  async annull(orderId: string, user?: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const supplyOrder = await this.prisma.supplyOrder.findFirst({
+      where: { id: orderId, tenantId },
+      select: { id: true, status: true },
+    });
+
+    if (!supplyOrder) {
+      throw new NotFoundException('Orden de suministro no encontrada');
+    }
+
+    if (
+      supplyOrder.status !== SupplyOrderStatus.ISSUED &&
+      supplyOrder.status !== SupplyOrderStatus.PENDING
+    ) {
+      throw new BadRequestException('La orden no puede ser anulada en su estado actual');
+    }
+
+    await this.prisma.supplyOrder.update({
+      where: { id: supplyOrder.id },
+      data: { status: SupplyOrderStatus.ANNULLATED },
       select: { id: true },
     });
 

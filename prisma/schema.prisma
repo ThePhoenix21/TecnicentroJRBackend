@@ -845,8 +845,8 @@ enum SupplyOrderStatus {
   PARTIAL // Parcial
   PARTIALLY_RECEIVED // Parcialmente Recibida
   RECEIVED // Recibida
-  DELIVERED // Entregada
-  COMPLETED // Completada
+  DELIVERED // Entregada (no se esta usando)
+  COMPLETED // Completada (no se esta usando)
   ANNULLATED // Anulada
 }
 

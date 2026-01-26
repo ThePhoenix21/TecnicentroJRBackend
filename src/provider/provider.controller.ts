@@ -128,6 +128,31 @@ export class ProviderController {
     return this.providerService.setProviderProducts(id, dto, req.user);
   }
 
+  @Get('lookup')
+  @Roles(Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 120, windowSeconds: 60 }],
+  })
+  @ApiOperation({ summary: 'Lookup de proveedores (solo id y nombre)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de proveedores simplificada obtenida exitosamente',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
+          name: { type: 'string', example: 'Proveedor S.A.' },
+        },
+      },
+    },
+  })
+  async lookup(@Req() req: Request & { user: any }) {
+    return this.providerService.lookup(req.user);
+  }
+
   @Get()
   @Roles(Role.ADMIN)
   @RateLimit({

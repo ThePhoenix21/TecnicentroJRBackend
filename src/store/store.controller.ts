@@ -156,6 +156,37 @@ export class StoreController {
     return this.storeService.findAllSimple(tenantId);
   }
 
+  @Get('lookup')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Lookup de tiendas (solo id y nombre)',
+    description: 'Devuelve únicamente el id y nombre de las tiendas del tenant, ideal para selects.'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de tiendas (id y nombre) obtenida correctamente',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440001' },
+          name: { type: 'string', example: 'Tienda Principal' },
+        },
+      },
+    },
+  })
+  lookup(@Req() req: any) {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.storeService.lookup(tenantId);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Obtener tienda por ID',
