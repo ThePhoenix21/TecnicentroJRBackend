@@ -808,6 +808,7 @@ model Provider {
 model SupplyOrder {
   id          String            @id @default(uuid())
   code        String
+  sequence    Int?
   status      SupplyOrderStatus @default(PENDING)
 
   description String?
@@ -837,6 +838,7 @@ model SupplyOrder {
   storeReceptions     StoreReception[]
 
   @@unique([createdById, code])
+  @@unique([tenantId, providerId, sequence])
 }
 
 enum SupplyOrderStatus {

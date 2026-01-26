@@ -13,12 +13,18 @@ export class ListSupplyOrderItemDto {
   @ApiProperty({ example: '2026-01-24T20:30:19.562Z' })
   createdAt!: Date;
 
-  @ApiProperty({ example: 'f1fa188b-ba01-4a65-a56f-debf27d81f7e' })
-  providerId!: string;
+  @ApiProperty({ example: 'Proveedor S.A.' })
+  providerName!: string;
 
-  @ApiProperty({ example: 'cb488878-4478-45b2-9c80-9ed171528189', nullable: true })
-  storeId!: string | null;
+  @ApiProperty({ example: 'Tienda Principal', nullable: true })
+  storeName!: string | null;
 
-  @ApiProperty({ example: null, nullable: true })
-  warehouseId!: string | null;
+  @ApiProperty({ example: 'Almacén Central', nullable: true })
+  warehouseName!: string | null;
+
+  @ApiProperty({ example: 'James Cordova', nullable: true })
+  creatorUser!: string | null;
+
+  @ApiProperty({ example: 'jamescorcam@gmail.com', nullable: true })
+  creatorUserEmail!: string | null;
 }

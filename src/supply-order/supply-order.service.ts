@@ -10,10 +10,10 @@ import { CreateSupplyOrderDto } from './dto/create-supply-order.dto';
 import { ListSupplyOrdersDto } from './dto/list-supply-orders.dto';
 import { ListSupplyOrdersResponseDto } from './dto/list-supply-orders-response.dto';
 import { ReceiveSupplyOrderDto } from './dto/receive-supply-order.dto';
-import { SupplyOrderStatus } from '@prisma/client';
+import { Prisma, SupplyOrderStatus } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 
-const codeGenerator = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 8);
+const codeGenerator = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 
 type AuthUser = {
   userId?: string;
@@ -44,8 +44,37 @@ export class SupplyOrderService {
     return userId;
   }
 
-  private generateCode(): string {
-    return codeGenerator();
+  private normalizeProviderPrefix(name: string): string {
+    const cleaned = String(name || '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase();
+    const prefix = cleaned.slice(0, 3).padEnd(3, 'X');
+    return prefix || 'XXX';
+  }
+
+  private async generateCode(
+    prisma: Prisma.TransactionClient,
+    providerName: string,
+    providerId: string,
+    tenantId: string,
+  ): Promise<{ code: string; sequence: number }> {
+    const prefix = this.normalizeProviderPrefix(providerName);
+    const aggregate = await prisma.supplyOrder.aggregate({
+      where: { providerId, tenantId },
+      _max: { sequence: true },
+    });
+    const sequence = (aggregate._max?.sequence ?? 0) + 1;
+    const seqPart = String(sequence).padStart(6, '0');
+
+    while (true) {
+      const randPart = codeGenerator();
+      const code = `${prefix}-${seqPart}-${randPart}`;
+      const exists = await prisma.supplyOrder.findFirst({
+        where: { tenantId, code },
+        select: { id: true },
+      });
+      if (!exists) return { code, sequence };
+    }
   }
 
   async create(input: CreateSupplyOrderDto, user?: AuthUser) {
@@ -76,7 +105,7 @@ export class SupplyOrderService {
         deletedAt: null,
         createdBy: { tenantId },
       },
-      select: { id: true },
+      select: { id: true, name: true },
     });
 
     if (!provider) {
@@ -132,55 +161,65 @@ export class SupplyOrderService {
       );
     }
 
-    await this.prisma.$transaction(async (prisma) => {
-      const supplyOrder = await prisma.supplyOrder.create({
-        data: {
-          code: this.generateCode(),
-          status: SupplyOrderStatus.ISSUED,
-          description: input.description ?? null,
-          providerId: input.providerId,
+    await this.prisma.$transaction(
+      async (prisma) => {
+        const { code, sequence } = await this.generateCode(
+          prisma,
+          provider.name,
+          provider.id,
           tenantId,
-          createdById,
-          warehouseId: input.warehouseId ?? null,
-          storeId: input.storeId ?? null,
-        },
-        select: { id: true },
-      });
-
-      await prisma.supplyOrderProduct.createMany({
-        data: input.products.map((product) => ({
-          supplyOrderId: supplyOrder.id,
-          productId: product.productId,
-          quantity: product.quantity,
-          note: product.note ?? null,
-        })),
-        skipDuplicates: false,
-      });
-
-      if (input.warehouseId) {
-        await prisma.warehouseReception.create({
+        );
+        const supplyOrder = await prisma.supplyOrder.create({
           data: {
-            warehouseId: input.warehouseId,
-            supplyOrderId: supplyOrder.id,
+            code,
+            sequence,
+            status: SupplyOrderStatus.ISSUED,
+            description: input.description ?? null,
+            providerId: input.providerId,
             tenantId,
             createdById,
+            warehouseId: input.warehouseId ?? null,
+            storeId: input.storeId ?? null,
           },
           select: { id: true },
         });
-      }
 
-      if (input.storeId) {
-        await prisma.storeReception.create({
-          data: {
-            storeId: input.storeId,
+        await prisma.supplyOrderProduct.createMany({
+          data: input.products.map((product) => ({
             supplyOrderId: supplyOrder.id,
-            tenantId,
-            createdById,
-          },
-          select: { id: true },
+            productId: product.productId,
+            quantity: product.quantity,
+            note: product.note ?? null,
+          })),
+          skipDuplicates: false,
         });
-      }
-    });
+
+        if (input.warehouseId) {
+          await prisma.warehouseReception.create({
+            data: {
+              warehouseId: input.warehouseId,
+              supplyOrderId: supplyOrder.id,
+              tenantId,
+              createdById,
+            },
+            select: { id: true },
+          });
+        }
+
+        if (input.storeId) {
+          await prisma.storeReception.create({
+            data: {
+              storeId: input.storeId,
+              supplyOrderId: supplyOrder.id,
+              tenantId,
+              createdById,
+            },
+            select: { id: true },
+          });
+        }
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     return { success: true };
   }
@@ -218,9 +257,21 @@ export class SupplyOrderService {
           code: true,
           status: true,
           createdAt: true,
-          providerId: true,
-          storeId: true,
-          warehouseId: true,
+          provider: {
+            select: { name: true },
+          },
+          store: {
+            select: { name: true },
+          },
+          warehouse: {
+            select: { name: true },
+          },
+          createdBy: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -229,7 +280,17 @@ export class SupplyOrderService {
     ]);
 
     return {
-      data: orders,
+      data: orders.map((order) => ({
+        id: order.id,
+        code: order.code,
+        status: order.status,
+        createdAt: order.createdAt,
+        providerName: order.provider?.name ?? '',
+        storeName: order.store?.name ?? null,
+        warehouseName: order.warehouse?.name ?? null,
+        creatorUser: order.createdBy?.name ?? null,
+        creatorUserEmail: order.createdBy?.email ?? null,
+      })),
       total,
       totalPages: Math.ceil(total / pageSize),
       page,
