@@ -251,16 +251,21 @@ export class OrderService {
       const isFilledString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
       if (clientIdToUse) {
-        const existingClientById = await prisma.client.findUnique({
+        const existingClientById = (await prisma.client.findUnique({
           where: { id: clientIdToUse },
           select: {
             id: true,
             tenantId: true,
-          },
-        });
+            deletedAt: true,
+          } as any,
+        })) as any;
 
         if (!existingClientById) {
           throw new NotFoundException('Cliente no encontrado');
+        }
+
+        if (existingClientById.deletedAt) {
+          throw new BadRequestException('El cliente está eliminado. Use DNI para reactivarlo o seleccione otro cliente.');
         }
 
         if (existingClientById.tenantId !== user.tenantId) {
@@ -327,17 +332,25 @@ export class OrderService {
           }
         }
 
-        const existingClientByDni = await prisma.client.findFirst({
+        const existingClientByDni = (await prisma.client.findFirst({
           where: {
             tenantId: user.tenantId,
             dni,
           },
           select: {
             id: true,
-          },
-        });
+            deletedAt: true,
+          } as any,
+        })) as any;
 
         if (existingClientByDni) {
+          if (existingClientByDni.deletedAt) {
+            await prisma.client.update({
+              where: { id: existingClientByDni.id },
+              data: { deletedAt: null } as any,
+            });
+          }
+
           const updateData: Prisma.ClientUpdateInput = {};
           if (isFilledString(clientInfo.name)) updateData.name = clientInfo.name.trim();
           if (isFilledString(clientInfo.email)) updateData.email = clientInfo.email.trim();

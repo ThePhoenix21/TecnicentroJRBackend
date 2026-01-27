@@ -28,6 +28,8 @@ import { ClientService } from './client.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { Client } from '@prisma/client';
+import { ListClientsDto } from './dto/list-clients.dto';
+import { ListClientsResponseDto } from './dto/list-clients-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -60,14 +62,63 @@ export class ClientController {
   @Get()
   @Roles(Role.ADMIN, Role.USER)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiOperation({ summary: 'Obtener todos los clientes', description: 'Obtiene una lista paginada de todos los clientes. Solo para ADMIN' })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Número de página (por defecto: 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Límite de resultados por página (por defecto: 10)' })
+  @ApiOperation({ summary: 'Obtener clientes (paginado y filtrable)', description: 'Obtiene una lista paginada de clientes del tenant con filtros combinables y conteos de órdenes.' })
+  @ApiResponse({ status: HttpStatus.OK, type: ListClientsResponseDto })
   @ApiResponse({ status: HttpStatus.OK, description: 'Lista de clientes obtenida exitosamente' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
-  async findAll(
-    @Query('page') page = 1,
-    @Query('limit') limit = 10,
+  async findAll(@Query() query: ListClientsDto, @Request() req: any): Promise<ListClientsResponseDto> {
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.clientService.list(query, tenantId);
+  }
+
+  @Get('lookup-name')
+  @Roles(Role.ADMIN, Role.USER)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({ summary: 'Lookup de nombres de clientes (id, name)' })
+  @ApiResponse({ status: HttpStatus.OK })
+  async lookupName(@Request() req: any) {
+    const tenantId = req.user?.tenantId;
+    return this.clientService.lookupName(tenantId);
+  }
+
+  @Get('lookup-phone')
+  @Roles(Role.ADMIN, Role.USER)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({ summary: 'Lookup de teléfonos de clientes (id, phone)' })
+  @ApiResponse({ status: HttpStatus.OK })
+  async lookupPhone(@Request() req: any) {
+    const tenantId = req.user?.tenantId;
+    return this.clientService.lookupPhone(tenantId);
+  }
+
+  @Get('lookup-dni')
+  @Roles(Role.ADMIN, Role.USER)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({ summary: 'Lookup de DNI de clientes (id, dni)' })
+  @ApiResponse({ status: HttpStatus.OK })
+  async lookupDni(@Request() req: any) {
+    const tenantId = req.user?.tenantId;
+    return this.clientService.lookupDni(tenantId);
+  }
+
+  @Get(':id/full')
+  @Roles(Role.ADMIN, Role.USER)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({
+    summary: 'Obtener cliente completo (con relaciones)',
+    description: 'Devuelve el cliente con relaciones: usuario asociado y órdenes con detalles (productos, servicios, pagos, caja y auditoría de anulación).',
+  })
+  @ApiParam({ name: 'id', description: 'ID único del cliente (UUID)', type: String })
+  @ApiResponse({ status: HttpStatus.OK })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Cliente no encontrado' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
+  async getFull(
+    @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
     const tenantId = req.user?.tenantId;
@@ -76,11 +127,14 @@ export class ClientController {
       throw new BadRequestException('TenantId no encontrado en el token');
     }
 
-    return this.clientService.findAll({
-      tenantId,
-      page: Number(page),
-      limit: Number(limit),
-    });
+    const client = await this.clientService.getFull(id, tenantId);
+
+    if (req.user.role !== 'ADMIN' && req.user.userId !== (client as any).userId) {
+      throw new ForbiddenException('No tienes permiso para ver este perfil');
+    }
+
+    const { userId, ...safeClient } = client as any;
+    return safeClient;
   }
 
   @Get(':id')
@@ -146,8 +200,23 @@ export class ClientController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any
   ): Promise<void> {
+    throw new BadRequestException('Hard delete deshabilitado. Use el endpoint de soft delete.');
+  }
+
+  @Patch(':id/soft-delete')
+  @Roles(Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({ summary: 'Soft delete de cliente', description: 'Marca al cliente como eliminado estableciendo deletedAt. Solo para ADMIN.' })
+  @ApiParam({ name: 'id', description: 'ID único del cliente (UUID)', type: String })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Cliente marcado como eliminado' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Cliente no encontrado' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
+  async softDelete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
     const tenantId = req.user?.tenantId;
-    return this.clientService.remove(id, tenantId);
+    return this.clientService.softDelete(id, tenantId);
   }
 
   @Get('search')
