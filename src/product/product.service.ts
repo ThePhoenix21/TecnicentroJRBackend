@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CatalogProduct } from './entities/catalog-product.entity';
+import { StoreProductStockDto } from './dto/store-product-stock.dto';
 
 type AuthUser = {
   userId: string;
@@ -165,5 +166,53 @@ export class ProductService {
 
     const withCreatedBy = await this.attachCreatedByForTenant(updatedProduct, tenantId);
     return withCreatedBy as unknown as CatalogProduct;
+  }
+
+  async getStoreStock(user: AuthUser | undefined, storeId: string): Promise<StoreProductStockDto[]> {
+    const tenantId = this.getTenantIdOrUndefined(user);
+
+    if (!tenantId) {
+      throw new ForbiddenException('TenantId no encontrado en el token');
+    }
+
+    const store = await this.prisma.store.findFirst({
+      where: { id: storeId, tenantId },
+      select: { id: true },
+    });
+
+    if (!store) {
+      throw new ForbiddenException('No tienes acceso a esta tienda');
+    }
+
+    const storeProducts = await this.prisma.storeProduct.findMany({
+      where: {
+        storeId,
+        store: { tenantId },
+        product: { isDeleted: false },
+      },
+      select: {
+        id: true,
+        productId: true,
+        stock: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        product: {
+          name: 'asc',
+        },
+      },
+    });
+
+    return storeProducts.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      name: item.product.name,
+      stock: item.stock,
+    }));
   }
 }

@@ -37,6 +37,7 @@ import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CatalogProduct } from './entities/catalog-product.entity';
 import { TenantFeature } from '@prisma/client';
+import { StoreProductStockDto } from './dto/store-product-stock.dto';
 
 @ApiTags('Catálogo de Productos')
 @ApiBearerAuth('JWT')
@@ -186,6 +187,35 @@ export class ProductController {
   })
   async findAll(@Req() req: any): Promise<CatalogProduct[]> {
     return this.productService.findAll(req.user);
+  }
+
+  @Get('store-stock')
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
+  @ApiOperation({
+    summary: 'Listar stock por tienda',
+    description: 'Devuelve el ID y nombre de todos los productos del tenant junto con el stock actual en la tienda solicitada.',
+  })
+  @ApiQuery({
+    name: 'storeId',
+    description: 'ID de la tienda de la cual se desea consultar el stock',
+    required: true,
+    example: '456e7890-e12b-34d5-a678-426614174000',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Lista de productos con stock de la tienda',
+    type: [StoreProductStockDto],
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Parámetros inválidos o faltantes',
+  })
+  async getStoreStock(
+    @Req() req: any,
+    @Query('storeId', ParseUUIDPipe) storeId: string,
+  ): Promise<StoreProductStockDto[]> {
+    return this.productService.getStoreStock(req.user, storeId);
   }
 
   @Get('lookup')
