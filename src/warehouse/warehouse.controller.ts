@@ -90,6 +90,13 @@ export class WarehouseController {
     return this.warehouseService.listSimple(req.user);
   }
 
+  @Get('lookup')
+  @ApiOperation({ summary: 'Lookup de almacenes (solo id y nombre)' })
+  @ApiResponse({ status: 200 })
+  async lookup(@Req() req: Request & { user: any }) {
+    return this.warehouseService.lookup(req.user);
+  }
+
   @Put(':id/stores')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Editar lista de tiendas abastecidas por un warehouse' })

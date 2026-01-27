@@ -231,6 +231,10 @@ export class WarehouseService {
     });
   }
 
+  async lookup(user: AuthUser) {
+    return this.listSimple(user);
+  }
+
   async getDetails(warehouseId: string, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
     await this.findWarehouseOrThrow(warehouseId, tenantId);

@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../common/utility/supabase-storage.util';
 import { EmployedStatus } from '@prisma/client';
+import { ListEmployedDto } from './dto/list-employed.dto';
 
 type AuthUser = {
   userId: string;
@@ -241,6 +242,27 @@ export class EmployedService {
     return employed;
   }
 
+  async lookup(user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    return (this.prisma.employed as any).findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { createdByUser: { tenantId } },
+          { storeAssignments: { some: { store: { tenantId } } } },
+          { warehouseAssignments: { some: { warehouse: { tenantId } } } },
+        ],
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+      },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    });
+  }
+
   async create(
     input: {
       firstName: string;
@@ -415,18 +437,55 @@ export class EmployedService {
     return employed;
   }
 
-  async list(user: AuthUser) {
+  async list(query: ListEmployedDto, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
 
+    const where: any = {
+      OR: [
+        { createdByUser: { tenantId } },
+        { storeAssignments: { some: { store: { tenantId } } } },
+        { warehouseAssignments: { some: { warehouse: { tenantId } } } },
+      ],
+      deletedAt: null,
+    };
+
+    if (query?.status) {
+      where.status = query.status;
+    }
+
+    if (query?.firstName) {
+      where.firstName = { contains: query.firstName, mode: 'insensitive' };
+    }
+
+    if (query?.lastName) {
+      where.lastName = { contains: query.lastName, mode: 'insensitive' };
+    }
+
+    if (query?.position) {
+      where.position = { contains: query.position, mode: 'insensitive' };
+    }
+
+    if (query?.storeId) {
+      where.storeAssignments = {
+        some: { storeId: query.storeId, store: { tenantId } },
+      };
+    }
+
+    if (query?.warehouseId) {
+      where.warehouseAssignments = {
+        some: { warehouseId: query.warehouseId, warehouse: { tenantId } },
+      };
+    }
+
+    if (query?.fromDate || query?.toDate) {
+      where.createdAt = {
+        ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+        ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+      };
+    }
+
     const employees = await (this.prisma.employed as any).findMany({
-      where: {
-        OR: [
-          { createdByUser: { tenantId } },
-          { storeAssignments: { some: { store: { tenantId } } } },
-          { warehouseAssignments: { some: { warehouse: { tenantId } } } },
-        ],
-        deletedAt: null,
-      },
+      where,
       include: {
         employedHistories: {
           orderBy: { createdAt: 'asc' },
@@ -566,6 +625,35 @@ export class EmployedService {
       where: { id: employedId },
       data: { status: EmployedStatus.SUSPENDED },
     });
+  }
+
+  async lookupPositions(user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const positions = await (this.prisma.employed as any).findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { createdByUser: { tenantId } },
+          { storeAssignments: { some: { store: { tenantId } } } },
+          { warehouseAssignments: { some: { warehouse: { tenantId } } } },
+        ],
+        position: { not: null },
+      },
+      distinct: ['position'],
+      select: {
+        position: true,
+      },
+      orderBy: { position: 'asc' },
+    });
+
+    return positions
+      .map((item: { position: string | null }) => item.position)
+      .filter((position): position is string => Boolean(position));
+  }
+
+  async lookupStatus() {
+    return Object.values(EmployedStatus);
   }
 
   async activate(employedId: string, reason: string | undefined, user: AuthUser) {

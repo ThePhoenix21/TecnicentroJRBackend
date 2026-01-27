@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UploadedFiles,
   UseGuards,
@@ -38,6 +39,7 @@ import { BulkChangeEmployedStatusDto } from './dto/bulk-change-employed-status.d
 import { UpdateEmployedDto } from './dto/update-employed.dto';
 import { ChangeEmployedStatusDto } from './dto/change-employed-status.dto';
 import { ReassignEmployedDto } from './dto/reassign-employed.dto';
+import { ListEmployedDto } from './dto/list-employed.dto';
 
 @ApiTags('Empleados')
 @ApiBearerAuth('JWT-auth')
@@ -76,8 +78,41 @@ export class EmployedController {
     rules: [{ limit: 120, windowSeconds: 60 }],
   })
   @ApiOperation({ summary: 'Listar empleados' })
-  async list(@Req() req: Request & { user: any }) {
-    return this.employedService.list(req.user);
+  async list(@Req() req: Request & { user: any }, @Query() query: ListEmployedDto) {
+    return this.employedService.list(query, req.user);
+  }
+
+  @Get('lookup')
+  @Roles(Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 120, windowSeconds: 60 }],
+  })
+  @ApiOperation({ summary: 'Lookup de empleados (id, nombres)' })
+  async lookup(@Req() req: Request & { user: any }) {
+    return this.employedService.lookup(req.user);
+  }
+
+  @Get('lookup-position')
+  @Roles(Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 120, windowSeconds: 60 }],
+  })
+  @ApiOperation({ summary: 'Lookup de cargos de empleados' })
+  async lookupPositions(@Req() req: Request & { user: any }) {
+    return this.employedService.lookupPositions(req.user);
+  }
+
+  @Get('lookup-status')
+  @Roles(Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 120, windowSeconds: 60 }],
+  })
+  @ApiOperation({ summary: 'Lookup de estados de empleados' })
+  async lookupStatus() {
+    return this.employedService.lookupStatus();
   }
 
   @Get('deleted')
