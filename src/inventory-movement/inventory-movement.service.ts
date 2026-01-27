@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
 import { FilterInventoryMovementDto } from './dto/filter-inventory-movement.dto';
 import { InventoryMovementType, Prisma } from '@prisma/client';
+import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
+import { ListInventoryMovementsResponseDto } from './dto/list-inventory-movements-response.dto';
 
 type AuthUser = {
   userId: string;
@@ -145,26 +147,33 @@ export class InventoryMovementService {
     });
   }
 
-  async findAll(filterDto: FilterInventoryMovementDto, user: AuthUser) {
-    const { storeId, storeProductId, startDate, endDate } = filterDto;
+  async findAll(filterDto: FilterInventoryMovementDto, user: AuthUser): Promise<ListInventoryMovementsResponseDto> {
+    const { name, type, userId, fromDate, toDate } = filterDto;
 
     const tenantId = user?.tenantId;
     if (!tenantId) {
       throw new ForbiddenException('Tenant no encontrado en el token');
     }
-
-    if (storeId) {
-      await this.assertStoreAccess(storeId, user);
-    }
     
+    const { page, pageSize, skip } = getPaginationParams({
+      page: filterDto.page,
+      pageSize: filterDto.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
+    });
+
     const where: Prisma.InventoryMovementWhereInput = {};
 
-    if (storeProductId) {
-      where.storeProductId = storeProductId;
+    if (type) {
+      where.type = type;
+    }
+
+    if (userId) {
+      where.userId = userId;
     }
 
     where.storeProduct = {
-      ...(storeId ? { storeId } : {}),
       store: {
         tenantId,
         ...(user.role !== 'ADMIN'
@@ -183,32 +192,56 @@ export class InventoryMovementService {
       tenantId,
     };
 
-    if (startDate || endDate) {
-      where.date = {};
-      if (startDate) where.date.gte = new Date(startDate);
-      if (endDate) where.date.lte = new Date(endDate);
+    if (name) {
+      where.storeProduct.product = {
+        name: { contains: name, mode: 'insensitive' },
+      };
     }
 
-    return this.prisma.inventoryMovement.findMany({
-      where,
-      include: {
-        storeProduct: {
-          include: {
-            product: true,
-            store: true
-          }
+    if (fromDate || toDate) {
+      where.date = {};
+      if (fromDate) where.date.gte = new Date(fromDate);
+      if (toDate) where.date.lte = new Date(toDate);
+    }
+
+    const [total, movements] = await Promise.all([
+      this.prisma.inventoryMovement.count({ where }),
+      this.prisma.inventoryMovement.findMany({
+        where,
+        include: {
+          storeProduct: {
+            include: {
+              product: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+          user: {
+            select: {
+              name: true,
+            },
+          },
         },
-        user: {
-          select: {
-            name: true,
-            email: true
-          }
-        }
-      },
-      orderBy: {
-        date: 'desc'
-      }
-    });
+        orderBy: {
+          date: 'desc',
+        },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    const items = movements.map((movement) => ({
+      date: movement.date,
+      name: movement.storeProduct?.product?.name ?? 'Producto sin nombre',
+      type: movement.type,
+      quantity: movement.quantity,
+      userName: movement.user?.name ?? null,
+      description: movement.description ?? null,
+    }));
+
+    return buildPaginatedResponse(items, total, page, pageSize);
   }
 
   async getDashboardStats(storeId: string | undefined, user: AuthUser) {
