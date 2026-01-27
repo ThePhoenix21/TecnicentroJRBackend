@@ -38,6 +38,8 @@ import { CreateStoreProductDto } from './dto/create-store-product.dto';
 import { UpdateStoreProductDto } from './dto/update-store-product.dto';
 import { StoreProduct } from './entities/store-product.entity';
 import { TenantFeature } from '@prisma/client';
+import { ListStoreProductsDto } from './dto/list-store-products.dto';
+import { ListStoreProductsResponseDto } from './dto/list-store-products-response.dto';
 
 @ApiTags('Productos en Tienda')
 @ApiBearerAuth('JWT')
@@ -68,6 +70,52 @@ import { TenantFeature } from '@prisma/client';
 })
 export class StoreProductController {
   constructor(private readonly storeProductService: StoreProductService) {}
+
+  @Get('list')
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
+  @ApiOperation({
+    summary: 'Listar productos de una tienda (paginado)',
+    description: 'Retorna listado paginado de productos de una tienda. Requiere storeId obligatoriamente y permite filtrar por nombre.',
+  })
+  @ApiQuery({
+    name: 'storeId',
+    required: true,
+    description: 'ID de la tienda (obligatorio)',
+    example: '456e7890-e12b-34d5-a678-426614174000',
+  })
+  @ApiQuery({
+    name: 'name',
+    required: false,
+    description: 'Filtrar por nombre de producto (contiene, case-insensitive)',
+    example: 'adaptador',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Número de página (default: 1)',
+    example: 1,
+  })
+  @ApiQuery({
+    name: 'pageSize',
+    required: false,
+    description: 'Tamaño de página (default: 12)',
+    example: 12,
+  })
+  @ApiQuery({
+    name: 'inStock',
+    required: false,
+    description: 'Si es true, filtra solo productos con stock disponible (stock > 0) manteniendo la paginación',
+    example: false,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Listado paginado de productos en tienda',
+    type: ListStoreProductsResponseDto,
+  })
+  list(@Query() query: ListStoreProductsDto, @Req() req: any): Promise<ListStoreProductsResponseDto> {
+    return this.storeProductService.list(query, req.user);
+  }
 
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)

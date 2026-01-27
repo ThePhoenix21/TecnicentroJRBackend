@@ -6,6 +6,9 @@ import { StoreProduct } from './entities/store-product.entity';
 import { ProductService } from './product.service';
 import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 import { InventoryMovementType } from '@prisma/client';
+import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
+import { ListStoreProductsDto } from './dto/list-store-products.dto';
+import { ListStoreProductsResponseDto } from './dto/list-store-products-response.dto';
 
 @Injectable()
 export class StoreProductService {
@@ -18,6 +21,106 @@ export class StoreProductService {
     if (value === null || value === undefined) return 0;
     if (typeof value === 'number') return value;
     return value.toNumber();
+  }
+
+  async list(filterDto: ListStoreProductsDto, user: { tenantId?: string; userId: string; role: string }): Promise<ListStoreProductsResponseDto> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    const storeId = filterDto.storeId;
+    if (!storeId) {
+      throw new BadRequestException('storeId es requerido');
+    }
+
+    const store = await this.prisma.store.findFirst({
+      where: {
+        id: storeId,
+        tenantId,
+        ...(user.role !== 'ADMIN'
+          ? {
+              storeUsers: {
+                some: {
+                  userId: user.userId,
+                },
+              },
+            }
+          : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!store) {
+      throw new ForbiddenException('No tiene permisos para ver productos de esta tienda');
+    }
+
+    const { page, pageSize, skip } = getPaginationParams({
+      page: filterDto.page,
+      pageSize: filterDto.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
+    });
+
+    const inStock = !!filterDto.inStock;
+
+    const where: any = {
+      storeId,
+      store: { tenantId },
+    };
+
+    if (inStock) {
+      where.stock = {
+        gt: 0,
+      };
+    }
+
+    if (filterDto.name) {
+      where.product = {
+        name: {
+          contains: filterDto.name,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    const [total, storeProducts] = await Promise.all([
+      this.prisma.storeProduct.count({ where }),
+      this.prisma.storeProduct.findMany({
+        where,
+        select: {
+          id: true,
+          price: true,
+          stock: true,
+          product: {
+            select: {
+              name: true,
+              buyCost: true,
+              basePrice: true,
+            },
+          },
+        },
+        orderBy: {
+          product: {
+            name: 'asc',
+          },
+        },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    const items = storeProducts.map((sp) => ({
+      id: sp.id,
+      name: sp.product?.name ?? 'Producto sin nombre',
+      price: this.toNumber(sp.price),
+      stock: sp.stock,
+      buyCost: sp.product?.buyCost ? this.toNumber(sp.product.buyCost) : null,
+      basePrice: sp.product?.basePrice ? this.toNumber(sp.product.basePrice) : null,
+    }));
+
+    return buildPaginatedResponse(items, total, page, pageSize);
   }
 
   async create(userId: string, tenantId: string, createStoreProductDto: CreateStoreProductDto): Promise<StoreProduct[]> {
