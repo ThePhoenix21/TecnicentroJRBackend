@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
   ValidationPipe,
@@ -31,6 +32,8 @@ import { ProviderService } from './provider.service';
 import { CreateProviderDto } from './dto/create-provider.dto';
 import { UpdateProviderDto } from './dto/update-provider.dto';
 import { SetProviderProductsDto } from './dto/set-provider-products.dto';
+import { ListProvidersDto } from './dto/list-providers.dto';
+import { ListProvidersResponseDto } from './dto/list-providers-response.dto';
 
 @ApiTags('Proveedores')
 @ApiBearerAuth('JWT-auth')
@@ -160,8 +163,37 @@ export class ProviderController {
     rules: [{ limit: 120, windowSeconds: 60 }],
   })
   @ApiOperation({ summary: 'Listar proveedores' })
-  async list(@Req() req: Request & { user: any }) {
-    return this.providerService.list(req.user);
+  @ApiResponse({ status: 200, type: ListProvidersResponseDto })
+  async list(
+    @Req() req: Request & { user: any },
+    @Query() query: ListProvidersDto,
+  ): Promise<ListProvidersResponseDto> {
+    return this.providerService.list(query, req.user);
+  }
+
+  @Get('lookup-ruc')
+  @Roles(Role.ADMIN)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 120, windowSeconds: 60 }],
+  })
+  @ApiOperation({ summary: 'Lookup de RUC de proveedores (solo id y ruc)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de RUC de proveedores obtenida exitosamente',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
+          ruc: { type: 'string', example: '20123456789' },
+        },
+      },
+    },
+  })
+  async lookupRuc(@Req() req: Request & { user: any }) {
+    return this.providerService.lookupRuc(req.user);
   }
 
   @Get(':id')

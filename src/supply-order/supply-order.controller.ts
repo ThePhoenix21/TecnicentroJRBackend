@@ -46,6 +46,19 @@ export class SupplyOrderController {
     return this.supplyOrderService.list(query, req.user);
   }
 
+  @Get('lookup')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @ApiOperation({ summary: 'Lookup de órdenes de suministro (id y código)' })
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 120, windowSeconds: 60 }],
+  })
+  async lookup(@Req() req: any) {
+    return this.supplyOrderService.lookup(req.user);
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @Roles(Role.ADMIN)

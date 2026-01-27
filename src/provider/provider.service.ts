@@ -5,6 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SupplyOrderStatus } from '@prisma/client';
+import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
+import { ListProvidersDto } from './dto/list-providers.dto';
+import { ListProvidersResponseDto } from './dto/list-providers-response.dto';
 
 type AuthUser = {
   userId: string;
@@ -158,23 +162,94 @@ export class ProviderService {
     return { success: true };
   }
 
-  async list(user: AuthUser) {
+  async list(query: ListProvidersDto, user: AuthUser): Promise<ListProvidersResponseDto> {
     const tenantId = this.getTenantIdOrThrow(user);
-
-    return (this.prisma.provider as any).findMany({
-      where: {
-        deletedAt: null,
-        createdBy: { tenantId },
-      },
-      select: {
-        id: true,
-        name: true,
-        address: true,
-        ruc: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
+    const { page, pageSize, skip } = getPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
     });
+
+    const where: any = {
+      deletedAt: null,
+      createdBy: { tenantId },
+    };
+
+    if (query.provider) {
+      where.name = { contains: query.provider, mode: 'insensitive' };
+    }
+
+    if (query.ruc) {
+      where.ruc = { contains: query.ruc, mode: 'insensitive' };
+    }
+
+    if (query.fromDate || query.toDate) {
+      where.createdAt = {
+        ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+        ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+      };
+    }
+
+    const [total, providers] = await Promise.all([
+      (this.prisma.provider as any).count({ where }),
+      (this.prisma.provider as any).findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          ruc: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    const providerIds = providers.map((provider: { id: string }) => provider.id);
+    const [activeCounts, annulledCounts] = await Promise.all([
+      this.prisma.supplyOrder.groupBy({
+        by: ['providerId'],
+        where: {
+          tenantId,
+          providerId: { in: providerIds },
+          status: { not: SupplyOrderStatus.ANNULLATED },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.supplyOrder.groupBy({
+        by: ['providerId'],
+        where: {
+          tenantId,
+          providerId: { in: providerIds },
+          status: SupplyOrderStatus.ANNULLATED,
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const activeMap = new Map(activeCounts.map((item) => [item.providerId, item._count._all]));
+    const annulledMap = new Map(
+      annulledCounts.map((item) => [item.providerId, item._count._all]),
+    );
+
+    return buildPaginatedResponse(
+      providers.map((provider: any) => ({
+        id: provider.id,
+        name: provider.name,
+        ruc: provider.ruc,
+        address: provider.address,
+        createdAt: provider.createdAt,
+        activeOrdersCount: activeMap.get(provider.id) ?? 0,
+        annulledOrdersCount: annulledMap.get(provider.id) ?? 0,
+      })),
+      total,
+      page,
+      pageSize,
+    );
   }
 
   async lookup(user: AuthUser) {
@@ -190,6 +265,22 @@ export class ProviderService {
         name: true,
       },
       orderBy: { name: 'asc' },
+    });
+  }
+
+  async lookupRuc(user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    return (this.prisma.provider as any).findMany({
+      where: {
+        deletedAt: null,
+        createdBy: { tenantId },
+      },
+      select: {
+        id: true,
+        ruc: true,
+      },
+      orderBy: { ruc: 'asc' },
     });
   }
 

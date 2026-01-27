@@ -10,6 +10,7 @@ import { CreateSupplyOrderDto } from './dto/create-supply-order.dto';
 import { ListSupplyOrdersDto } from './dto/list-supply-orders.dto';
 import { ListSupplyOrdersResponseDto } from './dto/list-supply-orders-response.dto';
 import { ReceiveSupplyOrderDto } from './dto/receive-supply-order.dto';
+import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
 import { Prisma, SupplyOrderStatus } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 
@@ -227,9 +228,13 @@ export class SupplyOrderService {
   async list(query: ListSupplyOrdersDto, user?: AuthUser): Promise<ListSupplyOrdersResponseDto> {
     const tenantId = this.getTenantIdOrThrow(user);
 
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 12;
-    const skip = (page - 1) * pageSize;
+    const { page, pageSize, skip } = getPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
+    });
 
     const where: any = { tenantId };
 
@@ -239,6 +244,13 @@ export class SupplyOrderService {
 
     if (query.status) {
       where.status = query.status;
+    }
+
+    if (query.code) {
+      where.code = {
+        contains: query.code,
+        mode: 'insensitive',
+      };
     }
 
     if (query.fromDate || query.toDate) {
@@ -279,8 +291,8 @@ export class SupplyOrderService {
       }),
     ]);
 
-    return {
-      data: orders.map((order) => ({
+    return buildPaginatedResponse(
+      orders.map((order) => ({
         id: order.id,
         code: order.code,
         status: order.status,
@@ -292,10 +304,23 @@ export class SupplyOrderService {
         creatorUserEmail: order.createdBy?.email ?? null,
       })),
       total,
-      totalPages: Math.ceil(total / pageSize),
       page,
       pageSize,
-    };
+    );
+  }
+
+  async lookup(user?: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    return this.prisma.supplyOrder.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        code: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
   }
 
   async findOne(orderId: string, user?: AuthUser) {

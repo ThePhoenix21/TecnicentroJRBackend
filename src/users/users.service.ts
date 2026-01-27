@@ -443,6 +443,37 @@ export class UsersService {
         });
     }
 
+    async remove(id: string, user?: AuthUser) {
+        const tenantId = this.getTenantIdOrThrow(user);
+
+        const existing = await this.prisma.user.findFirst({ where: { id, tenantId }, select: { id: true } });
+        if (!existing) {
+            this.logger.warn(`Intento de eliminar usuario inexistente ID ${id}`);
+            return null;
+        }
+
+        return this.prisma.user.update({
+            where: { id },
+            data: { status: 'DELETED' },
+        });
+    }
+
+    async lookup(user?: AuthUser) {
+        const tenantId = this.getTenantIdOrThrow(user);
+
+        return this.prisma.user.findMany({
+            where: {
+                tenantId,
+                status: { not: 'DELETED' },
+            },
+            select: {
+                id: true,
+                name: true,
+            },
+            orderBy: { name: 'asc' },
+        });
+    }
+
     async findByEmail(email: string) {
         if (!email) {
             throw new BadRequestException('El correo electrónico es requerido');

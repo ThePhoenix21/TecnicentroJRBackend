@@ -1,30 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsEnum,
-  IsInt,
   IsOptional,
   IsUUID,
-  Min,
 } from 'class-validator';
 import { SupplyOrderStatus } from '@prisma/client';
+import { BasePaginationDto } from '../../common/dto/base-pagination.dto';
 
-export class ListSupplyOrdersDto {
-  @ApiPropertyOptional({ example: 1, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page: number = 1;
-
-  @ApiPropertyOptional({ example: 12, default: 12 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  pageSize: number = 12;
-
+export class ListSupplyOrdersDto extends BasePaginationDto {
   @ApiPropertyOptional({ example: '2026-01-01T00:00:00.000Z' })
   @IsOptional()
   @IsDateString()
@@ -44,4 +28,8 @@ export class ListSupplyOrdersDto {
   @IsOptional()
   @IsEnum(SupplyOrderStatus)
   status?: SupplyOrderStatus;
+
+  @ApiPropertyOptional({ example: 'ABC-000123-T2R9KU' })
+  @IsOptional()
+  code?: string;
 }

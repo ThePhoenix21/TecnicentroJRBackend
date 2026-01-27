@@ -302,6 +302,17 @@ export class UsersController {
     return this.usersService.findAll(tenantId);
   }
 
+  @Get('lookup')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.USER)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 120, windowSeconds: 60 }],
+  })
+  async lookup(@Request() req: any) {
+    return this.usersService.lookup(req.user);
+  }
+
   @Put('change-password')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER)
