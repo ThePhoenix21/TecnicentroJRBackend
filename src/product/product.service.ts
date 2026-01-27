@@ -98,7 +98,7 @@ export class ProductService {
       orderBy: {
         name: 'asc',
       },
-      take: 50, // Limitar a 50 resultados para lookup
+      take: 1000, // Limitar a 1000 resultados para lookup
     });
 
     return products;
