@@ -102,8 +102,7 @@ export class ProductService {
       },
       orderBy: {
         name: 'asc',
-      },
-      take: 1000, // Limitar a 1000 resultados para lookup
+      }
     });
 
     return products;
