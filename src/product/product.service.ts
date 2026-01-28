@@ -4,6 +4,8 @@ import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CatalogProduct } from './entities/catalog-product.entity';
 import { StoreProductStockDto } from './dto/store-product-stock.dto';
+import { AuthService } from '../auth/auth.service';
+import { AdminCredentialsDto } from './dto/admin-credentials.dto';
 
 type AuthUser = {
   userId: string;
@@ -14,7 +16,10 @@ type AuthUser = {
 
 @Injectable()
 export class ProductService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private authService: AuthService,
+  ) {}
 
   private getTenantIdOrUndefined(user?: AuthUser): string | undefined {
     return user?.tenantId;
@@ -142,8 +147,22 @@ export class ProductService {
     return withCreatedBy as unknown as CatalogProduct;
   }
 
-  async remove(id: string, user?: AuthUser): Promise<CatalogProduct> {
+  async remove(id: string, credentials: AdminCredentialsDto, user?: AuthUser): Promise<CatalogProduct> {
     const tenantId = this.getTenantIdOrUndefined(user);
+
+    if (!tenantId) {
+      throw new ForbiddenException('TenantId no encontrado en el token');
+    }
+
+    const authUser = await this.authService.validateAnyUser(credentials.email, credentials.password);
+
+    if (authUser.role !== 'ADMIN') {
+      throw new ForbiddenException('Solo un administrador puede eliminar productos del catálogo');
+    }
+
+    if (authUser.tenantId !== tenantId) {
+      throw new ForbiddenException('No tiene permisos para eliminar productos de otro tenant');
+    }
 
     // Verificar que el producto existe y no está ya eliminado
     const product = await this.prisma.product.findUnique({
@@ -158,10 +177,28 @@ export class ProductService {
       throw new NotFoundException(`Producto del catálogo con ID ${id} ya está eliminado`);
     }
 
-    // Soft delete: marcar como eliminado en lugar de borrar físicamente
-    const updatedProduct = await this.prisma.product.update({
-      where: { id },
-      data: { isDeleted: true },
+    const now = new Date();
+
+    const updatedProduct = await this.prisma.$transaction(async (prisma) => {
+      // 1) Soft delete del producto de catálogo
+      const updated = await prisma.product.update({
+        where: { id },
+        data: { isDeleted: true },
+      });
+
+      // 2) “Borrar de todas las tiendas” => soft delete de todos los StoreProduct de ese producto
+      await prisma.storeProduct.updateMany({
+        where: {
+          productId: id,
+          deletedAt: null,
+          store: {
+            tenantId,
+          },
+        } as any,
+        data: { deletedAt: now } as any,
+      } as any);
+
+      return updated;
     });
 
     const withCreatedBy = await this.attachCreatedByForTenant(updatedProduct, tenantId);
@@ -188,6 +225,7 @@ export class ProductService {
       where: {
         storeId,
         store: { tenantId },
+        deletedAt: null,
         product: { isDeleted: false },
       },
       select: {
@@ -206,9 +244,9 @@ export class ProductService {
           name: 'asc',
         },
       },
-    });
+    } as any);
 
-    return storeProducts.map((item) => ({
+    return (storeProducts as any[]).map((item) => ({
       id: item.id,
       productId: item.productId,
       name: item.product.name,

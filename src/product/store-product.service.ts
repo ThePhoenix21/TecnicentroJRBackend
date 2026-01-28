@@ -9,6 +9,7 @@ import { InventoryMovementType } from '@prisma/client';
 import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
 import { ListStoreProductsDto } from './dto/list-store-products.dto';
 import { ListStoreProductsResponseDto } from './dto/list-store-products-response.dto';
+import { StoreProductDetailDto } from './dto/store-product-detail.dto';
 
 @Injectable()
 export class StoreProductService {
@@ -68,6 +69,10 @@ export class StoreProductService {
     const where: any = {
       storeId,
       store: { tenantId },
+      deletedAt: null,
+      product: {
+        isDeleted: false,
+      },
     };
 
     if (inStock) {
@@ -78,6 +83,7 @@ export class StoreProductService {
 
     if (filterDto.name) {
       where.product = {
+        ...(where.product ?? {}),
         name: {
           contains: filterDto.name,
           mode: 'insensitive',
@@ -169,6 +175,10 @@ export class StoreProductService {
           throw new NotFoundException(`Producto del catálogo con ID ${createStoreProductDto.productId} no encontrado`);
         }
 
+        if (catalogProduct.isDeleted) {
+          throw new NotFoundException(`Producto del catálogo con ID ${createStoreProductDto.productId} no encontrado`);
+        }
+
         productId = createStoreProductDto.productId;
       }
 
@@ -207,10 +217,11 @@ export class StoreProductService {
       const existingStoreProducts = await this.prisma.storeProduct.findMany({
         where: {
           productId: productId,
+          deletedAt: null,
           store: {
             tenantId,
           },
-        },
+        } as any,
         select: { storeId: true }
       });
 
@@ -301,10 +312,18 @@ export class StoreProductService {
     }
     
     // Construir where clause para búsqueda
-    let whereCondition: any = { storeId, store: { tenantId } };
+    let whereCondition: any = {
+      storeId,
+      store: { tenantId },
+      deletedAt: null,
+      product: {
+        isDeleted: false,
+      },
+    };
     
     if (search) {
       whereCondition.product = {
+        ...(whereCondition.product ?? {}),
         name: {
           contains: search,
           mode: 'insensitive' // Búsqueda case-insensitive
@@ -314,12 +333,12 @@ export class StoreProductService {
     
     // Obtener el total de productos para paginación
     const total = await this.prisma.storeProduct.count({
-      where: whereCondition
-    });
+      where: whereCondition as any
+    } as any);
 
     // Obtener los productos con paginación
     const storeProducts = await this.prisma.storeProduct.findMany({
-      where: whereCondition,
+      where: whereCondition as any,
       include: {
         product: {
           select: {
@@ -351,7 +370,7 @@ export class StoreProductService {
       },
       skip,
       take: limit
-    });
+    } as any);
 
     const totalPages = Math.ceil(total / limit);
 
@@ -381,10 +400,18 @@ export class StoreProductService {
     }
     
     // Construir where clause para búsqueda
-    let whereCondition: any = { storeId, store: { tenantId } };
+    let whereCondition: any = {
+      storeId,
+      store: { tenantId },
+      deletedAt: null,
+      product: {
+        isDeleted: false,
+      },
+    };
     
     if (search) {
       whereCondition.product = {
+        ...(whereCondition.product ?? {}),
         name: {
           contains: search,
           mode: 'insensitive' // Búsqueda case-insensitive
@@ -394,12 +421,12 @@ export class StoreProductService {
     
     // Obtener el total de productos para paginación
     const total = await this.prisma.storeProduct.count({
-      where: whereCondition
-    });
+      where: whereCondition as any
+    } as any);
 
     // Obtener los productos con paginación (solo campos básicos)
     const storeProducts = await this.prisma.storeProduct.findMany({
-      where: whereCondition,
+      where: whereCondition as any,
       select: {
         id: true,
         price: true,
@@ -416,7 +443,7 @@ export class StoreProductService {
       },
       skip,
       take: limit
-    });
+    } as any);
 
     const totalPages = Math.ceil(total / limit);
 
@@ -439,6 +466,11 @@ export class StoreProductService {
             tenantId: true,
           },
         },
+        product: {
+          select: {
+            isDeleted: true,
+          },
+        },
       },
     });
 
@@ -448,6 +480,14 @@ export class StoreProductService {
 
     if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId) {
       throw new ForbiddenException('No tienes permiso para actualizar este producto');
+    }
+
+    if ((storeProduct as any).deletedAt) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
+    }
+
+    if (storeProduct.product?.isDeleted) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
 
     // Si no es admin y no se permite saltar la restricción de propietario,
@@ -518,7 +558,12 @@ export class StoreProductService {
 
   async findByUser(tenantId: string, userId: string): Promise<StoreProduct[]> {
     return this.prisma.storeProduct.findMany({
-      where: { userId: userId, store: { tenantId } },
+      where: {
+        userId: userId,
+        deletedAt: null,
+        store: { tenantId },
+        product: { isDeleted: false },
+      } as any,
       orderBy: { createdAt: 'desc' },
       include: {
         product: {
@@ -551,7 +596,12 @@ export class StoreProductService {
 
   async findOne(tenantId: string, id: string): Promise<StoreProduct> {
     const storeProduct = await this.prisma.storeProduct.findFirst({
-      where: { id, store: { tenantId } },
+      where: {
+        id,
+        deletedAt: null,
+        store: { tenantId },
+        product: { isDeleted: false },
+      } as any,
       include: {
         product: {
           select: {
@@ -585,6 +635,31 @@ export class StoreProductService {
     }
 
     return storeProduct as unknown as StoreProduct;
+  }
+
+  async findOneDetail(tenantId: string, id: string): Promise<StoreProductDetailDto> {
+    const storeProduct = await this.findOne(tenantId, id);
+
+    return {
+      id: storeProduct.id,
+      price: this.toNumber(storeProduct.price),
+      stock: storeProduct.stock,
+      product: {
+        id: storeProduct.product?.id ?? '',
+        name: storeProduct.product?.name ?? 'Producto sin nombre',
+        description: storeProduct.product?.description ?? null,
+        basePrice: storeProduct.product?.basePrice ? this.toNumber(storeProduct.product.basePrice) : null,
+        buyCost: storeProduct.product?.buyCost ? this.toNumber(storeProduct.product.buyCost) : null,
+      },
+      store: {
+        name: storeProduct.store?.name ?? '',
+        address: storeProduct.store?.address ?? null,
+        phone: storeProduct.store?.phone ?? null,
+      },
+      user: {
+        name: storeProduct.user?.name ?? null,
+      },
+    };
   }
 
   async update(
@@ -635,14 +710,6 @@ export class StoreProductService {
       console.log('Agregando price a storeProductFields:', updateData.price);
       storeProductFields.price = updateData.price;
     }
-    if (updateData.stock !== undefined) {
-      console.log('Agregando stock a storeProductFields:', updateData.stock);
-      storeProductFields.stock = updateData.stock;
-    }
-    if (updateData.stockThreshold !== undefined) {
-      console.log('Agregando stockThreshold a storeProductFields:', updateData.stockThreshold);
-      storeProductFields.stockThreshold = updateData.stockThreshold;
-    }
 
     // Campos que solo los administradores pueden modificar (Product)
     if (isAdmin) {
@@ -686,97 +753,36 @@ export class StoreProductService {
 
     // Actualizar el StoreProduct si hay cambios
     if (Object.keys(storeProductFields).length > 0) {
-      // Si se está actualizando el stock, necesitamos registrar el movimiento
-      if (storeProductFields.stock !== undefined && storeProductFields.stock !== storeProduct.stock) {
-        const difference = storeProductFields.stock - storeProduct.stock;
-        
-        return this.prisma.$transaction(async (prisma) => {
-          // 1. Crear movimiento de inventario (ADJUST)
-          await prisma.inventoryMovement.create({
-            data: {
-              storeProductId: id,
-              type: InventoryMovementType.ADJUST,
-              quantity: Math.abs(difference), // Guardar cantidad absoluta, el tipo define lógica pero ADJUST es especial
-              // NOTA: En InventoryMovementService asumimos que ADJUST sumaba si era positivo.
-              // Para ser consistentes con el historial, si es negativo (reducción), deberíamos usar OUTGOING o ADJUST con nota?
-              // Vamos a usar ADJUST y poner la diferencia real en description o manejarlo.
-              // O mejor: Si la diferencia es negativa, usamos quantity positivo y tipo ADJUST? 
-              // En el esquema, quantity es Int. Si guardamos negativo, ¿qué pasa?
-              // Revisando InventoryMovementService, para tipos INCOMING/OUTGOING usaba la cantidad positiva y aplicaba signo al stock.
-              // Aquí el stock YA lo estamos forzando al valor nuevo. El movimiento es solo registro histórico.
-              // Guardaremos la cantidad absoluta y en description aclaramos si fue aumento o disminución.
-              // O mejor aún: Usar el quantity con signo si el modelo lo permite? El DTO validaba Min(1).
-              // Asumiremos que InventoryMovement guarda cantidad POSITIVA de movimiento.
-              description: `Ajuste manual desde edición de producto (Stock: ${storeProduct.stock} -> ${storeProductFields.stock})`,
-              userId: userId
-            }
-          });
-
-          // 2. Actualizar el producto
-          return prisma.storeProduct.update({
-            where: { id },
-            data: storeProductFields,
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  description: true,
-                  basePrice: true,
-                  buyCost: true,
-                },
-              },
-              store: {
-                select: {
-                  id: true,
-                  name: true,
-                  address: true,
-                  phone: true,
-                },
-              },
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-          });
-        });
-      } else {
-        // Actualización normal sin cambio de stock (o transacción simple)
-        return this.prisma.storeProduct.update({
-          where: { id },
-          data: storeProductFields,
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                description: true,
-                basePrice: true,
-                buyCost: true,
-              },
-            },
-            store: {
-              select: {
-                id: true,
-                name: true,
-                address: true,
-                phone: true,
-              },
-            },
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
+      return this.prisma.storeProduct.update({
+        where: { id },
+        data: storeProductFields,
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              basePrice: true,
+              buyCost: true,
             },
           },
-        });
-      }
+          store: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
     }
 
     // Si no hay cambios en StoreProduct pero sí en Product, retornar el producto actualizado
@@ -861,6 +867,11 @@ export class StoreProductService {
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
       include: {
+        product: {
+          select: {
+            isDeleted: true,
+          },
+        },
         store: {
           select: {
             tenantId: true,
@@ -873,14 +884,27 @@ export class StoreProductService {
       throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
 
+    if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permiso para eliminar este producto');
+    }
+
+    if ((storeProduct as any).deletedAt) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
+    }
+
+    if (storeProduct.product?.isDeleted) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
+    }
+
     // Si no es admin, verificar que el producto pertenece al usuario
     if (!isAdmin && storeProduct.userId !== userId) {
       throw new ForbiddenException('No tienes permiso para eliminar este producto');
     }
 
-    // Eliminar el StoreProduct
-    await this.prisma.storeProduct.delete({
+    // Soft delete (solo para esa tienda)
+    await this.prisma.storeProduct.update({
       where: { id },
+      data: { deletedAt: new Date() } as any,
     });
   }
 }

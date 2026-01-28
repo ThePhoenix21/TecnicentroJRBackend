@@ -38,6 +38,7 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { CatalogProduct } from './entities/catalog-product.entity';
 import { TenantFeature } from '@prisma/client';
 import { StoreProductStockDto } from './dto/store-product-stock.dto';
+import { AdminCredentialsDto } from './dto/admin-credentials.dto';
 
 @ApiTags('Catálogo de Productos')
 @ApiBearerAuth('JWT')
@@ -428,6 +429,10 @@ export class ProductController {
     summary: 'Eliminar un producto del catálogo (Soft Delete)',
     description: 'Marca un producto del catálogo como eliminado (soft delete). Esta operación solo puede realizarla un administrador. El producto no se elimina físicamente, solo se marca como eliminado y ya no aparecerá en las consultas normales.'
   })
+  @ApiBody({
+    type: AdminCredentialsDto,
+    description: 'Credenciales de un ADMIN para autorizar la eliminación del producto del catálogo',
+  })
   @ApiParam({ 
     name: 'id', 
     description: 'UUID del producto a marcar como eliminado',
@@ -498,8 +503,9 @@ export class ProductController {
   })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() credentials: AdminCredentialsDto,
     @Req() req: any,
   ): Promise<CatalogProduct> {
-    return this.productService.remove(id, req.user);
+    return this.productService.remove(id, credentials, req.user);
   }
 }

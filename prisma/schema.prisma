@@ -149,6 +149,7 @@ model StoreProduct {
   stockThreshold Int      @default(1) // alerta de stock mínimo
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
 
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)

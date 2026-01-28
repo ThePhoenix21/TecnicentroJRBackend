@@ -14,28 +14,6 @@ export class UpdateStoreProductDto {
   price?: number;
 
   @ApiProperty({
-    description: 'Cantidad en inventario para esta tienda',
-    example: 50,
-    minimum: 0,
-    required: false
-  })
-  @IsNumber()
-  @IsOptional()
-  @Min(0)
-  stock?: number;
-
-  @ApiProperty({
-    description: 'Umbral mínimo de inventario para alertas en esta tienda',
-    example: 5,
-    minimum: 0,
-    required: false
-  })
-  @IsNumber()
-  @IsOptional()
-  @IsPositive()
-  stockThreshold?: number;
-
-  @ApiProperty({
     description: 'Nombre del producto (solo administradores)',
     example: 'Aceite de Motor 10W40',
     required: false

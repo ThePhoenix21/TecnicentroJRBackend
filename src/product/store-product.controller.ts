@@ -40,6 +40,7 @@ import { StoreProduct } from './entities/store-product.entity';
 import { TenantFeature } from '@prisma/client';
 import { ListStoreProductsDto } from './dto/list-store-products.dto';
 import { ListStoreProductsResponseDto } from './dto/list-store-products-response.dto';
+import { StoreProductDetailDto } from './dto/store-product-detail.dto';
 
 @ApiTags('Productos en Tienda')
 @ApiBearerAuth('JWT')
@@ -742,47 +743,7 @@ export class StoreProductController {
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Producto en tienda encontrado exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: 'store-product-id-123' },
-        price: { type: 'number', example: 29.99 },
-        stock: { type: 'number', example: 50 },
-        stockThreshold: { type: 'number', example: 5 },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
-        productId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
-        product: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string', example: 'Aceite de Motor 10W40' },
-            description: { type: 'string', nullable: true },
-            basePrice: { type: 'number', nullable: true },
-            buyCost: { type: 'number', nullable: true }
-          }
-        },
-        storeId: { type: 'string', example: '456e7890-e12b-34d5-a678-426614174000' },
-        store: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string', example: 'Tecnicentro JR - Sucursal Central' },
-            address: { type: 'string', nullable: true },
-            phone: { type: 'string', nullable: true }
-          }
-        },
-        userId: { type: 'string', example: 'user-id-123' },
-        user: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string', example: 'Juan Pérez' },
-            email: { type: 'string', example: 'juan@ejemplo.com' }
-          }
-        }
-      }
-    }
+    type: StoreProductDetailDto,
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
@@ -810,14 +771,14 @@ export class StoreProductController {
   async findOne(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<StoreProduct> {  
+  ): Promise<StoreProductDetailDto> {  
     const tenantId = req.user?.tenantId;
 
     if (!tenantId) {
       throw new BadRequestException('TenantId no encontrado en el token');
     }
 
-    return this.storeProductService.findOne(tenantId, id);
+    return this.storeProductService.findOneDetail(tenantId, id);
   }
 
   @Patch('update/:id')
@@ -988,18 +949,18 @@ export class StoreProductController {
       throw new ForbiddenException('Debes tener al menos uno de los permisos MANAGE_PRODUCTS o MANAGE_PRICES para actualizar este producto');
     }
 
-    const touchesStockFields =
-      updateData.stock !== undefined ||
-      updateData.stockThreshold !== undefined;
+    const touchesCatalogFields =
+      updateData.name !== undefined ||
+      updateData.description !== undefined;
 
     const touchesPriceFields =
       updateData.price !== undefined ||
       updateData.basePrice !== undefined ||
       updateData.buyCost !== undefined;
 
-    // Cambios de stock/stockThreshold requieren MANAGE_PRODUCTS
-    if (touchesStockFields && !canManageProducts) {
-      throw new ForbiddenException('No tienes permisos para modificar el stock de productos');
+    // Cambios de catálogo requieren MANAGE_PRODUCTS
+    if (touchesCatalogFields && !canManageProducts) {
+      throw new ForbiddenException('No tienes permisos para modificar datos del catálogo');
     }
 
     // Cambios de precios requieren MANAGE_PRICES
