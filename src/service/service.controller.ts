@@ -32,6 +32,10 @@ import { ServiceService } from './service.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { Service } from './entities/service.entity';
+import { ListServicesDto } from './dto/list-services.dto';
+import { ListServicesResponseDto } from './dto/list-services-response.dto';
+import { ServiceLookupItemDto } from './dto/service-lookup-item.dto';
+import { ServiceDetailResponseDto } from './dto/service-detail-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -59,6 +63,26 @@ export class ServiceController {
     private readonly serviceService: ServiceService,
     private readonly supabaseStorage: SupabaseStorageService
   ) {}
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
+  @ApiOperation({ summary: 'Listado paginado de servicios' })
+  @ApiResponse({ status: HttpStatus.OK, type: ListServicesResponseDto })
+  async list(@Req() req: any, @Query() query: ListServicesDto): Promise<ListServicesResponseDto> {
+    return this.serviceService.list(query, req.user);
+  }
+
+  @Get('lookup')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
+  @ApiOperation({ summary: 'Lookup de servicios (id y value)' })
+  @ApiResponse({ status: HttpStatus.OK, type: [ServiceLookupItemDto] })
+  async lookup(@Req() req: any): Promise<ServiceLookupItemDto[]> {
+    return this.serviceService.lookup(req.user);
+  }
 
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
@@ -811,5 +835,16 @@ export class ServiceController {
     @Query('storeId') storeId?: string,
   ): Promise<any[]> {
     return this.serviceService.findAllWithClients(status, type, storeId, req.user);
+  }
+
+  @Get(':id')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
+  @ApiOperation({ summary: 'Detalle completo de servicio' })
+  @ApiParam({ name: 'id', required: true })
+  @ApiResponse({ status: HttpStatus.OK, type: ServiceDetailResponseDto })
+  async getDetail(@Param('id', ParseUUIDPipe) id: string, @Req() req: any): Promise<ServiceDetailResponseDto> {
+    return this.serviceService.getDetail(id, req.user);
   }
 }

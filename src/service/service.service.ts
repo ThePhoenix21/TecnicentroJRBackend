@@ -3,6 +3,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { Service, ServiceStatus, ServiceType } from '@prisma/client';
+import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
+import { ListServicesDto } from './dto/list-services.dto';
+import { ListServicesResponseDto } from './dto/list-services-response.dto';
+import { ServiceLookupItemDto } from './dto/service-lookup-item.dto';
+import { ServiceDetailResponseDto } from './dto/service-detail-response.dto';
 
 type AuthUser = {
   userId: string;
@@ -27,6 +32,263 @@ export class ServiceService {
       throw new ForbiddenException('Tenant no encontrado en el token');
     }
     return tenantId;
+  }
+
+  async list(query: ListServicesDto, user: AuthUser): Promise<ListServicesResponseDto> {
+    const tenantId = this.getTenantIdOrThrow(user);
+    const { page, pageSize, skip } = getPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
+    });
+
+    const where: any = {
+      order: {
+        cashSession: {
+          Store: {
+            tenantId,
+            ...(user.role !== 'ADMIN'
+              ? {
+                  storeUsers: {
+                    some: {
+                      userId: user.userId,
+                    },
+                  },
+                }
+              : {}),
+          },
+          ...(query.openCashOnly && {
+            status: 'OPEN',
+          }),
+        },
+      },
+      ...(query.status && { status: query.status }),
+      ...(query.fromDate || query.toDate
+        ? {
+            createdAt: {
+              ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+              ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [total, services] = await Promise.all([
+      this.prisma.service.count({ where }),
+      this.prisma.service.findMany({
+        where,
+        select: {
+          name: true,
+          status: true,
+          price: true,
+          createdAt: true,
+          order: {
+            select: {
+              client: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    return buildPaginatedResponse(
+      services.map((service: any) => ({
+        clientName: service.order?.client?.name ?? '',
+        serviceName: service.name,
+        status: service.status,
+        price: this.toNumber(service.price),
+        createdAt: service.createdAt,
+      })),
+      total,
+      page,
+      pageSize,
+    );
+  }
+
+  async lookup(user: AuthUser): Promise<ServiceLookupItemDto[]> {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const services = await this.prisma.service.findMany({
+      where: {
+        order: {
+          cashSession: {
+            Store: {
+              tenantId,
+              ...(user.role !== 'ADMIN'
+                ? {
+                    storeUsers: {
+                      some: {
+                        userId: user.userId,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return services.map((s) => ({
+      id: s.id,
+      value: s.name,
+    }));
+  }
+
+  async getDetail(id: string, user: AuthUser): Promise<ServiceDetailResponseDto> {
+    await this.assertServiceAccess(id, user);
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const service = await this.prisma.service.findFirst({
+      where: {
+        id,
+        order: {
+          cashSession: {
+            Store: {
+              tenantId,
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        photoUrls: true,
+        type: true,
+        status: true,
+        price: true,
+        createdAt: true,
+        updatedAt: true,
+        storeService: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            price: true,
+            type: true,
+          },
+        },
+        serviceCategory: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            totalAmount: true,
+            isPriceModified: true,
+            createdAt: true,
+            updatedAt: true,
+            canceledAt: true,
+            client: {
+              select: {
+                id: true,
+                name: true,
+                dni: true,
+                phone: true,
+                email: true,
+                address: true,
+              },
+            },
+            paymentMethods: {
+              select: {
+                type: true,
+                amount: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: 'desc' },
+            },
+            cashSession: {
+              select: {
+                Store: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!service) {
+      throw new NotFoundException(`Servicio con ID ${id} no encontrado`);
+    }
+
+    return {
+      id: service.id,
+      service: {
+        id: service.id,
+        name: service.name,
+        description: service.description ?? null,
+        photoUrls: service.photoUrls ?? [],
+        type: service.type,
+        status: service.status,
+        price: this.toNumber(service.price),
+        createdAt: service.createdAt,
+        updatedAt: service.updatedAt,
+      },
+      order: {
+        id: service.order.id,
+        orderNumber: service.order.orderNumber,
+        status: service.order.status,
+        totalAmount: this.toNumber(service.order.totalAmount),
+        isPriceModified: service.order.isPriceModified,
+        createdAt: service.order.createdAt,
+        updatedAt: service.order.updatedAt,
+        canceledAt: service.order.canceledAt ?? null,
+        storeName: service.order.cashSession?.Store?.name ?? null,
+        paymentMethods: (service.order.paymentMethods ?? []).map((pm) => ({
+          type: pm.type,
+          amount: this.toNumber(pm.amount),
+          createdAt: pm.createdAt,
+        })),
+      },
+      client: {
+        id: service.order.client?.id ?? null,
+        name: service.order.client?.name ?? null,
+        dni: service.order.client?.dni ?? '',
+        phone: service.order.client?.phone ?? null,
+        email: service.order.client?.email ?? null,
+        address: service.order.client?.address ?? null,
+      },
+      storeService: service.storeService
+        ? {
+            id: service.storeService.id,
+            name: service.storeService.name,
+            description: service.storeService.description ?? null,
+            price: this.toNumber(service.storeService.price),
+            type: service.storeService.type,
+          }
+        : null,
+      serviceCategory: service.serviceCategory
+        ? {
+            id: service.serviceCategory.id,
+            name: service.serviceCategory.name,
+          }
+        : null,
+    };
   }
 
   private async assertStoreMembership(storeId: string, user: AuthUser) {
@@ -346,9 +608,11 @@ export class ServiceService {
       hasPendingPayment: (service.price || 0) - ((service.order?.paymentMethods || []).reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0)) > 0,
       client: service.order?.client || null,
       store: service.order?.cashSession?.Store || null,
+      cashSession: service.order?.cashSession || null,
       order: service.order ? {
         id: service.order.id,
         clientId: service.order.clientId,
+        cashSessionsId: service.order.cashSessionsId,
         storeId: service.order.cashSession?.StoreId,
         totalAmount: service.order.totalAmount,
         status: service.order.status,
