@@ -1,14 +1,28 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CreateCashMovementDto, CreateOrderCashMovementDto } from './dto/create-cash-movement.dto';
 import { UpdateCashMovementDto } from './dto/update-cash-movement.dto';
+import { ListCashMovementsDto, CashMovementOperationFilter } from './dto/list-cash-movements.dto';
+import { ListCashMovementsResponseDto } from './dto/list-cash-movements-response.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MovementType, SessionStatus, PaymentType } from '@prisma/client';
+import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
 
 type AuthUser = {
   userId: string;
   email: string;
   role: string;
   tenantId?: string;
+};
+
+type MovementListItem = {
+  id: string;
+  type: MovementType;
+  amount: string;
+  payment: string | null;
+  description: string | null;
+  createdAt: Date;
+  operation: CashMovementOperationFilter;
+  clientName: string | null;
 };
 
 @Injectable()
@@ -28,6 +42,123 @@ export class CashMovementService {
     if (value === null || value === undefined) return 0;
     if (typeof value === 'number') return value;
     return value.toNumber();
+  }
+
+  private formatDecimal(value: any): string {
+    if (value === null || value === undefined) {
+      return '0';
+    }
+
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (typeof value === 'number' || typeof value === 'bigint') {
+      return value.toString();
+    }
+
+    if (typeof value === 'object' && typeof value.toString === 'function') {
+      return value.toString();
+    }
+
+    return String(value);
+  }
+
+  private buildOrderMovementDetails(order: any, movementType: MovementType) {
+    if (!order) {
+      const fallbackDescription =
+        movementType === MovementType.EXPENSE
+          ? 'extorno por anulación'
+          : 'Movimiento automático';
+
+      return {
+        description: fallbackDescription,
+        operation:
+          movementType === MovementType.EXPENSE
+            ? CashMovementOperationFilter.ANULACION
+            : CashMovementOperationFilter.SERVICIO,
+      };
+    }
+
+    const firstProductName =
+      (order.orderProducts || [])
+        .map((op) => op.product?.product?.name)
+        .find((n) => typeof n === 'string' && n.trim().length > 0) ?? null;
+
+    const firstServiceName =
+      (order.services || [])
+        .map((s) => s?.name)
+        .find((n) => typeof n === 'string' && n.trim().length > 0) ?? null;
+
+    const hasProducts = !!firstProductName;
+    const hasServices = !!firstServiceName;
+
+    const serviceTotal = (order.services || []).reduce((sum, s) => sum + this.toNumber(s.price), 0);
+    const paidTotal = (order.paymentMethods || []).reduce((sum, pm) => sum + this.toNumber(pm.amount), 0);
+    const isServicePartialPayment = hasServices && paidTotal + 0.00001 < serviceTotal;
+
+    const subjectType = hasProducts ? 'producto' : hasServices ? 'servicio' : 'orden';
+    const subjectName = (hasProducts ? firstProductName : hasServices ? firstServiceName : null) ?? `Orden ${order.orderNumber ?? order.id}`;
+
+    const description = movementType === MovementType.EXPENSE
+      ? `extorno por anulación de "${subjectType}" - "${subjectName}"`
+      : hasProducts
+        ? `venta de "${subjectName}"`
+        : isServicePartialPayment
+          ? `pago parcial de "${subjectName}"`
+          : `"${subjectName}"`;
+
+    const operation = movementType === MovementType.EXPENSE
+      ? CashMovementOperationFilter.ANULACION
+      : hasProducts
+        ? CashMovementOperationFilter.VENTA
+        : CashMovementOperationFilter.SERVICIO;
+
+    return { description, operation };
+  }
+
+  private mapCashMovementToListItem(movement: any): MovementListItem {
+    const hasRelatedOrder = !!movement.relatedOrderId && !!movement.order;
+
+    if (hasRelatedOrder) {
+      const { description, operation } = this.buildOrderMovementDetails(movement.order, movement.type);
+      return {
+        id: movement.id,
+        type: movement.type,
+        amount: this.formatDecimal(movement.amount),
+        payment: (movement.payment ?? PaymentType.EFECTIVO).toString(),
+        description: movement.description ?? description,
+        createdAt: movement.createdAt,
+        operation,
+        clientName: movement.order?.client?.name ?? null,
+      };
+    }
+
+    return {
+      id: movement.id,
+      type: movement.type,
+      amount: this.formatDecimal(movement.amount),
+      payment: (movement.payment ?? PaymentType.EFECTIVO).toString(),
+      description: movement.description ?? null,
+      createdAt: movement.createdAt,
+      operation: CashMovementOperationFilter.MANUAL,
+      clientName: null,
+    };
+  }
+
+  private mapPaymentMethodToListItem(paymentMethod: any): MovementListItem {
+    const { description, operation } = this.buildOrderMovementDetails(paymentMethod.order, MovementType.INCOME);
+
+    return {
+      id: paymentMethod.id,
+      type: MovementType.INCOME,
+      amount: this.formatDecimal(paymentMethod.amount),
+      payment: paymentMethod.type,
+      description,
+      createdAt: paymentMethod.createdAt,
+      operation,
+      clientName: paymentMethod.order?.client?.name ?? null,
+    };
   }
 
   private async assertCashSessionAccess(cashSessionId: string, user: AuthUser) {
@@ -172,26 +303,87 @@ export class CashMovementService {
         throw new BadRequestException('La sesión de caja está cerrada. No se pueden realizar movimientos.');
       }
 
+      const order = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          orderProducts: {
+            select: {
+              id: true,
+              product: {
+                select: {
+                  id: true,
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          services: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+            },
+          },
+          paymentMethods: {
+            select: {
+              type: true,
+              amount: true,
+            },
+          },
+        },
+      });
+
+      if (!order) {
+        this.logger.warn(`Orden no existe: order=${this.mask(orderId)}`);
+        throw new NotFoundException(`La orden ${orderId} no existe`);
+      }
+
+      const firstProductName =
+        (order.orderProducts || [])
+          .map((op) => op.product?.product?.name)
+          .find((n) => typeof n === 'string' && n.trim().length > 0) ?? null;
+
+      const firstServiceName =
+        (order.services || [])
+          .map((s) => s?.name)
+          .find((n) => typeof n === 'string' && n.trim().length > 0) ?? null;
+
+      const hasProducts = !!firstProductName;
+      const hasServices = !!firstServiceName;
+
+      const serviceTotal = (order.services || []).reduce(
+        (sum, s) => sum + this.toNumber(s.price),
+        0,
+      );
+
+      const paidTotal = (order.paymentMethods || []).reduce(
+        (sum, pm) => sum + this.toNumber(pm.amount),
+        0,
+      );
+
+      const isServicePartialPayment = hasServices && paidTotal + 0.00001 < serviceTotal;
+
+      const subjectType = hasProducts ? 'producto' : hasServices ? 'servicio' : 'orden';
+      const subjectName = (hasProducts ? firstProductName : hasServices ? firstServiceName : null) ?? `Orden ${orderId}`;
+
       // Determinar el tipo y descripción según si es reembolso o pago
       const movementType = isRefund ? MovementType.EXPENSE : MovementType.INCOME;
-      const description = isRefund 
-        ? `Reembolso por anulación - Orden ${orderId}`
-        : `Pago en efectivo - Orden ${orderId}`;
+      const description = isRefund
+        ? `extorno por anulación de "${subjectType}" - "${subjectName}"`
+        : hasProducts
+          ? `venta de "${subjectName}"`
+          : isServicePartialPayment
+            ? `pago parcial de "${subjectName}"`
+            : `"${subjectName}"`;
 
       // Crear el movimiento
       const finalUserId = userId || cashSession.openedById;
-      
-      // Verificar que la orden exista antes de crear el movimiento
-      if (orderId) {
-        const orderExists = await this.prisma.order.findUnique({
-          where: { id: orderId },
-          select: { id: true }
-        });
-        if (!orderExists) {
-          this.logger.warn(`Orden no existe: order=${this.mask(orderId)}`);
-          throw new NotFoundException(`La orden ${orderId} no existe`);
-        }
-      }
       
       const cashMovement = await this.prisma.cashMovement.create({
         data: {
@@ -606,49 +798,169 @@ export class CashMovementService {
   }
 
   // Método adicional: Obtener movimientos por sesión con paginación
-  async findBySession(sessionId: string, page: number = 1, limit: number = 50, user?: AuthUser) {
-    const skip = (page - 1) * limit;
+  async findBySession(
+    sessionId: string,
+    query: ListCashMovementsDto,
+    user?: AuthUser,
+  ): Promise<ListCashMovementsResponseDto> {
+    const { page, pageSize, skip } = getPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 50,
+      maxPageSize: 200,
+    });
 
     if (user) {
       await this.assertCashSessionAccess(sessionId, user);
     }
-    
-    // Obtener el total de movimientos para paginación
-    const total = await this.prisma.cashMovement.count({
-      where: { sessionId }
-    });
 
-    // Obtener los movimientos con paginación
-    const movements = await this.prisma.cashMovement.findMany({
-      where: { sessionId },
-      include: {
-        CashSession: {
+    const cashMovementWhere: any = {
+      sessionId,
+      ...(query.clientName && query.clientName.trim()
+        ? {
+            order: {
+              client: {
+                name: { contains: query.clientName.trim(), mode: 'insensitive' },
+              },
+            },
+          }
+        : {}),
+    };
+
+    if (query.payment) {
+      if (query.payment === PaymentType.EFECTIVO) {
+        cashMovementWhere.OR = [{ payment: PaymentType.EFECTIVO }, { payment: null }];
+      } else {
+        cashMovementWhere.payment = query.payment;
+      }
+    }
+
+    const cashMovements = await this.prisma.cashMovement.findMany({
+      where: cashMovementWhere,
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        payment: true,
+        description: true,
+        createdAt: true,
+        relatedOrderId: true,
+        order: {
           select: {
             id: true,
-            openedAt: true,
-            User: {
+            orderNumber: true,
+            client: {
+              select: { name: true },
+            },
+            orderProducts: {
               select: {
-                id: true,
+                product: {
+                  select: {
+                    product: {
+                      select: { name: true },
+                    },
+                  },
+                },
+              },
+            },
+            services: {
+              select: {
                 name: true,
-                email: true
-              }
-            }
-          }
-        }
+                price: true,
+              },
+            },
+            paymentMethods: {
+              select: {
+                amount: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit
     });
 
-    const totalPages = Math.ceil(total / limit);
+    const shouldLoadNonCashPayments = !query.payment || query.payment !== PaymentType.EFECTIVO;
+    let paymentMethods: any[] = [];
 
-    return {
-      data: movements,
-      total,
-      page,
-      limit,
-      totalPages
-    };
+    if (shouldLoadNonCashPayments) {
+      const paymentMethodWhere: any = {
+        order: {
+          cashSessionsId: sessionId,
+          ...(query.clientName && query.clientName.trim()
+            ? {
+                client: {
+                  name: { contains: query.clientName.trim(), mode: 'insensitive' },
+                },
+              }
+            : {}),
+        },
+      };
+
+      if (query.payment) {
+        paymentMethodWhere.type = query.payment;
+      } else {
+        paymentMethodWhere.type = { not: PaymentType.EFECTIVO };
+      }
+
+      paymentMethods = await this.prisma.paymentMethod.findMany({
+        where: paymentMethodWhere,
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          createdAt: true,
+          order: {
+            select: {
+              id: true,
+              orderNumber: true,
+              client: {
+                select: { name: true },
+              },
+              orderProducts: {
+                select: {
+                  product: {
+                    select: {
+                      product: {
+                        select: { name: true },
+                      },
+                    },
+                  },
+                },
+              },
+              services: {
+                select: {
+                  name: true,
+                  price: true,
+                },
+              },
+              paymentMethods: {
+                select: {
+                  amount: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    let combinedItems: MovementListItem[] = [
+      ...cashMovements.map((movement) => this.mapCashMovementToListItem(movement)),
+      ...paymentMethods.map((pm) => this.mapPaymentMethodToListItem(pm)),
+    ];
+
+    if (query.operation) {
+      combinedItems = combinedItems.filter((item) => item.operation === query.operation);
+    }
+
+    combinedItems = combinedItems.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const total = combinedItems.length;
+    const paginatedItems = combinedItems.slice(skip, skip + pageSize).map(({ operation, clientName, ...rest }) => rest);
+
+    return buildPaginatedResponse(paginatedItems, total, page, pageSize) as ListCashMovementsResponseDto;
   }
 }
