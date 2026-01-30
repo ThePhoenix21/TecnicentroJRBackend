@@ -409,6 +409,13 @@ export class OrderController {
       throw new BadRequestException('Se requiere al menos un producto o servicio');
     }
 
+    const hasProducts = Array.isArray(orderData.products) && orderData.products.length > 0;
+    const hasServices = Array.isArray(orderData.services) && orderData.services.length > 0;
+
+    if (hasProducts && hasServices) {
+      throw new BadRequestException('No se permite crear órdenes con productos y servicios combinados. Cree una orden solo de productos o solo de servicios.');
+    }
+
     // 3. Validar que si hay clientId, no haya clientInfo
     if (orderData.clientId && orderData.clientInfo) {
       throw new BadRequestException('No se puede especificar clientId y clientInfo simultáneamente');
@@ -418,8 +425,6 @@ export class OrderController {
     if (!orderData.paymentMethods || orderData.paymentMethods.length === 0) {
       throw new BadRequestException('Se requiere al menos un método de pago');
     }
-
-    const hasServices = Array.isArray(orderData.services) && orderData.services.length > 0;
 
     for (const payment of orderData.paymentMethods) {
       if (payment.amount < 0) {
