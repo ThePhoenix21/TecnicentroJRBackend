@@ -239,15 +239,32 @@ export class OrderController {
     // Subtotal y descuentos de productos
     const subtotalProductos = productos.reduce((sum: number, p: any) => sum + (p.precioUnitario * p.cantidad), 0);
     const descuentos = productos.reduce((sum: number, p: any) => sum + p.descuento, 0);
-    // Servicios y adelantos
+    // Servicios y adelantos - usando datos completos del servicio
     let servicios = [];
     let adelantos = 0;
     let subtotalServicios = 0;
     if (tieneServicios) {
       servicios = (services || []).map((s: any) => ({
+        id: s.id,
         nombre: s.name,
         descripcion: s.description,
         precio: s.price,
+        type: s.type,
+        status: s.status,
+        photoUrls: s.photoUrls || [],
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        storeService: s.storeService ? {
+          id: s.storeService.id,
+          name: s.storeService.name,
+          description: s.storeService.description,
+          price: s.storeService.price,
+          type: s.storeService.type
+        } : null,
+        serviceCategory: s.serviceCategory ? {
+          id: s.serviceCategory.id,
+          name: s.serviceCategory.name
+        } : null,
         adelantos: []
       }));
       subtotalServicios = (services || []).reduce((sum: number, s: any) => sum + (s.price || 0), 0);
