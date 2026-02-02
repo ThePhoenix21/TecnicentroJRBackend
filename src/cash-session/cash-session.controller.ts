@@ -425,7 +425,7 @@ export class CashSessionController {
     };
 
     // 2. Obtener la sesión de caja con información completa
-    const cashSession = await this.cashSessionService.findOne(id, authUser);
+    const cashSession = await this.cashSessionService.findOneForClose(id, authUser);
     
     if (!cashSession) {
       throw new NotFoundException('La sesión de caja no existe');
@@ -438,14 +438,14 @@ export class CashSessionController {
 
     // 4. Verificar permisos: solo el usuario que abrió o un ADMIN pueden cerrar
     const isAdmin = user.role === Role.ADMIN;
-    const isOwner = cashSession.openedById === user.id;
+    const isOwner = cashSession.UserId === user.id;
     
     if (!isAdmin && !isOwner) {
       throw new ForbiddenException('Solo el usuario que abrió la sesión o un administrador pueden cerrarla');
     }
 
     // 5. Obtener el cuadre de caja actual
-    const cashBalance = await this.cashMovementService.getCashBalance(id, authUser);
+    const cashBalance = await this.cashMovementService.getCashBalance(id, authUser, { allowAdmin: isAdmin });
 
     // 6. Calcular el monto de cierre (balance actual)
     const closingAmount = cashBalance.balance.balanceActual;

@@ -23,6 +23,46 @@ export class CashSessionService {
     return value.toNumber();
   }
 
+  async findOneForClose(id: string, user: AuthUser) {
+    await this.assertCashSessionAccessWithOptions(id, user, { allowAdmin: user.role === 'ADMIN' });
+
+    return this.prisma.cashSession.findUnique({
+      where: { id },
+      include: {
+        Store: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+          },
+        },
+        User: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            username: true,
+          },
+        },
+        cashMovements: {
+          include: {
+            User: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+  }
+
   private async assertStoreAccess(storeId: string, user: AuthUser) {
     const tenantId = user?.tenantId;
 
@@ -65,6 +105,14 @@ export class CashSessionService {
   }
 
   private async assertCashSessionAccess(cashSessionId: string, user: AuthUser) {
+    return this.assertCashSessionAccessWithOptions(cashSessionId, user);
+  }
+
+  private async assertCashSessionAccessWithOptions(
+    cashSessionId: string,
+    user: AuthUser,
+    options?: { allowAdmin?: boolean; requireOpen?: boolean },
+  ) {
     const tenantId = user?.tenantId;
 
     if (!tenantId) {
@@ -91,16 +139,14 @@ export class CashSessionService {
       throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
     }
 
-    if (user.role !== 'ADMIN') {
-      const storeUser = await this.prisma.storeUsers.findFirst({
-        where: {
-          storeId: cashSession.StoreId,
-          userId: user.userId,
-        },
-        select: { id: true },
-      });
+    const requireOpen = options?.requireOpen ?? false;
+    if (requireOpen && cashSession.status !== SessionStatus.OPEN) {
+      throw new BadRequestException('La sesión de caja está cerrada');
+    }
 
-      if (!storeUser) {
+    const allowAdmin = options?.allowAdmin ?? false;
+    if (!(allowAdmin && user.role === 'ADMIN')) {
+      if (cashSession.UserId !== user.userId) {
         throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
       }
     }
@@ -136,19 +182,6 @@ export class CashSessionService {
       if (existingUserOpenSession) {
         this.logger.warn(`Usuario ${user.email} ya tiene una sesión abierta: ${existingUserOpenSession.id}`);
         throw new ConflictException('Ya tienes una sesión de caja abierta. Ciérrala antes de abrir otra.');
-      }
-
-      // 4. Validar que no haya una sesión abierta para esa tienda
-      const existingStoreOpenSession = await this.prisma.cashSession.findFirst({
-        where: {
-          StoreId: storeId,
-          status: SessionStatus.OPEN
-        }
-      });
-
-      if (existingStoreOpenSession) {
-        this.logger.warn(`Ya existe una sesión abierta para la tienda ${storeId}: ${existingStoreOpenSession.id}`);
-        throw new ConflictException('Ya hay una sesión de caja abierta para esta tienda');
       }
 
       // 5. Crear la sesión de caja
@@ -239,7 +272,7 @@ export class CashSessionService {
   }
 
   async findOne(id: string, user: AuthUser) {
-    await this.assertCashSessionAccess(id, user);
+    await this.assertCashSessionAccessWithOptions(id, user);
 
     return this.prisma.cashSession.findUnique({
       where: { id },
@@ -279,7 +312,7 @@ export class CashSessionService {
   }
 
   async update(id: string, updateCashSessionDto: UpdateCashSessionDto, user: AuthUser) {
-    await this.assertCashSessionAccess(id, user);
+    await this.assertCashSessionAccessWithOptions(id, user);
 
     return this.prisma.cashSession.update({
       where: { id },
@@ -306,7 +339,7 @@ export class CashSessionService {
   }
 
   async remove(id: string, user: AuthUser) {
-    await this.assertCashSessionAccess(id, user);
+    await this.assertCashSessionAccessWithOptions(id, user);
 
     return this.prisma.cashSession.delete({
       where: { id }
@@ -368,6 +401,7 @@ export class CashSessionService {
     const session = await this.prisma.cashSession.findFirst({
       where: {
         StoreId: storeId,
+        UserId: user.userId,
         status: SessionStatus.OPEN,
       },
       include: {
@@ -395,7 +429,7 @@ export class CashSessionService {
 
   // Método para cerrar una sesión de caja
   async close(id: string, closedById: string, closingAmount: number, declaredAmount: number, user: AuthUser) {
-    await this.assertCashSessionAccess(id, user);
+    await this.assertCashSessionAccessWithOptions(id, user, { allowAdmin: user.role === 'ADMIN', requireOpen: true });
 
     this.logger.log(`Iniciando cierre de sesión de caja: ${id} - Usuario: ${closedById} - Monto de cierre: ${closingAmount} - Monto declarado: ${declaredAmount}`);
 
@@ -441,7 +475,7 @@ export class CashSessionService {
   }
 
   async getClosingReport(sessionId: string, user: AuthUser) {
-    await this.assertCashSessionAccess(sessionId, user);
+    await this.assertCashSessionAccessWithOptions(sessionId, user, { allowAdmin: user.role === 'ADMIN' });
 
     const tenantId = user?.tenantId;
     if (!tenantId) {

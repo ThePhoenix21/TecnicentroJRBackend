@@ -634,7 +634,7 @@ export class OrderService {
               clientId: clientIdToUse,
               clientName: order.client?.name || undefined,
               clientEmail: order.client?.email || undefined
-            }, false, userIdToUse);
+            }, false, user);
           } catch (error) {
             this.logger.error(`Error al crear movimiento de caja: order=${this.mask(order.id)} amount=${payment.amount} msg=${error.message}`);
           }
@@ -1194,7 +1194,7 @@ export class OrderService {
                   clientEmail: order.client?.email || undefined,
                 },
                 true,
-                userId,
+                authenticatedUser as any,
               );
             } catch (error) {
               this.logger.error(
@@ -1344,7 +1344,7 @@ export class OrderService {
               clientId: order.clientId,
               clientName: order.client?.name || undefined,
               clientEmail: order.client?.email || undefined,
-            }, false, user?.userId);
+            }, false, user);
           } catch (error) {
             this.logger.error(`Error al crear movimiento de caja (pago): ${error.message}`);
           }
@@ -1824,7 +1824,7 @@ export class OrderService {
               clientId: order.clientId,
               clientName: order.client?.name || undefined,
               clientEmail: order.client?.email || undefined
-            }, false, user?.userId);
+            }, false, user);
 
             console.log('✅ Movimiento de caja creado:', payment.amount);
           } catch (error) {

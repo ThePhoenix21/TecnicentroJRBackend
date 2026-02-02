@@ -398,6 +398,22 @@ model CashMovement {
   User   User   @relation(fields: [UserId], references: [id])
 }
 
+enum MovementType {
+  INCOME
+  EXPENSE
+}
+
+enum PaymentType {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  YAPE
+  PLIN
+  DATAPHONE
+  BIZUM
+  OTRO
+}
+
 //===================SECCIÓN DE TIENDAS===================
 
 model Store {
@@ -1058,17 +1074,6 @@ enum TenantFeature {
   HARD_DELETE_SALES_HISTORY
 }
 
-enum PaymentType {
-  EFECTIVO
-  TARJETA
-  TRANSFERENCIA
-  YAPE
-  PLIN
-  DATAPHONE
-  BIZUM
-  OTRO
-}
-
 enum PaymentSourceType {
   ORDERPRODUCT
   SERVICE
@@ -1077,11 +1082,6 @@ enum PaymentSourceType {
 enum SessionStatus {
   OPEN
   CLOSED
-}
-
-enum MovementType {
-  INCOME
-  EXPENSE
 }
 
 enum SaleStatus {

@@ -161,7 +161,11 @@ export class CashMovementService {
     };
   }
 
-  private async assertCashSessionAccess(cashSessionId: string, user: AuthUser) {
+  private async assertCashSessionAccess(
+    cashSessionId: string,
+    user: AuthUser,
+    options?: { allowAdmin?: boolean; requireOpen?: boolean },
+  ) {
     const tenantId = user?.tenantId;
 
     if (!tenantId) {
@@ -188,16 +192,14 @@ export class CashMovementService {
       throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
     }
 
-    if (user.role !== 'ADMIN') {
-      const storeUser = await this.prisma.storeUsers.findFirst({
-        where: {
-          storeId: cashSession.StoreId,
-          userId: user.userId,
-        },
-        select: { id: true },
-      });
+    const requireOpen = options?.requireOpen ?? false;
+    if (requireOpen && cashSession.status !== SessionStatus.OPEN) {
+      throw new BadRequestException('La sesión de caja está cerrada. No se pueden realizar movimientos.');
+    }
 
-      if (!storeUser) {
+    const allowAdmin = options?.allowAdmin ?? false;
+    if (!(allowAdmin && user.role === 'ADMIN')) {
+      if (cashSession.UserId !== user.userId) {
         throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
       }
     }
@@ -215,12 +217,7 @@ export class CashMovementService {
 
     try {
       // Validar que la sesión de caja exista y esté abierta
-      const cashSession = await this.assertCashSessionAccess(cashSessionId, user);
-
-      if (cashSession.status !== SessionStatus.OPEN) {
-        this.logger.warn(`Sesión de caja cerrada: session=${this.mask(cashSessionId)} status=${cashSession.status}`);
-        throw new BadRequestException('La sesión de caja está cerrada. No se pueden realizar movimientos.');
-      }
+      await this.assertCashSessionAccess(cashSessionId, user, { requireOpen: true });
 
       // Crear el movimiento
       const cashMovement = await this.prisma.cashMovement.create({
@@ -271,8 +268,12 @@ export class CashMovementService {
   }
 
   // 2. Crear movimiento desde orden (uso interno)
-  async createFromOrder(createOrderCashMovementDto: CreateOrderCashMovementDto, isRefund: boolean = false, userId?: string) {
+  async createFromOrder(createOrderCashMovementDto: CreateOrderCashMovementDto, isRefund: boolean = false, user?: AuthUser) {
     const { cashSessionId, amount, orderId, clientId, clientName, clientEmail, payment } = createOrderCashMovementDto;
+
+    if (!user) {
+      throw new ForbiddenException('Usuario no autenticado');
+    }
 
     this.logger.log(
       `Creando movimiento desde orden: session=${this.mask(cashSessionId)} order=${this.mask(orderId)} amount=${amount} refund=${isRefund}`,
@@ -280,28 +281,7 @@ export class CashMovementService {
 
     try {
       // Validar que la sesión exista y esté abierta
-      const cashSession = await this.prisma.cashSession.findUnique({
-        where: { id: cashSessionId },
-        include: {
-          User: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          }
-        }
-      });
-
-      if (!cashSession) {
-        this.logger.warn(`Sesión de caja no existe: session=${this.mask(cashSessionId)}`);
-        throw new NotFoundException('La sesión de caja especificada no existe');
-      }
-
-      if (cashSession.status !== SessionStatus.OPEN) {
-        this.logger.warn(`Sesión de caja cerrada: session=${this.mask(cashSessionId)} status=${cashSession.status}`);
-        throw new BadRequestException('La sesión de caja está cerrada. No se pueden realizar movimientos.');
-      }
+      await this.assertCashSessionAccess(cashSessionId, user, { requireOpen: true });
 
       const order = await this.prisma.order.findUnique({
         where: { id: orderId },
@@ -383,8 +363,6 @@ export class CashMovementService {
             : `"${subjectName}"`;
 
       // Crear el movimiento
-      const finalUserId = userId || cashSession.openedById;
-      
       const cashMovement = await this.prisma.cashMovement.create({
         data: {
           sessionId: cashSessionId,        // Campo sessionId
@@ -394,7 +372,7 @@ export class CashMovementService {
           description: description,
           relatedOrderId: orderId,         // Campo relacionado con orden
           CashSessionId: cashSessionId,    // FK para CashSession
-          UserId: finalUserId   // FK para User - usar userId proporcionado o el que abrió la sesión
+          UserId: user.userId   // FK para User - siempre el dueño de la sesión
         },
         include: {
           CashSession: {
@@ -425,14 +403,14 @@ export class CashMovementService {
   }
 
   // 3. Obtener cuadre de caja
-  async getCashBalance(cashSessionId: string, user?: AuthUser) {
+  async getCashBalance(cashSessionId: string, user?: AuthUser, options?: { allowAdmin?: boolean }) {
     this.logger.log(`Obteniendo cuadre de caja: session=${this.mask(cashSessionId)}`);
 
     const tenantId = user?.tenantId;
 
     try {
       if (user) {
-        await this.assertCashSessionAccess(cashSessionId, user);
+        await this.assertCashSessionAccess(cashSessionId, user, { allowAdmin: options?.allowAdmin ?? false });
       }
 
       const cashSession = await this.prisma.cashSession.findUnique({
