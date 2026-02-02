@@ -86,6 +86,16 @@ export class CreateOrderCashMovementDto {
   amount: number;
 
   @ApiProperty({
+    example: 'DATAPHONE',
+    description: 'Método de pago del movimiento (opcional). Si no se envía, se asume EFECTIVO.',
+    required: false,
+    enum: PaymentType,
+  })
+  @IsOptional()
+  @IsEnum(PaymentType, { message: 'El método de pago no es válido' })
+  payment?: PaymentType;
+
+  @ApiProperty({
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
     description: 'ID de la orden'
   })

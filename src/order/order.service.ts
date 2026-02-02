@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException,
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompleteOrderDto } from './dto/complete-order.dto';
+import { PayOrderPaymentsDto } from './dto/pay-order-payments.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
 import { Order } from './entities/order.entity';
 import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType, ServiceType as PrismaServiceType, TenantFeature } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
@@ -531,6 +533,8 @@ export class OrderService {
       // 6. Generar número de orden con prefijo 001/002/... usando storeNumber
       const orderNumber = await this.generateOrderNumber(storeNumber);
 
+      const paymentMethodsFiltered = (paymentMethods || []).filter((pm) => this.toNumber(pm.amount as any) > 0);
+
       // 7. Crear la orden
       const orderData: Prisma.OrderCreateInput = {
         orderNumber,
@@ -553,7 +557,7 @@ export class OrderService {
           create: servicesData
         },
         paymentMethods: {
-          create: (paymentMethods || []).map((pm) => ({
+          create: paymentMethodsFiltered.map((pm) => ({
             type: pm.type as PaymentType,
             amount: pm.amount,
           })),
@@ -607,7 +611,7 @@ export class OrderService {
         productsDto: products,
         servicesDto: services,
         clientIdToUse,
-        paymentMethodsDto: paymentMethods,
+        paymentMethodsDto: paymentMethodsFiltered,
         clientInfo: clientInfo,
       };
     }).then(async (result) => {
@@ -616,24 +620,23 @@ export class OrderService {
 
       this.logger.log(`Procesando pagos de orden: order=${this.mask(order.id)}`);
 
-      const cashPayments = (paymentMethodsDto || []).filter(
-        (pm) => pm.type === PaymentType.EFECTIVO && this.toNumber(pm.amount) > 0,
-      );
-      if (cashPayments.length > 0) {
-        this.logger.log(`Creando movimientos de caja (efectivo): order=${this.mask(order.id)} count=${cashPayments.length}`);
+      const movementsToCreate = (paymentMethodsDto || []).filter((pm) => this.toNumber(pm.amount as any) > 0);
+      if (movementsToCreate.length > 0) {
+        this.logger.log(`Creando movimientos de caja (pagos): order=${this.mask(order.id)} count=${movementsToCreate.length}`);
 
-        for (const cashPayment of cashPayments) {
+        for (const payment of movementsToCreate) {
           try {
             await this.cashMovementService.createFromOrder({
               cashSessionId: cashSessionId,
-              amount: cashPayment.amount,
+              amount: payment.amount,
+              payment: payment.type as PaymentType,
               orderId: order.id,
               clientId: clientIdToUse,
               clientName: order.client?.name || undefined,
               clientEmail: order.client?.email || undefined
             }, false, userIdToUse);
           } catch (error) {
-            this.logger.error(`Error al crear movimiento de caja: order=${this.mask(order.id)} amount=${cashPayment.amount} msg=${error.message}`);
+            this.logger.error(`Error al crear movimiento de caja: order=${this.mask(order.id)} amount=${payment.amount} msg=${error.message}`);
           }
         }
       }
@@ -806,6 +809,7 @@ export class OrderService {
         where,
         select: {
           id: true,
+          totalAmount: true,
           createdAt: true,
           status: true,
           client: {
@@ -821,6 +825,7 @@ export class OrderService {
           orderProducts: {
             select: {
               quantity: true,
+              price: true,
               product: {
                 select: {
                   product: {
@@ -840,6 +845,7 @@ export class OrderService {
             select: {
               type: true,
               amount: true,
+              createdAt: true,
             },
           },
         },
@@ -851,6 +857,7 @@ export class OrderService {
 
     return buildPaginatedResponse(
       orders.map((order) => ({
+        total: (order.totalAmount as any)?.toNumber ? (order.totalAmount as any).toNumber() : Number(order.totalAmount ?? 0),
         id: order.id,
         createdAt: order.createdAt,
         clientName: order.client?.name ?? '',
@@ -858,16 +865,25 @@ export class OrderService {
         products: (order.orderProducts || []).map((op) => ({
           name: op.product?.product?.name ?? '',
           quantity: op.quantity,
+          price: (op.price as any)?.toNumber ? (op.price as any).toNumber().toString() : String(op.price ?? 0),
         })),
         services: (order.services || []).map((s) => ({
           name: s.name ?? '',
           price: (s.price as any)?.toNumber ? (s.price as any).toNumber() : Number(s.price ?? 0),
         })),
         status: order.status,
-        paymentMethods: (order.paymentMethods || []).map((pm) => ({
-          type: pm.type,
-          amount: (pm.amount as any)?.toNumber ? (pm.amount as any).toNumber() : Number(pm.amount ?? 0),
-        })),
+        paymentMethods: (order.paymentMethods || [])
+          .slice()
+          .sort((a: any, b: any) => {
+            const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return aTime - bTime;
+          })
+          .slice(0, 3)
+          .map((pm) => ({
+            type: pm.type,
+            amount: (pm.amount as any)?.toNumber ? (pm.amount as any).toNumber() : Number(pm.amount ?? 0),
+          })),
       })),
       total,
       page,
@@ -1064,7 +1080,13 @@ export class OrderService {
     return order as unknown as Order;
   }
 
-  async cancelOrder(id: string, userId: string, userRole: string, authenticatedUser?: AuthUser): Promise<Order> {
+  async cancelOrder(
+    id: string,
+    userId: string,
+    userRole: string,
+    authenticatedUser?: AuthUser,
+    dto?: CancelOrderDto,
+  ): Promise<Order> {
     return this.prisma.$transaction(async (prisma) => {
       // 1. Verificar que la orden existe
       const order = await prisma.order.findUnique({
@@ -1141,43 +1163,49 @@ export class OrderService {
         throw new BadRequestException('La orden ya está anulada');
       }
 
-      // 4. Filtrar pagos en EFECTIVO (PaymentMethod) y crear movimientos de caja
-      const cashPayments = (order.paymentMethods || []).filter(
-        (pm) => pm.type === PaymentType.EFECTIVO && this.toNumber(pm.amount) > 0,
+      // 4. Reembolso SOLO si se envía paymentMethods en el body (no se asume monto ni método)
+      const refundPaymentMethods = (dto?.paymentMethods || []).filter((pm) => (pm?.amount || 0) > 0);
+
+      this.logger.log(
+        `Reembolso (manual) - métodos enviados: order=${this.mask(order.id)} count=${refundPaymentMethods.length}`,
       );
 
-      this.logger.log(`Reembolso (efectivo) - pagos encontrados: order=${this.mask(order.id)} count=${cashPayments.length}`);
-
-      if (cashPayments.length > 0 && order.cashSession) {
+      if (refundPaymentMethods.length > 0 && order.cashSession) {
         // Verificar que la sesión de caja esté abierta
         if (order.cashSession.status !== SessionStatus.OPEN) {
-          this.logger.warn(`Sesión de caja cerrada, no se crea reembolso: session=${this.mask(order.cashSession.id)} order=${this.mask(order.id)}`);
+          this.logger.warn(
+            `Sesión de caja cerrada, no se crea reembolso: session=${this.mask(order.cashSession.id)} order=${this.mask(order.id)}`,
+          );
         } else {
-          this.logger.log(`Creando movimientos de reembolso: order=${this.mask(order.id)} count=${cashPayments.length}`);
-          // Crear movimientos de caja de tipo EXPENSE por cada pago en efectivo
-          for (const cashPayment of cashPayments) {
+          this.logger.log(
+            `Creando movimientos de reembolso: order=${this.mask(order.id)} count=${refundPaymentMethods.length}`,
+          );
+
+          for (const refund of refundPaymentMethods) {
             try {
-              // Usar createFromOrder para obtener datos directamente de la orden
-              await this.cashMovementService.createFromOrder({
-                cashSessionId: order.cashSession.id,
-                amount: this.toNumber(cashPayment.amount),
-                orderId: order.id,
-                clientId: order.client?.id || undefined,
-                clientName: order.client?.name || undefined,
-                clientEmail: order.client?.email || undefined
-              }, true); // isRefund: true para reembolsos
+              await this.cashMovementService.createFromOrder(
+                {
+                  cashSessionId: order.cashSession.id,
+                  amount: this.toNumber(refund.amount),
+                  payment: refund.type as PaymentType,
+                  orderId: order.id,
+                  clientId: order.client?.id || undefined,
+                  clientName: order.client?.name || undefined,
+                  clientEmail: order.client?.email || undefined,
+                },
+                true,
+                userId,
+              );
             } catch (error) {
               this.logger.error(
-                `Error al crear movimiento de reembolso: order=${this.mask(order.id)} amount=${cashPayment.amount} msg=${error.message}`,
+                `Error al crear movimiento de reembolso: order=${this.mask(order.id)} amount=${refund.amount} msg=${error.message}`,
               );
               // No fallar la cancelación si falla el movimiento
             }
           }
         }
-      } else if (cashPayments.length > 0 && !order.cashSession) {
+      } else if (refundPaymentMethods.length > 0 && !order.cashSession) {
         this.logger.warn(`Orden sin sesión de caja, no se crea reembolso: order=${this.mask(order.id)}`);
-      } else if (cashPayments.length === 0) {
-        this.logger.warn(`No hay pagos en efectivo para reembolsar: order=${this.mask(order.id)}`);
       }
 
       // 5. Devolver stock de productos y registrar movimientos de inventario
@@ -1258,6 +1286,157 @@ export class OrderService {
 
       // 8. Devolver la orden actualizada
       return updatedOrder as unknown as Order;
+    });
+  }
+
+  async payOrderPayments(orderId: string, dto: PayOrderPaymentsDto, user?: AuthUser): Promise<{ success: true; fullPayment: boolean }> {
+    if (!user) {
+      throw new ForbiddenException('Usuario no autenticado');
+    }
+
+    await this.assertOrderAccess(orderId, user);
+
+    const PAID_STATUS = 'PAID' as any;
+
+    return this.prisma.$transaction(async (prisma) => {
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          totalAmount: true,
+          clientId: true,
+          client: { select: { name: true, email: true } },
+          cashSession: { select: { id: true } },
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException('La orden especificada no existe');
+      }
+
+      if (order.status === SaleStatus.CANCELLED) {
+        throw new BadRequestException('No se puede registrar pagos en una orden cancelada');
+      }
+
+      const payments = dto?.payments || [];
+      if (!Array.isArray(payments) || payments.length === 0) {
+        throw new BadRequestException('payments es requerido y debe tener al menos un item');
+      }
+
+      await prisma.paymentMethod.createMany({
+        data: payments.map((p) => ({
+          orderId,
+          type: p.type,
+          amount: p.amount,
+        })),
+      });
+
+      const movementsToCreate = payments.filter((p) => (p.amount || 0) > 0);
+      if (movementsToCreate.length > 0) {
+        for (const payment of movementsToCreate) {
+          try {
+            await this.cashMovementService.createFromOrder({
+              cashSessionId: order.cashSession?.id || '',
+              amount: payment.amount,
+              payment: payment.type,
+              orderId: order.id,
+              clientId: order.clientId,
+              clientName: order.client?.name || undefined,
+              clientEmail: order.client?.email || undefined,
+            }, false, user?.userId);
+          } catch (error) {
+            this.logger.error(`Error al crear movimiento de caja (pago): ${error.message}`);
+          }
+        }
+      }
+
+      const paymentMethods = await prisma.paymentMethod.findMany({
+        where: { orderId },
+        select: { amount: true },
+      });
+
+      const totalPaid = paymentMethods.reduce((sum, pm) => sum + this.toNumber(pm.amount), 0);
+      const totalAmount = this.toNumber(order.totalAmount);
+      const fullPayment = totalPaid >= totalAmount;
+
+      if (fullPayment && (order.status as any) !== PAID_STATUS) {
+        await prisma.order.update({
+          where: { id: orderId },
+          data: {
+            status: PAID_STATUS,
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      return { success: true, fullPayment };
+    });
+  }
+
+  async completePaidOrder(orderId: string, user?: AuthUser): Promise<{ success: true }> {
+    if (!user) {
+      throw new ForbiddenException('Usuario no autenticado');
+    }
+
+    await this.assertOrderAccess(orderId, user);
+
+    return this.prisma.$transaction(async (prisma) => {
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          totalAmount: true,
+          services: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+          paymentMethods: {
+            select: { amount: true },
+          },
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException('La orden especificada no existe');
+      }
+
+      if (order.status === SaleStatus.CANCELLED) {
+        throw new BadRequestException('No se puede completar una orden cancelada');
+      }
+
+      const totalPaid = (order.paymentMethods || []).reduce((sum, pm) => sum + this.toNumber(pm.amount), 0);
+      const totalAmount = this.toNumber(order.totalAmount);
+
+      if (totalPaid + 0.00001 < totalAmount) {
+        throw new BadRequestException('La orden tiene pagos pendientes');
+      }
+
+      await prisma.service.updateMany({
+        where: {
+          orderId,
+          NOT: {
+            status: ServiceStatus.ANNULLATED,
+          },
+        },
+        data: {
+          status: ServiceStatus.COMPLETED,
+          updatedAt: new Date(),
+        },
+      });
+
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: SaleStatus.COMPLETED,
+          updatedAt: new Date(),
+        },
+      });
+
+      return { success: true };
     });
   }
 
@@ -1631,24 +1810,25 @@ export class OrderService {
         });
       }
 
-      const cashPayments = newPaymentMethods.filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
-      if (cashPayments.length > 0) {
-        console.log('💰 Creando movimientos de caja para pagos en efectivo');
+      const movementsToCreate = newPaymentMethods.filter((pm) => (pm.amount || 0) > 0);
+      if (movementsToCreate.length > 0) {
+        console.log('💰 Creando movimientos de caja para pagos');
 
-        for (const cashPayment of cashPayments) {
+        for (const payment of movementsToCreate) {
           try {
             await this.cashMovementService.createFromOrder({
               cashSessionId: order.cashSession?.id || '',
-              amount: cashPayment.amount,
+              amount: payment.amount,
+              payment: payment.type,
               orderId: order.id,
               clientId: order.clientId,
               clientName: order.client?.name || undefined,
               clientEmail: order.client?.email || undefined
             }, false, user?.userId);
 
-            console.log('✅ Movimiento de caja creado para servicio:', cashPayment.amount);
+            console.log('✅ Movimiento de caja creado:', payment.amount);
           } catch (error) {
-            console.error('❌ Error al crear movimiento de caja para servicio:', error.message);
+            console.error('❌ Error al crear movimiento de caja:', error.message);
           }
         }
       }
@@ -1781,22 +1961,8 @@ export class OrderService {
   private async calculateTotalPaid(orderId: string, user: AuthUser): Promise<number> {
     await this.assertOrderAccess(orderId, user);
 
-    const tenantId = user?.tenantId;
-    if (!tenantId) {
-      throw new ForbiddenException('Tenant no encontrado en el token');
-    }
-
     const paymentMethods = await this.prisma.paymentMethod.findMany({
-      where: {
-        orderId,
-        order: {
-          cashSession: {
-            Store: {
-              tenantId,
-            },
-          },
-        },
-      },
+      where: { orderId },
       select: { amount: true }
     });
 

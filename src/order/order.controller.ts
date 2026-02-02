@@ -36,6 +36,8 @@ import { ListOrdersDto } from './dto/list-orders.dto';
 import { ListOrdersResponseDto } from './dto/list-orders-response.dto';
 import { SaleStatusLookupItemDto } from './dto/sale-status-lookup-item.dto';
 import { SaleStatus } from '@prisma/client';
+import { PayOrderPaymentsDto } from './dto/pay-order-payments.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
 
 @ApiTags('Órdenes')
 @ApiBearerAuth('JWT-auth')
@@ -211,27 +213,38 @@ export class OrderController {
     const { pdfInfo, orderProducts, services, client, user, paymentMethods } = order;
     const tieneServicios = services && services.length > 0;
 
-    // Datos del negocio
-    const businessName = pdfInfo?.businessName || 'Tecnicentro JR';
-    const address = pdfInfo?.address || '';
-    const phone = pdfInfo?.phone || '';
+    const toNumber = (value: any): number => {
+      if (value === null || value === undefined) return 0;
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      if (typeof value === 'object' && typeof value.toNumber === 'function') {
+        return value.toNumber();
+      }
+      const coerced = Number(value);
+      return Number.isFinite(coerced) ? coerced : 0;
+    };
+
     const issueDate = pdfInfo?.currentDate || '';
     const issueTime = pdfInfo?.currentTime || '';
     const vendedor = pdfInfo?.sellerName || user?.name || '';
     const cliente = {
       nombre: client?.name || pdfInfo?.clientName || '',
-      documento: client?.dni || '',
+      documento: client?.dni || pdfInfo?.clientDni || '00000000',
       telefono: client?.phone || '',
       email: client?.email || '',
-      direccion: client?.address || '',
+      direccion: client?.address || 'Sin dirección',
     };
     // Productos
     const productos = (orderProducts || []).map((op: any) => {
       // Precio de tienda (storeProduct)
-      const precioTienda = op.product?.price ?? 0;
+      const precioTienda = toNumber(op.product?.price);
       // Descuento: diferencia entre precio tienda y precio final aplicado en la orden
-      const precioFinal = op.price ?? precioTienda;
-      const descuento = (precioTienda - precioFinal) * op.quantity;
+      const precioFinal = toNumber(op.price ?? precioTienda);
+      const cantidad = toNumber(op.quantity);
+      const descuento = (precioTienda - precioFinal) * cantidad;
       return {
         nombre: op.product?.product?.name || '',
         cantidad: op.quantity,
@@ -242,11 +255,10 @@ export class OrderController {
     });
 
     // Subtotal y descuentos de productos
-    const subtotalProductos = productos.reduce((sum: number, p: any) => sum + (p.precioUnitario * p.cantidad), 0);
-    const descuentos = productos.reduce((sum: number, p: any) => sum + p.descuento, 0);
-    // Servicios y adelantos - usando datos completos del servicio
+    const subtotalProductos = productos.reduce((sum: number, p: any) => sum + (toNumber(p.precioUnitario) * toNumber(p.cantidad)), 0);
+    const descuentos = productos.reduce((sum: number, p: any) => sum + toNumber(p.descuento), 0);
+    // Servicios - usando datos completos del servicio
     let servicios = [];
-    let adelantos = 0;
     let subtotalServicios = 0;
     if (tieneServicios) {
       servicios = (services || []).map((s: any) => ({
@@ -257,8 +269,6 @@ export class OrderController {
         type: s.type,
         status: s.status,
         photoUrls: s.photoUrls || [],
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
         storeService: s.storeService ? {
           id: s.storeService.id,
           name: s.storeService.name,
@@ -270,17 +280,11 @@ export class OrderController {
           id: s.serviceCategory.id,
           name: s.serviceCategory.name
         } : null,
-        adelantos: []
       }));
-      subtotalServicios = (services || []).reduce((sum: number, s: any) => sum + (s.price || 0), 0);
+      subtotalServicios = (services || []).reduce((sum: number, s: any) => sum + toNumber(s.price), 0);
     }
     // Subtotal global
     const subtotal = subtotalProductos + subtotalServicios;
-    const pagosOrden = (paymentMethods || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-    if (tieneServicios) {
-      adelantos = pagosOrden;
-    }
-
     let total = subtotal - descuentos;
     // Si no hay productos, productos debe ser []
     const productosFinal = productos || [];
@@ -290,25 +294,23 @@ export class OrderController {
     const response: any = {
       orderId: order.id,
       orderNumber: order.orderNumber,
-      businessName,
-      address,
-      phone,
       issueDate,
+      issueTime,
       paymentMethods: (paymentMethods || []).map((p: any) => ({
+        id: p.id,
         type: p.type,
-        amount: p.amount,
+        amount: String(p.amount ?? 0),
+        createdAt: p.createdAt,
       })),
       client: cliente,
       productos: productosFinal,
       descuentos,
       vendedor,
-      subtotal,
+      subtotal: String(subtotal),
       total,
     };
     if (tieneServicios) {
-      response.issueTime = issueTime;
       response.servicios = servicios;
-      response.adelantos = adelantos;
     }
     return response;
   }
@@ -332,6 +334,33 @@ export class OrderController {
     } catch (error) {
       throw new BadRequestException(`Error al completar la orden: ${error.message}`);
     }
+  }
+
+  @Patch(':id/payments')
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Registrar pagos de una orden (por orden, sin servicios)' })
+  async payOrderPayments(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { userId: string; email: string; role: Role } },
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) dto: PayOrderPaymentsDto,
+  ): Promise<{ success: true; fullPayment: boolean }> {
+    return this.orderService.payOrderPayments(id, dto, req.user as any);
+  }
+
+  @Patch(':id/complete')
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Completar orden (solo si está completamente pagada)' })
+  async completePaidOrder(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { userId: string; email: string; role: Role } },
+  ): Promise<{ success: true }> {
+    return this.orderService.completePaidOrder(id, req.user as any);
   }
 
   @Get('me')
@@ -422,7 +451,8 @@ export class OrderController {
   @HttpCode(HttpStatus.OK)
   async cancelOrder(
     @Param('id') id: string,
-    @Req() req: Request & { user: { userId: string; email: string; role: Role } }
+    @Req() req: Request & { user: { userId: string; email: string; role: Role } },
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) dto?: CancelOrderDto,
   ) {
     const userId = req.user?.userId;
     const userRole = req.user?.role;
@@ -432,7 +462,7 @@ export class OrderController {
     }
 
     try {
-      const cancelledOrder = await this.orderService.cancelOrder(id, userId, userRole, req.user);
+      const cancelledOrder = await this.orderService.cancelOrder(id, userId, userRole, req.user, dto);
       return cancelledOrder;
     } catch (error) {
       throw new BadRequestException(`Error al cancelar la orden: ${error.message}`);

@@ -15,6 +15,9 @@ export class OrderListProductDto {
 
   @ApiProperty({ example: 2 })
   quantity!: number;
+
+  @ApiProperty({ example: '100' })
+  price!: string;
 }
 
 export class OrderListServiceDto {
@@ -37,6 +40,9 @@ export class ListOrderItemDto {
 
   @ApiProperty({ example: 'Pedro Vendedor' })
   sellerName!: string;
+
+  @ApiProperty({ example: 333 })
+  total!: number;
 
   @ApiProperty({ type: [OrderListProductDto] })
   products!: OrderListProductDto[];

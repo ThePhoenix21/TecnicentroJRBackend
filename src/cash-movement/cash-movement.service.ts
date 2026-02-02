@@ -272,7 +272,7 @@ export class CashMovementService {
 
   // 2. Crear movimiento desde orden (uso interno)
   async createFromOrder(createOrderCashMovementDto: CreateOrderCashMovementDto, isRefund: boolean = false, userId?: string) {
-    const { cashSessionId, amount, orderId, clientId, clientName, clientEmail } = createOrderCashMovementDto;
+    const { cashSessionId, amount, orderId, clientId, clientName, clientEmail, payment } = createOrderCashMovementDto;
 
     this.logger.log(
       `Creando movimiento desde orden: session=${this.mask(cashSessionId)} order=${this.mask(orderId)} amount=${amount} refund=${isRefund}`,
@@ -390,7 +390,7 @@ export class CashMovementService {
           sessionId: cashSessionId,        // Campo sessionId
           type: movementType,              // INCOME para pagos, EXPENSE para reembolsos
           amount: amount,
-          payment: PaymentType.EFECTIVO,
+          payment: payment ?? PaymentType.EFECTIVO,
           description: description,
           relatedOrderId: orderId,         // Campo relacionado con orden
           CashSessionId: cashSessionId,    // FK para CashSession

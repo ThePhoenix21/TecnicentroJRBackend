@@ -1086,7 +1086,8 @@ enum MovementType {
 
 enum SaleStatus {
   COMPLETED
-  CANCELLED
+  PAID
+  CANCELLED //anulado
   PENDING
 }
 
