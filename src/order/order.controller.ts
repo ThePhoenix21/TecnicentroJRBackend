@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Body,
+  Query,
   Req,
   UseGuards,
   HttpCode,
@@ -31,6 +32,10 @@ import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.deco
 import { TenantFeature } from '@prisma/client';
 import { AuthService } from '../auth/auth.service';
 import { HardDeleteOrdersByDateRangeDto } from './dto/hard-delete-orders-by-date-range.dto';
+import { ListOrdersDto } from './dto/list-orders.dto';
+import { ListOrdersResponseDto } from './dto/list-orders-response.dto';
+import { SaleStatusLookupItemDto } from './dto/sale-status-lookup-item.dto';
+import { SaleStatus } from '@prisma/client';
 
 @ApiTags('Órdenes')
 @ApiBearerAuth('JWT-auth')
@@ -341,6 +346,26 @@ export class OrderController {
     }
 
     return this.orderService.findMe(userId, req.user as any);
+  }
+
+  @Get('list')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
+  @ApiOperation({ summary: 'Listado paginado de órdenes (filtros combinables)' })
+  async list(@Req() req: Request & { user: any }, @Query() query: ListOrdersDto): Promise<ListOrdersResponseDto> {
+    return this.orderService.list(query, req.user as any);
+  }
+
+  @Get('lookup-status')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
+  @ApiOperation({ summary: 'Lookup de estados de órdenes (value y label)' })
+  async lookupStatus(): Promise<SaleStatusLookupItemDto[]> {
+    return Object.values(SaleStatus).map((s) => ({ value: s, label: s }));
   }
 
   @Get()

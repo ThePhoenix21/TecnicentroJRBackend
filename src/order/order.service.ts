@@ -6,6 +6,9 @@ import { Order } from './entities/order.entity';
 import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType, ServiceType as PrismaServiceType, TenantFeature } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
+import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
+import { ListOrdersDto } from './dto/list-orders.dto';
+import { ListOrdersResponseDto } from './dto/list-orders-response.dto';
 
 type AuthUser = {
   userId: string;
@@ -704,6 +707,172 @@ export class OrderService {
       },
       orderBy: { createdAt: 'desc' },
     }) as unknown as Promise<Order[]>;
+  }
+
+  async list(query: ListOrdersDto, user: AuthUser): Promise<ListOrdersResponseDto> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const { page, pageSize, skip } = getPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
+    });
+
+    if (query.onlyProducts && query.onlyServices) {
+      throw new BadRequestException('No se puede filtrar por onlyProducts y onlyServices al mismo tiempo');
+    }
+
+    let cashSessionsId: string | undefined;
+    if (query.currentCash) {
+      if (!query.storeId) {
+        throw new BadRequestException('storeId es requerido cuando currentCash=true');
+      }
+
+      const store = await this.assertStoreAccess(query.storeId, user);
+
+      const session = await this.prisma.cashSession.findFirst({
+        where: {
+          StoreId: store.id,
+          status: SessionStatus.OPEN,
+        },
+        select: { id: true },
+      });
+
+      if (!session) {
+        throw new NotFoundException('No hay una sesión de caja abierta para la tienda indicada');
+      }
+      cashSessionsId = session.id;
+    }
+
+    const where: Prisma.OrderWhereInput = {
+      cashSession: {
+        Store: {
+          tenantId,
+        },
+      },
+    };
+
+    if (cashSessionsId) {
+      where.cashSessionsId = cashSessionsId;
+    }
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.fromDate || query.toDate) {
+      where.createdAt = {
+        ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+        ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+      };
+    }
+
+    if (query.clientName) {
+      where.client = {
+        ...(where.client as any),
+        name: {
+          contains: query.clientName,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (query.sellerName) {
+      where.user = {
+        ...(where.user as any),
+        name: {
+          contains: query.sellerName,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (query.onlyProducts) {
+      where.orderProducts = { some: {} };
+    }
+
+    if (query.onlyServices) {
+      where.services = { some: {} };
+    }
+
+    const [total, orders] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({
+        where,
+        select: {
+          id: true,
+          createdAt: true,
+          status: true,
+          client: {
+            select: {
+              name: true,
+            },
+          },
+          user: {
+            select: {
+              name: true,
+            },
+          },
+          orderProducts: {
+            select: {
+              quantity: true,
+              product: {
+                select: {
+                  product: {
+                    select: { name: true },
+                  },
+                },
+              },
+            },
+          },
+          services: {
+            select: {
+              name: true,
+              price: true,
+            },
+          },
+          paymentMethods: {
+            select: {
+              type: true,
+              amount: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    return buildPaginatedResponse(
+      orders.map((order) => ({
+        id: order.id,
+        createdAt: order.createdAt,
+        clientName: order.client?.name ?? '',
+        sellerName: order.user?.name ?? '',
+        products: (order.orderProducts || []).map((op) => ({
+          name: op.product?.product?.name ?? '',
+          quantity: op.quantity,
+        })),
+        services: (order.services || []).map((s) => ({
+          name: s.name ?? '',
+          price: (s.price as any)?.toNumber ? (s.price as any).toNumber() : Number(s.price ?? 0),
+        })),
+        status: order.status,
+        paymentMethods: (order.paymentMethods || []).map((pm) => ({
+          type: pm.type,
+          amount: (pm.amount as any)?.toNumber ? (pm.amount as any).toNumber() : Number(pm.amount ?? 0),
+        })),
+      })),
+      total,
+      page,
+      pageSize,
+    );
   }
 
   async findAll(user: AuthUser): Promise<Order[]> {

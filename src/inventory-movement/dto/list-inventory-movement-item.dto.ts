@@ -2,6 +2,9 @@ import { ApiProperty } from '@nestjs/swagger';
 import { InventoryMovementType } from '@prisma/client';
 
 export class ListInventoryMovementItemDto {
+  @ApiProperty({ example: 'b3c7d066-5ee7-4b9f-8888-6ff0c5c71c11' })
+  id!: string;
+
   @ApiProperty({ example: '2026-01-24T20:30:19.562Z' })
   date!: Date;
 

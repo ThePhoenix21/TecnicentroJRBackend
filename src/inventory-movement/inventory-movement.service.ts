@@ -233,6 +233,7 @@ export class InventoryMovementService {
     ]);
 
     const items = movements.map((movement) => ({
+      id: movement.id,
       date: movement.date,
       name: movement.storeProduct?.product?.name ?? 'Producto sin nombre',
       type: movement.type,
