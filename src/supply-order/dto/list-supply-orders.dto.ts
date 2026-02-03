@@ -3,7 +3,7 @@ import {
   IsDateString,
   IsEnum,
   IsOptional,
-  IsUUID,
+  IsString,
 } from 'class-validator';
 import { SupplyOrderStatus } from '@prisma/client';
 import { BasePaginationDto } from '../../common/dto/base-pagination.dto';
@@ -19,10 +19,10 @@ export class ListSupplyOrdersDto extends BasePaginationDto {
   @IsDateString()
   toDate?: string;
 
-  @ApiPropertyOptional({ example: 'c3d4e5f6-a7b8-9012-cdef-345678901234' })
+  @ApiPropertyOptional({ example: 'Juan Pérez', description: 'Búsqueda parcial por nombre del usuario creador' })
   @IsOptional()
-  @IsUUID()
-  userId?: string;
+  @IsString()
+  createdBy?: string;
 
   @ApiPropertyOptional({ enum: SupplyOrderStatus })
   @IsOptional()

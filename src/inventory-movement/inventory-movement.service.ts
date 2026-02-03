@@ -148,7 +148,7 @@ export class InventoryMovementService {
   }
 
   async findAll(filterDto: FilterInventoryMovementDto, user: AuthUser): Promise<ListInventoryMovementsResponseDto> {
-    const { name, type, userId, fromDate, toDate } = filterDto;
+    const { name, type, userId, userName, fromDate, toDate } = filterDto;
 
     const tenantId = user?.tenantId;
     if (!tenantId) {
@@ -195,6 +195,13 @@ export class InventoryMovementService {
     if (name) {
       where.storeProduct.product = {
         name: { contains: name, mode: 'insensitive' },
+      };
+    }
+
+    if (userName) {
+      where.user = {
+        ...where.user,
+        name: { contains: userName, mode: 'insensitive' },
       };
     }
 

@@ -238,8 +238,13 @@ export class SupplyOrderService {
 
     const where: any = { tenantId };
 
-    if (query.userId) {
-      where.createdById = query.userId;
+    if (query.createdBy) {
+      where.createdBy = {
+        name: {
+          contains: query.createdBy,
+          mode: 'insensitive',
+        },
+      };
     }
 
     if (query.status) {

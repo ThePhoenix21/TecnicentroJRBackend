@@ -19,6 +19,11 @@ export class FilterInventoryMovementDto extends BasePaginationDto {
   @IsUUID()
   userId?: string;
 
+  @ApiPropertyOptional({ description: 'Búsqueda parcial por nombre de usuario', example: 'roge' })
+  @IsOptional()
+  @IsString()
+  userName?: string;
+
   @ApiPropertyOptional({ description: 'Fecha inicio (ISO 8601)' })
   @IsOptional()
   @IsDateString()

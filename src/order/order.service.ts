@@ -498,26 +498,46 @@ export class OrderService {
         totalAmount += servicesData.reduce((sum, service) => sum + service.price, 0);
       }
 
-      if (isServicesOnlyOrder && isFastServiceTenant) {
-        const totalServicesAmount = servicesData.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
-        const totalPaid = (paymentMethods || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-
-        if (Math.abs(totalPaid - totalServicesAmount) > 0.00001) {
-          throw new BadRequestException(
-            `El tenant tiene FASTSERVICE habilitado: el total pagado (${totalPaid}) debe ser igual al total de los servicios (${totalServicesAmount})`,
-          );
-        }
+      // 4. Calcular total de pagos para determinar estado
+      let totalPayments = 0;
+      
+      // Sumar pagos a nivel de orden
+      totalPayments += (paymentMethods || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      
+      // Sumar pagos específicos de productos
+      if (products) {
+        totalPayments += products.reduce((sum, p) => {
+          if (p.payments && Array.isArray(p.payments)) {
+            return sum + p.payments.reduce((productSum, payment) => productSum + (Number(payment.amount) || 0), 0);
+          }
+          return sum;
+        }, 0);
+      }
+      
+      // Sumar adelantos de servicios
+      if (services) {
+        totalPayments += services.reduce((sum, s) => {
+          if (s.payments && Array.isArray(s.payments)) {
+            return sum + s.payments.reduce((serviceSum, payment) => serviceSum + (Number(payment.amount) || 0), 0);
+          }
+          return sum;
+        }, 0);
       }
 
-      // 4. Determinar el estado de la orden
-      // Si hay servicios, el estado es PENDING, de lo contrario es COMPLETED
-      const orderStatus = (isServicesOnlyOrder && isFastServiceTenant)
-        ? SaleStatus.COMPLETED
-        : (createOrderDto.services && createOrderDto.services.length > 0 
-          ? SaleStatus.PENDING 
-          : SaleStatus.COMPLETED);
+      // 5. Determinar el estado de la orden basado en pagos
+      let orderStatus: SaleStatus;
+      if (totalPayments >= totalAmount) {
+        orderStatus = SaleStatus.PAID;
+      } else {
+        orderStatus = SaleStatus.PENDING;
+      }
 
-      // 5. Calcular número de tienda según orden de creación
+      // Para FASTSERVICE: si es solo servicios y está pagado completamente, se marca como COMPLETED
+      if (isServicesOnlyOrder && isFastServiceTenant && orderStatus === SaleStatus.PAID) {
+        orderStatus = SaleStatus.COMPLETED;
+      }
+
+      // 6. Calcular número de tienda según orden de creación
       // Se obtienen todas las tiendas ordenadas por createdAt y se busca el índice de la tienda de la sesión
       const stores = await prisma.store.findMany({
         where: {
@@ -530,12 +550,12 @@ export class OrderService {
       const storeIndex = stores.findIndex((s) => s.id === cashSession.StoreId);
       const storeNumber = storeIndex >= 0 ? storeIndex + 1 : 1; // 1 para primera tienda, 2 para segunda, etc.
 
-      // 6. Generar número de orden con prefijo 001/002/... usando storeNumber
+      // 7. Generar número de orden con prefijo 001/002/... usando storeNumber
       const orderNumber = await this.generateOrderNumber(storeNumber);
 
       const paymentMethodsFiltered = (paymentMethods || []).filter((pm) => this.toNumber(pm.amount as any) > 0);
 
-      // 7. Crear la orden
+      // 8. Crear la orden
       const orderData: Prisma.OrderCreateInput = {
         orderNumber,
         totalAmount,
@@ -573,7 +593,7 @@ export class OrderService {
         },
       });
 
-      // 7. Actualizar el stock de los productos en tienda y registrar movimientos
+      // 8. Actualizar el stock de los productos en tienda y registrar movimientos
       await Promise.all(
         existingStoreProducts.map(storeProduct => {
           const productData = productMap.get(storeProduct.id);
@@ -1194,7 +1214,7 @@ export class OrderService {
                   clientEmail: order.client?.email || undefined,
                 },
                 true,
-                authenticatedUser as any,
+                authenticatedUser,
               );
             } catch (error) {
               this.logger.error(
