@@ -527,7 +527,9 @@ export class OrderService {
       // 5. Determinar el estado de la orden basado en pagos
       let orderStatus: SaleStatus;
       if (totalPayments >= totalAmount) {
-        orderStatus = SaleStatus.PAID;
+        // Si es solo servicios y está pagado completamente → PAID
+        // Si tiene productos y está pagado completamente → COMPLETED
+        orderStatus = isServicesOnlyOrder ? SaleStatus.PAID : SaleStatus.COMPLETED;
       } else {
         orderStatus = SaleStatus.PENDING;
       }
