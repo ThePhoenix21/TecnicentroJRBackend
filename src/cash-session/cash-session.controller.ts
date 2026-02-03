@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Req, UnauthorizedException, BadRequestException, NotFoundException, ForbiddenException, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Req, UnauthorizedException, BadRequestException, NotFoundException, ForbiddenException, Query, ValidationPipe } from '@nestjs/common';
 import { CashSessionService } from './cash-session.service';
 import { CreateCashSessionDto } from './dto/create-cash-session.dto';
 import { UpdateCashSessionDto } from './dto/update-cash-session.dto';
@@ -13,6 +13,7 @@ import { AuthService } from '../auth/auth.service';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
+import { ListClosedCashSessionsDto } from './dto/list-closed-cash-sessions.dto';
 
 @ApiTags('Cash Sessions')
 @Controller('cash-session')
@@ -271,6 +272,43 @@ export class CashSessionController {
   @ApiResponse({ status: 403, description: 'No autorizado' })
   findOpenSessionByStore(@Param('storeId') storeId: string, @Req() req: any) {
     return this.cashSessionService.findOpenSessionByStore(storeId, req.user);
+  }
+
+  @Post('store/closed')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Listar cajas cerradas de una tienda (ADMIN)',
+    description: 'Devuelve las sesiones de caja CLOSED de una tienda del tenant. Para USER, la tienda se obtiene del token (stores) y debe ser única. Para ADMIN, se puede enviar storeId en el body para filtrar una tienda específica (un solo storeId). Soporta filtros por fechas y por nombre parcial del usuario que aperturó.'
+  })
+  async listClosedCashSessions(
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) body: ListClosedCashSessionsDto,
+    @Req() req: any,
+  ) {
+    const user = req.user;
+
+    const tokenStores: string[] = Array.isArray(user?.stores) ? user.stores : [];
+    const storeIdFromToken = tokenStores.length === 1 ? tokenStores[0] : undefined;
+
+    let storeId: string | undefined;
+
+    if (user?.role === Role.ADMIN) {
+      storeId = body.storeId || storeIdFromToken;
+      if (!storeId) {
+        throw new BadRequestException('storeId es requerido para ADMIN cuando el token trae múltiples tiendas o no trae stores');
+      }
+    } else {
+      storeId = storeIdFromToken;
+      if (!storeId) {
+        throw new BadRequestException('El token debe contener exactamente una tienda (stores) para este endpoint');
+      }
+    }
+
+    if (tokenStores.length > 0 && !tokenStores.includes(storeId)) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+    }
+
+    return this.cashSessionService.listClosedSessionsByStore(storeId, { from: body.from, to: body.to, openedByName: body.openedByName }, user);
   }
 
   @Get(':id')

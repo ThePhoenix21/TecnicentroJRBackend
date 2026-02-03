@@ -9,6 +9,7 @@ type AuthUser = {
   email: string;
   role: string;
   tenantId?: string;
+  stores?: string[];
 };
 
 @Injectable()
@@ -21,6 +22,86 @@ export class CashSessionService {
     if (value === null || value === undefined) return 0;
     if (typeof value === 'number') return value;
     return value.toNumber();
+  }
+
+  async listClosedSessionsByStore(
+    storeId: string,
+    filters: { from?: string; to?: string; openedByName?: string },
+    user: AuthUser,
+  ) {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    await this.assertStoreAccess(storeId, user);
+
+    const where: any = {
+      StoreId: storeId,
+      status: SessionStatus.CLOSED,
+    };
+
+    if (filters?.from || filters?.to) {
+      where.closedAt = {
+        ...(filters.from ? { gte: new Date(filters.from) } : {}),
+        ...(filters.to ? { lte: new Date(filters.to) } : {}),
+      };
+    }
+
+    if (filters?.openedByName && filters.openedByName.trim().length > 0) {
+      where.User = {
+        name: {
+          contains: filters.openedByName.trim(),
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    const sessions = await this.prisma.cashSession.findMany({
+      where,
+      select: {
+        id: true,
+        openedAt: true,
+        closedAt: true,
+        status: true,
+        closingAmount: true,
+        declaredAmount: true,
+        User: { select: { name: true } },
+        closedById: true,
+      },
+      orderBy: { closedAt: 'desc' },
+    });
+
+    const closerIds = Array.from(
+      new Set(
+        (sessions || [])
+          .map((s) => s.closedById)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    );
+
+    const closers = closerIds.length
+      ? await this.prisma.user.findMany({
+          where: {
+            id: { in: closerIds },
+            tenantId,
+          },
+          select: { id: true, name: true },
+        })
+      : [];
+
+    const closerById = new Map(closers.map((u) => [u.id, u.name] as const));
+
+    return (sessions || []).map((s) => ({
+      id: s.id,
+      openedAt: s.openedAt,
+      closedAt: s.closedAt,
+      openedByName: s.User?.name ?? null,
+      closedByName: s.closedById ? (closerById.get(s.closedById) ?? null) : null,
+      status: s.status,
+      closingAmount: s.closingAmount,
+      declaredAmount: s.declaredAmount,
+    }));
   }
 
   async findOneForClose(id: string, user: AuthUser) {
