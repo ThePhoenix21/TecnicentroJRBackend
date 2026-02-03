@@ -14,6 +14,8 @@ import { CashMovementService } from '../cash-movement/cash-movement.service';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
 import { ListClosedCashSessionsDto } from './dto/list-closed-cash-sessions.dto';
+import { ListCashMovementsDto } from '../cash-movement/dto/list-cash-movements.dto';
+import { ListCashMovementsResponseDto } from '../cash-movement/dto/list-cash-movements-response.dto';
 
 @ApiTags('Cash Sessions')
 @Controller('cash-session')
@@ -351,6 +353,56 @@ export class CashSessionController {
   @ApiResponse({ status: 403, description: 'No autorizado' })
   remove(@Param('id') id: string, @Req() req: any) {
     return this.cashSessionService.remove(id, req.user);
+  }
+
+  @Get(':sessionId/movements')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @ApiOperation({ 
+    summary: 'Obtener movimientos de una sesión de caja',
+    description: 'Obtiene todos los movimientos (ingresos y egresos) de una sesión de caja específica con paginación. Incluye información del cliente asociado cuando existe.'
+  })
+  @ApiParam({ 
+    name: 'sessionId', 
+    description: 'ID de la sesión de caja',
+    example: 'b2c3d4e5-f6a7-8901-bcde-f23456789012'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Movimientos obtenidos exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '821d91fd-00db-45e2-bc2d-66c16ea755ce' },
+              type: { type: 'string', example: 'INCOME' },
+              amount: { type: 'string', example: '100' },
+              payment: { type: 'string', example: 'EFECTIVO', nullable: true },
+              description: { type: 'string', example: 'venta de "Aceite de Motor 10W40"', nullable: true },
+              clientName: { type: 'string', example: 'Juan Pérez', nullable: true },
+              createdAt: { type: 'string', format: 'date-time', example: '2026-01-28T01:35:19.292Z' }
+            }
+          }
+        },
+        total: { type: 'number', example: 120 },
+        totalPages: { type: 'number', example: 10 },
+        page: { type: 'number', example: 1 },
+        pageSize: { type: 'number', example: 12 }
+      }
+    }
+  })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
+  @ApiResponse({ status: 404, description: 'Sesión de caja no encontrada' })
+  async getMovements(
+    @Param('sessionId') sessionId: string,
+    @Query() query: ListCashMovementsDto,
+    @Req() req: any
+  ): Promise<ListCashMovementsResponseDto> {
+    return this.cashMovementService.findBySession(sessionId, query, req.user);
   }
 
   @Post(':id/close')

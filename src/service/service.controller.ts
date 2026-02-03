@@ -176,8 +176,10 @@ export class ServiceController {
     @Query('status') status?: ServiceStatus,
     @Query('type') type?: ServiceType,
     @Query('storeId') storeId?: string,
+    @Query('clientName') clientName?: string,
+    @Query('serviceName') serviceName?: string,
   ): Promise<any[]> {
-    return this.serviceService.findAllWithClients(status, type, storeId, req.user);
+    return this.serviceService.findAllWithClients(status, type, storeId, clientName, serviceName, req.user);
   }
 
   @Get(':id')

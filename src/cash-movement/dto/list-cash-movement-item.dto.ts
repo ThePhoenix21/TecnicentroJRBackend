@@ -16,6 +16,9 @@ export class ListCashMovementItemDto {
   @ApiProperty({ example: 'venta de "Aceite de Motor 10W40"', nullable: true })
   description!: string | null;
 
+  @ApiProperty({ example: 'Juan Pérez', nullable: true })
+  clientName!: string | null;
+
   @ApiProperty({ example: '2026-01-28T01:35:19.292Z' })
   createdAt!: Date;
 }

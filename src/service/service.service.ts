@@ -557,6 +557,8 @@ export class ServiceService {
     status?: ServiceStatus,
     type?: ServiceType,
     storeId?: string,
+    clientName?: string,
+    serviceName?: string,
     user?: AuthUser
   ): Promise<any[]> {
     if (!user) {
@@ -569,7 +571,15 @@ export class ServiceService {
       where: {
         ...(status && { status }),
         ...(type && { type }),
+        ...(serviceName && serviceName.trim() && {
+          name: { contains: serviceName.trim(), mode: 'insensitive' },
+        }),
         order: {
+          ...(clientName && clientName.trim() && {
+            client: {
+              name: { contains: clientName.trim(), mode: 'insensitive' },
+            },
+          }),
           cashSession: {
             ...(storeId ? { StoreId: storeId } : {}),
             Store: {

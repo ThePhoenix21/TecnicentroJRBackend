@@ -937,7 +937,7 @@ export class CashMovementService {
     combinedItems = combinedItems.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
     const total = combinedItems.length;
-    const paginatedItems = combinedItems.slice(skip, skip + pageSize).map(({ operation, clientName, ...rest }) => rest);
+    const paginatedItems = combinedItems.slice(skip, skip + pageSize).map(({ operation, ...rest }) => rest);
 
     return buildPaginatedResponse(paginatedItems, total, page, pageSize) as ListCashMovementsResponseDto;
   }
