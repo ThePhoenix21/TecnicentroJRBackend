@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ConflictExc
 import { CreateCashSessionDto } from './dto/create-cash-session.dto';
 import { UpdateCashSessionDto } from './dto/update-cash-session.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { User, SessionStatus } from '@prisma/client';
+import { MovementType, PaymentType, User, SessionStatus } from '@prisma/client';
 
 type AuthUser = {
   userId: string;
@@ -599,19 +599,35 @@ export class CashSessionService {
         },
       },
       include: {
-        paymentMethods: true,
+        paymentMethods: {
+          select: {
+            id: true,
+            type: true,
+            amount: true,
+            createdAt: true,
+          },
+        },
         orderProducts: {
-          include: {
+          select: {
+            quantity: true,
+            price: true,
             product: {
-              include: {
-                product: true,
+              select: {
+                product: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
           },
         },
         services: {
-          include: {
-            order: true,
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            status: true,
           },
         },
       },
@@ -627,6 +643,7 @@ export class CashSessionService {
     const items: any[] = [];
 
     for (const order of orders) {
+      const isOrderCanceled = order.status === 'CANCELLED';
       const orderNumberShort = order.orderNumber.slice(-4);
 
       const orderPayments = paymentsByOrderId.get(order.id) || [];
@@ -650,6 +667,7 @@ export class CashSessionService {
           paymentMethod: paymentMethods,
           price: this.toNumber(op.price) * op.quantity,
           status: statusShort,
+          isCanceled: isOrderCanceled,
         });
       }
 
@@ -678,6 +696,7 @@ export class CashSessionService {
           paymentMethod: paymentMethods,
           price: price,
           status: statusShort,
+          isCanceled: isOrderCanceled || svc.status === 'ANNULLATED',
         });
       }
     }
@@ -685,6 +704,9 @@ export class CashSessionService {
     // 6. Calcular Resumen por Método de Pago
     const paymentSummary: Record<string, number> = {};
     for (const order of orders) {
+      if (order.status === 'CANCELLED') {
+        continue;
+      }
       const methods = order.paymentMethods || [];
       methods.forEach((p) => {
         const type = p.type;
@@ -732,6 +754,157 @@ export class CashSessionService {
         amount: e.amount,
         time: e.createdAt,
       })),
+    };
+  }
+
+  async getClosingPrintData(
+    sessionId: string,
+    user: AuthUser,
+  ) {
+    await this.assertCashSessionAccessWithOptions(sessionId, user, { allowAdmin: user.role === 'ADMIN' });
+
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const session = await this.prisma.cashSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        status: true,
+        openingAmount: true,
+        Store: {
+          select: {
+            tenantId: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Sesión de caja no encontrada');
+    }
+
+    if (!session.Store?.tenantId || session.Store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
+    }
+
+    if (session.status !== SessionStatus.CLOSED) {
+      throw new BadRequestException('La sesión de caja debe estar cerrada para imprimir el reporte');
+    }
+
+    const cashMovements = await this.prisma.cashMovement.findMany({
+      where: {
+        CashSessionId: sessionId,
+        CashSession: {
+          Store: {
+            tenantId,
+          },
+        },
+      },
+      select: {
+        id: true,
+        sessionId: true,
+        type: true,
+        amount: true,
+        payment: true,
+        description: true,
+        createdAt: true,
+        relatedOrderId: true,
+        CashSessionId: true,
+        UserId: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const manualMovements = cashMovements
+      .filter((movement) => !movement.relatedOrderId)
+      .map((movement) => ({
+        type: movement.type === MovementType.INCOME ? 'IN' : 'OUT',
+        description:
+          movement.description ||
+          (movement.type === MovementType.INCOME ? 'Ingreso manual' : 'Salida manual'),
+        amount: this.toNumber(movement.amount),
+      }));
+
+    const cashOnlyMovements = cashMovements.filter(
+      (m) => (m.payment ?? PaymentType.EFECTIVO) === PaymentType.EFECTIVO,
+    );
+
+    const totalIngresos = cashOnlyMovements
+      .filter((m) => m.type === 'INCOME')
+      .reduce((sum, m) => sum + this.toNumber(m.amount), 0);
+
+    const totalSalidas = cashOnlyMovements
+      .filter((m) => m.type === 'EXPENSE')
+      .reduce((sum, m) => sum + this.toNumber(m.amount), 0);
+
+    const openingAmount = this.toNumber(session.openingAmount);
+    const balanceActual = openingAmount + totalIngresos - totalSalidas;
+
+    const cashBalance = {
+      openingAmount: session.openingAmount,
+      totalIngresos,
+      totalSalidas,
+      balanceActual,
+    };
+
+    const closingReport = await this.getClosingReport(sessionId, user);
+
+    const store = {
+      name: closingReport.storeName ?? null,
+      address: closingReport.storeAddress ?? null,
+      phone: closingReport.storePhone ?? null,
+    };
+
+    const sessionInfo = {
+      openedAt: closingReport.openedAt,
+      closedAt: closingReport.closedAt,
+      openedBy: closingReport.openedBy,
+      closedBy: closingReport.closedBy,
+    };
+
+    const balance = {
+      openingAmount: this.toNumber(closingReport.openingAmount ?? cashBalance.openingAmount ?? 0),
+      totalIngresos: cashBalance.totalIngresos,
+      totalSalidas: cashBalance.totalSalidas,
+      closingAmount: this.toNumber(closingReport.closingAmount ?? 0),
+      declaredAmount: this.toNumber(closingReport.declaredAmount ?? 0),
+      difference: this.toNumber(closingReport.difference ?? 0),
+    };
+
+    const paymentSummary = { ...(closingReport.paymentSummary ?? {}) };
+
+    const orders = (closingReport.orders ?? []).map((order) => ({
+      orderNumber: order.orderNumber,
+      description: order.description,
+      amount: this.toNumber(order.price ?? order.amount ?? 0),
+      isCanceled: !!order.isCanceled,
+    }));
+
+    const expenses = (closingReport.expenses ?? []).map((expense) => ({
+      description: expense.description,
+      amount: this.toNumber(expense.amount ?? 0),
+    }));
+
+    cashMovements
+      .filter((movement) => !movement.relatedOrderId && movement.type === MovementType.INCOME)
+      .forEach((movement) => {
+        const paymentType = movement.payment ?? PaymentType.EFECTIVO;
+        const amount = this.toNumber(movement.amount);
+        paymentSummary[paymentType] = (paymentSummary[paymentType] || 0) + amount;
+      });
+
+    return {
+      store,
+      session: sessionInfo,
+      balance,
+      paymentSummary,
+      orders,
+      expenses,
+      manualMovements,
+      printedAt: closingReport.printedAt,
     };
   }
 }

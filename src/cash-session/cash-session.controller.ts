@@ -105,6 +105,17 @@ export class CashSessionController {
     return this.cashSessionService.create(createCashSessionDto, req.user);
   }
 
+  @Get(':id/closing-print')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Obtener datos para imprimir cierre de caja',
+  })
+  async getClosingPrintData(@Param('id') id: string, @Req() req: any) {
+    return this.cashSessionService.getClosingPrintData(id, req.user);
+  }
+
+
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
