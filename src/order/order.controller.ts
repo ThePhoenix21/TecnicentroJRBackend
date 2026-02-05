@@ -38,6 +38,8 @@ import { SaleStatusLookupItemDto } from './dto/sale-status-lookup-item.dto';
 import { SaleStatus } from '@prisma/client';
 import { PayOrderPaymentsDto } from './dto/pay-order-payments.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
+import { OrderPaymentMethodsResponseDto } from './dto/order-payment-methods-response.dto';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
 @ApiTags('Órdenes')
 @ApiBearerAuth('JWT-auth')
@@ -206,6 +208,20 @@ export class OrderController {
     } catch (error) {
       throw new BadRequestException(`Error al obtener los detalles de la orden: ${error.message}`);
     }
+  }
+
+  @Get(':id/payment-methods')
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
+  @RateLimit({ keyType: 'user', rules: [{ limit: 60, windowSeconds: 60 }] })
+  @ApiOperation({ summary: 'Obtener métodos de pago de una orden' })
+  @ApiResponse({ status: 200, type: OrderPaymentMethodsResponseDto })
+  async getOrderPaymentMethods(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { userId: string; email: string; role: Role } },
+  ): Promise<OrderPaymentMethodsResponseDto> {
+    return this.orderService.getOrderPaymentMethods(id, req.user as any);
   }
 
   private formatOrderResponse(order: any) {

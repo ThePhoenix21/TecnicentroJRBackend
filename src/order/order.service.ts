@@ -1462,6 +1462,52 @@ export class OrderService {
     });
   }
 
+  async getOrderPaymentMethods(orderId: string, user: AuthUser) {
+    await this.assertOrderAccess(orderId, user);
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        orderNumber: true,
+        totalAmount: true,
+        paymentMethods: {
+          select: {
+            id: true,
+            type: true,
+            amount: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Orden no encontrada');
+    }
+
+    const totalAmount = this.toNumber(order.totalAmount);
+    const payments = (order.paymentMethods || []).map((pm) => ({
+      id: pm.id,
+      type: pm.type,
+      amount: this.toNumber(pm.amount),
+      createdAt: pm.createdAt,
+    }));
+
+    const totalPaid = payments.reduce((sum, pm) => sum + pm.amount, 0);
+    const pendingAmount = Math.max(totalAmount - totalPaid, 0);
+
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      totalAmount,
+      totalPaid,
+      pendingAmount,
+      payments,
+    };
+  }
+
   async hardDeleteOrdersByDateRange(
     input: HardDeleteOrdersByDateRangeInput,
     user: AuthUser,
