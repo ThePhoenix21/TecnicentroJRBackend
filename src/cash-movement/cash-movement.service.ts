@@ -859,76 +859,12 @@ export class CashMovementService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const shouldLoadNonCashPayments = !query.payment || query.payment !== PaymentType.EFECTIVO;
-    let paymentMethods: any[] = [];
-
-    if (shouldLoadNonCashPayments) {
-      const paymentMethodWhere: any = {
-        order: {
-          cashSessionsId: sessionId,
-          ...(query.clientName && query.clientName.trim()
-            ? {
-                client: {
-                  name: { contains: query.clientName.trim(), mode: 'insensitive' },
-                },
-              }
-            : {}),
-        },
-      };
-
-      if (query.payment) {
-        paymentMethodWhere.type = query.payment;
-      } else {
-        paymentMethodWhere.type = { not: PaymentType.EFECTIVO };
-      }
-
-      paymentMethods = await this.prisma.paymentMethod.findMany({
-        where: paymentMethodWhere,
-        select: {
-          id: true,
-          type: true,
-          amount: true,
-          createdAt: true,
-          order: {
-            select: {
-              id: true,
-              orderNumber: true,
-              client: {
-                select: { name: true },
-              },
-              orderProducts: {
-                select: {
-                  product: {
-                    select: {
-                      product: {
-                        select: { name: true },
-                      },
-                    },
-                  },
-                },
-              },
-              services: {
-                select: {
-                  name: true,
-                  price: true,
-                },
-              },
-              paymentMethods: {
-                select: {
-                  amount: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-    }
-
-    let combinedItems: MovementListItem[] = [
-      ...cashMovements.map((movement) => this.mapCashMovementToListItem(movement)),
-      ...paymentMethods.map((pm) => this.mapPaymentMethodToListItem(pm)),
-    ];
+    // Nota: antes se mezclaban paymentMethods como pseudo-movimientos para métodos NO EFECTIVO.
+    // Ahora que los CashMovement guardan `payment` para todos los métodos, eso genera duplicados.
+    // Este endpoint debe devolver únicamente movimientos reales (CashMovement).
+    let combinedItems: MovementListItem[] = cashMovements.map((movement) =>
+      this.mapCashMovementToListItem(movement),
+    );
 
     if (query.operation) {
       combinedItems = combinedItems.filter((item) => item.operation === query.operation);

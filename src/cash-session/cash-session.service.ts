@@ -651,6 +651,25 @@ export class CashSessionService {
         ? [...new Set(orderPayments.map((p) => p.type))].join(', ')
         : 'SIN PAGO';
 
+      const orderTotalLineAmount = [...order.orderProducts, ...order.services].reduce((sum, item: any) => {
+        const amount = 'quantity' in item
+          ? this.toNumber(item.price) * item.quantity
+          : this.toNumber(item.price);
+        return sum + amount;
+      }, 0);
+
+      const totalPaymentAmount = orderPayments.reduce((sum, payment) => sum + this.toNumber(payment.amount), 0);
+
+      const buildPaymentBreakdown = (lineAmount: number) => {
+        if (!totalPaymentAmount || totalPaymentAmount <= 0) {
+          return [];
+        }
+        return orderPayments.map((payment) => ({
+          method: payment.type,
+          amount: (this.toNumber(payment.amount) * lineAmount) / totalPaymentAmount,
+        }));
+      };
+
       // Procesar Productos
       for (const op of order.orderProducts) {
         const paymentMethods = orderPaymentMethods;
@@ -660,12 +679,16 @@ export class CashSessionService {
         if (order.status === 'COMPLETED') statusShort = 'COM';
         if (order.status === 'CANCELLED') statusShort = 'ANU';
 
+        const lineAmount = this.toNumber(op.price) * op.quantity;
+        const paymentBreakdown = buildPaymentBreakdown(lineAmount);
+
         items.push({
           orderNumber: orderNumberShort,
           quantity: op.quantity,
           description: op.product.product.name,
           paymentMethod: paymentMethods,
-          price: this.toNumber(op.price) * op.quantity,
+          paymentBreakdown,
+          price: lineAmount,
           status: statusShort,
           isCanceled: isOrderCanceled,
         });
@@ -676,7 +699,8 @@ export class CashSessionService {
         const paymentMethods = orderPaymentMethods;
 
         // En nuevo esquema, el pago está a nivel de orden: mostramos el precio del servicio
-        const price = svc.price;
+        const lineAmount = this.toNumber(svc.price);
+        const paymentBreakdown = buildPaymentBreakdown(lineAmount);
 
         let statusShort = 'PEN';
         if (
@@ -694,7 +718,8 @@ export class CashSessionService {
           quantity: 1, // Servicios siempre 1
           description: svc.name,
           paymentMethod: paymentMethods,
-          price: price,
+          paymentBreakdown,
+          price: lineAmount,
           status: statusShort,
           isCanceled: isOrderCanceled || svc.status === 'ANNULLATED',
         });
@@ -704,9 +729,6 @@ export class CashSessionService {
     // 6. Calcular Resumen por Método de Pago
     const paymentSummary: Record<string, number> = {};
     for (const order of orders) {
-      if (order.status === 'CANCELLED') {
-        continue;
-      }
       const methods = order.paymentMethods || [];
       methods.forEach((p) => {
         const type = p.type;
@@ -730,6 +752,7 @@ export class CashSessionService {
         id: true,
         amount: true,
         description: true,
+        payment: true,
         createdAt: true,
       },
     });
@@ -752,6 +775,7 @@ export class CashSessionService {
       expenses: expenses.map((e) => ({
         description: e.description,
         amount: e.amount,
+        paymentMethod: e.payment ?? PaymentType.EFECTIVO,
         time: e.createdAt,
       })),
     };
@@ -828,29 +852,42 @@ export class CashSessionService {
         amount: this.toNumber(movement.amount),
       }));
 
+    const incomeMovements = cashMovements.filter((m) => m.type === MovementType.INCOME);
+    const expenseMovements = cashMovements.filter((m) => m.type === MovementType.EXPENSE);
+
+    const totalIngresosAll = incomeMovements.reduce((sum, m) => sum + this.toNumber(m.amount), 0);
+    const totalSalidasAll = expenseMovements.reduce((sum, m) => sum + this.toNumber(m.amount), 0);
+
     const cashOnlyMovements = cashMovements.filter(
       (m) => (m.payment ?? PaymentType.EFECTIVO) === PaymentType.EFECTIVO,
     );
 
-    const totalIngresos = cashOnlyMovements
-      .filter((m) => m.type === 'INCOME')
+    const totalIngresosCash = cashOnlyMovements
+      .filter((m) => m.type === MovementType.INCOME)
       .reduce((sum, m) => sum + this.toNumber(m.amount), 0);
 
-    const totalSalidas = cashOnlyMovements
-      .filter((m) => m.type === 'EXPENSE')
+    const totalSalidasCash = cashOnlyMovements
+      .filter((m) => m.type === MovementType.EXPENSE)
       .reduce((sum, m) => sum + this.toNumber(m.amount), 0);
 
     const openingAmount = this.toNumber(session.openingAmount);
-    const balanceActual = openingAmount + totalIngresos - totalSalidas;
+    const balanceActual = openingAmount + totalIngresosCash - totalSalidasCash;
 
     const cashBalance = {
       openingAmount: session.openingAmount,
-      totalIngresos,
-      totalSalidas,
+      totalIngresos: totalIngresosCash,
+      totalSalidas: totalSalidasCash,
       balanceActual,
     };
 
     const closingReport = await this.getClosingReport(sessionId, user);
+
+    const printedByUser = user?.userId
+      ? await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true },
+        })
+      : null;
 
     const store = {
       name: closingReport.storeName ?? null,
@@ -867,8 +904,8 @@ export class CashSessionService {
 
     const balance = {
       openingAmount: this.toNumber(closingReport.openingAmount ?? cashBalance.openingAmount ?? 0),
-      totalIngresos: cashBalance.totalIngresos,
-      totalSalidas: cashBalance.totalSalidas,
+      totalIngresos: totalIngresosAll,
+      totalSalidas: totalSalidasAll,
       closingAmount: this.toNumber(closingReport.closingAmount ?? 0),
       declaredAmount: this.toNumber(closingReport.declaredAmount ?? 0),
       difference: this.toNumber(closingReport.difference ?? 0),
@@ -876,24 +913,73 @@ export class CashSessionService {
 
     const paymentSummary = { ...(closingReport.paymentSummary ?? {}) };
 
-    const orders = (closingReport.orders ?? []).map((order) => ({
-      orderNumber: order.orderNumber,
-      description: order.description,
-      amount: this.toNumber(order.price ?? order.amount ?? 0),
-      isCanceled: !!order.isCanceled,
-    }));
+    const orders: Array<{
+      orderNumber: string;
+      description: string;
+      amount: number;
+      paymentMethod: string | null;
+      isCanceled: boolean;
+    }> = [];
+
+    for (const order of closingReport.orders ?? []) {
+      const baseAmount = this.toNumber(order.price ?? order.amount ?? 0);
+      const baseEntry = {
+        orderNumber: order.orderNumber,
+        description: order.description,
+        isCanceled: !!order.isCanceled,
+      };
+
+      if (Array.isArray(order.paymentBreakdown) && order.paymentBreakdown.length > 0) {
+        order.paymentBreakdown.forEach((part) => {
+          orders.push({
+            ...baseEntry,
+            amount: this.toNumber(part.amount),
+            paymentMethod: part.method,
+          });
+        });
+      } else {
+        const hasPayment = order.paymentMethod && order.paymentMethod !== 'SIN PAGO';
+        orders.push({
+          ...baseEntry,
+          amount: hasPayment ? baseAmount : 0,
+          paymentMethod: hasPayment ? order.paymentMethod : 'NINGUNO',
+        });
+      }
+    }
+
+    const manualIncomeMovements = cashMovements.filter(
+      (movement) => !movement.relatedOrderId && movement.type === MovementType.INCOME,
+    );
+
+    manualIncomeMovements.forEach((movement) => {
+        orders.push({
+          orderNumber: 'MANUAL',
+          description: movement.description || 'Ingreso manual',
+          amount: this.toNumber(movement.amount),
+          paymentMethod: movement.payment ?? PaymentType.EFECTIVO,
+          isCanceled: false,
+        });
+      });
 
     const expenses = (closingReport.expenses ?? []).map((expense) => ({
       description: expense.description,
       amount: this.toNumber(expense.amount ?? 0),
+      paymentMethod: expense.paymentMethod ?? PaymentType.EFECTIVO,
     }));
 
+    manualIncomeMovements.forEach((movement) => {
+      const paymentType = movement.payment ?? PaymentType.EFECTIVO;
+      const amount = this.toNumber(movement.amount);
+      paymentSummary[paymentType] = (paymentSummary[paymentType] || 0) + amount;
+    });
+
+    const expenseSummary: Record<string, number> = {};
     cashMovements
-      .filter((movement) => !movement.relatedOrderId && movement.type === MovementType.INCOME)
+      .filter((movement) => movement.type === MovementType.EXPENSE)
       .forEach((movement) => {
         const paymentType = movement.payment ?? PaymentType.EFECTIVO;
         const amount = this.toNumber(movement.amount);
-        paymentSummary[paymentType] = (paymentSummary[paymentType] || 0) + amount;
+        expenseSummary[paymentType] = (expenseSummary[paymentType] || 0) + amount;
       });
 
     return {
@@ -901,9 +987,10 @@ export class CashSessionService {
       session: sessionInfo,
       balance,
       paymentSummary,
+      expenseSummary,
       orders,
       expenses,
-      manualMovements,
+      printedBy: printedByUser?.name ?? null,
       printedAt: closingReport.printedAt,
     };
   }
