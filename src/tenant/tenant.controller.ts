@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpStatus, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Patch, Post, Req, Res, UnauthorizedException, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { TenantService } from './tenant.service';
@@ -6,6 +6,11 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantFeature } from '@prisma/client';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Role } from '../auth/enums/role.enum';
 
 @ApiTags('tenants')
 @Controller('tenant')
@@ -77,8 +82,23 @@ export class TenantController {
     summary: 'Crear tenant (empresa) con admin y tienda inicial',
     description: 'Crea un tenant con admin y tienda inicial. Si no envías currency, se usa PEN.',
   })
-  async create(@Req() req: any, @Res() res: Response, @Body() createTenantDto: CreateTenantDto) {
-    const { tenant, adminUser, store } = await this.tenantService.create(createTenantDto);
+  @UseInterceptors(FileInterceptor('logo', {
+    storage: memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        return cb(new Error('Solo se permiten archivos de imagen (jpg, jpeg, png, gif, webp)'), false);
+      }
+      cb(null, true);
+    },
+  }))
+  async create(
+    @Req() req: any,
+    @Res() res: Response,
+    @Body() createTenantDto: CreateTenantDto,
+    @UploadedFile() logo?: Express.Multer.File,
+  ) {
+    const { tenant, adminUser, store } = await this.tenantService.create(createTenantDto, logo);
 
     const ipAddress =
       req.ip ||
@@ -96,5 +116,36 @@ export class TenantController {
       tenant,
       store,
     });
+  }
+
+  @Patch('logo')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Actualizar logo del tenant' })
+  @UseInterceptors(FileInterceptor('logo', {
+    storage: memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        return cb(new Error('Solo se permiten archivos de imagen (jpg, jpeg, png, gif, webp)'), false);
+      }
+      cb(null, true);
+    },
+  }))
+  async updateLogo(
+    @Req() req: any,
+    @UploadedFile() logo?: Express.Multer.File,
+  ) {
+    if (!logo) {
+      throw new BadRequestException('El archivo del logo es obligatorio');
+    }
+
+    const tenantId: string | undefined = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Tenant no encontrado en el token');
+    }
+
+    return this.tenantService.updateLogo(tenantId, logo);
   }
 }

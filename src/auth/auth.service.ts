@@ -92,7 +92,7 @@ export class AuthService {
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
-      select: { id: true, name: true, features: true, currency: true } as any,
+      select: { id: true, name: true, features: true, currency: true, logoUrl: true } as any,
     });
 
     if (!tenant) {
@@ -502,7 +502,7 @@ export class AuthService {
   async login(user: any, ipAddress?: string, res?: Response) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
-      select: { id: true, name: true, features: true, currency: true } as any,
+      select: { id: true, name: true, features: true, currency: true, logoUrl: true } as any,
     });
 
     if (!tenant) {
@@ -553,6 +553,7 @@ export class AuthService {
       tenantName: tenant.name,
       tenantFeatures: tenant.features || [],
       tenantCurrency: (tenant as any).currency ?? 'PEN',
+      tenantLogoUrl: (tenant as any).logoUrl ?? null,
       permissions: user.permissions || [], // Incluir permisos en el token
       stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
     };
@@ -682,7 +683,7 @@ export class AuthService {
 
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { id: true, name: true, features: true, currency: true } as any,
+        select: { id: true, name: true, features: true, currency: true, logoUrl: true } as any,
       });
 
       if (!tenant) {
@@ -698,6 +699,7 @@ export class AuthService {
         tenantName: tenant.name,
         tenantFeatures: tenant.features || [],
         tenantCurrency: (tenant as any).currency ?? 'PEN',
+        tenantLogoUrl: (tenant as any).logoUrl ?? null,
         permissions: user.permissions || [],
         stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
       };

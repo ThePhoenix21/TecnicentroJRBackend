@@ -500,6 +500,7 @@ model Tenant {
   id             String          @id @default(uuid())
   name           String
   ruc            String?
+  logoUrl        String?
   status         TenantStatus    @default(ACTIVE)
   plan           TenantPlan      @default(FREE)
   features       TenantFeature[]
