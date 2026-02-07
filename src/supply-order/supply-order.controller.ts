@@ -142,4 +142,17 @@ export class SupplyOrderController {
   async annull(@Param('id') id: string, @Req() req: any) {
     return this.supplyOrderService.annull(id, req.user);
   }
+
+  @Post(':id/approve-with-email')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @ApiOperation({ summary: 'Aprobar orden de suministro y enviar email' })
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 20, windowSeconds: 60 }],
+  })
+  async approveWithEmail(@Param('id') id: string, @Req() req: any) {
+    return this.supplyOrderService.approveWithEmail(id, req.user);
+  }
 }

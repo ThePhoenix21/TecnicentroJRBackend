@@ -13,6 +13,8 @@ import { ReceiveSupplyOrderDto } from './dto/receive-supply-order.dto';
 import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
 import { Prisma, SupplyOrderStatus } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
+import { PdfService } from '../common/pdf/pdf.service';
+import { MailService } from '../mail/mail.service';
 
 const codeGenerator = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 
@@ -27,7 +29,11 @@ type AuthUser = {
 export class SupplyOrderService {
   private readonly logger = new Logger(SupplyOrderService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pdfService: PdfService,
+    private readonly mailService: MailService,
+  ) {}
 
   private getTenantIdOrThrow(user?: AuthUser): string {
     const tenantId = user?.tenantId;
@@ -780,5 +786,123 @@ export class SupplyOrderService {
     });
 
     return { success: true };
+  }
+
+  async approveWithEmail(orderId: string, user?: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+    const approverId = this.getAuthUserIdOrThrow(user);
+
+    const supplyOrder = await this.prisma.supplyOrder.findFirst({
+      where: { id: orderId, tenantId },
+      include: {
+        provider: {
+          select: {
+            id: true,
+            name: true,
+            ruc: true,
+            phone: true,
+            email: true,
+            address: true,
+          },
+        },
+        store: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+          },
+        },
+        warehouse: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            username: true,
+            status: true,
+            avatarUrl: true,
+            accessProfileId: true,
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            productId: true,
+            quantity: true,
+            note: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!supplyOrder) {
+      throw new NotFoundException('Orden de suministro no encontrada');
+    }
+
+    if (supplyOrder.status === SupplyOrderStatus.ANNULLATED) {
+      throw new BadRequestException('La orden está anulada');
+    }
+
+    if (supplyOrder.status !== SupplyOrderStatus.ISSUED) {
+      throw new BadRequestException('La orden ya fue aprobada o procesada');
+    }
+
+    if (!supplyOrder.provider.email) {
+      throw new BadRequestException('El proveedor no tiene un email configurado');
+    }
+
+    try {
+      await this.prisma.$transaction(async (prisma) => {
+        await prisma.supplyOrder.update({
+          where: { id: supplyOrder.id },
+          data: {
+            status: SupplyOrderStatus.PENDING,
+          },
+          select: { id: true },
+        });
+      });
+
+      const pdfContent = await this.pdfService.generateSupplyOrderPdf(supplyOrder);
+      
+      await this.mailService.sendSupplyOrderApprovalEmail(
+        supplyOrder.provider.email,
+        supplyOrder.code,
+        pdfContent
+      );
+
+      this.logger.log(
+        `Orden ${supplyOrder.code} aprobada y email enviado a ${supplyOrder.provider.email}`
+      );
+
+      return {
+        message: 'Orden aprobada y email enviado exitosamente',
+        orderId: supplyOrder.id,
+        providerEmail: supplyOrder.provider.email,
+        pdfGenerated: true,
+      };
+    } catch (error) {
+      this.logger.error('Error en approveWithEmail:', error);
+      
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new BadRequestException('Error generando PDF o enviando email');
+    }
   }
 }

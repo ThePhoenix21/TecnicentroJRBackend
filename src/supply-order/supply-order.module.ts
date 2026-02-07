@@ -4,6 +4,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 import { SupplyOrderController } from './supply-order.controller';
 import { SupplyOrderService } from './supply-order.service';
+import { PdfService } from '../common/pdf/pdf.service';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
@@ -13,9 +15,10 @@ import { SupplyOrderService } from './supply-order.service';
       signOptions: { expiresIn: '60m' },
     }),
     ConfigModule,
+    MailModule,
   ],
   controllers: [SupplyOrderController],
-  providers: [SupplyOrderService],
+  providers: [SupplyOrderService, PdfService],
   exports: [SupplyOrderService],
 })
 export class SupplyOrderModule {}
