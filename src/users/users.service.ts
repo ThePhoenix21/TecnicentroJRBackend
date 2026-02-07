@@ -478,7 +478,15 @@ export class UsersService {
         if (!email) {
             throw new BadRequestException('El correo electrónico es requerido');
         }
-        return this.prisma.user.findUnique({ where: { email } });
+        const normalizedEmail = String(email).trim();
+        return this.prisma.user.findFirst({
+            where: {
+                email: {
+                    equals: normalizedEmail,
+                    mode: 'insensitive',
+                },
+            },
+        });
     }
 
     async findById(id: string, authUser?: AuthUser) {

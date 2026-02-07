@@ -308,9 +308,17 @@ export class AuthService {
     timezone: string = 'UTC',
     permissions: string[] = [] // Nuevo parámetro opcional
   ) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
     // Verificar si el correo ya existe
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email },
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        email: {
+          equals: normalizedEmail,
+          mode: 'insensitive',
+        },
+      },
+      select: { id: true },
     });
 
     if (existingUser) {
@@ -327,7 +335,7 @@ export class AuthService {
     }
 
     // Validar el formato del correo electrónico
-    const isEmailValid = await this.emailValidator.isEmailValid(email);
+    const isEmailValid = await this.emailValidator.isEmailValid(normalizedEmail);
     if (!isEmailValid) {
       throw new BadRequestException('El correo electrónico no es válido o el dominio no existe');
     }
@@ -356,7 +364,7 @@ export class AuthService {
     try {
       // Crear usuario
       const userData: Prisma.UserCreateInput = {
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         name,
         username,
