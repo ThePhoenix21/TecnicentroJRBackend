@@ -64,11 +64,17 @@ export class StoreProductService {
       maxPageSize: 100,
     });
 
-    const inStock = !!filterDto.inStock;
+    const inStockParam = filterDto.inStock as unknown;
+    const inStock =
+      inStockParam === true ||
+      inStockParam === 'true' ||
+      inStockParam === 1 ||
+      inStockParam === '1';
 
     const where: any = {
       storeId,
       store: { tenantId },
+      tenantId,
       deletedAt: null,
       product: {
         isDeleted: false,
@@ -316,6 +322,7 @@ export class StoreProductService {
     let whereCondition: any = {
       storeId,
       store: { tenantId },
+      tenantId,
       deletedAt: null,
       product: {
         isDeleted: false,
@@ -405,6 +412,7 @@ export class StoreProductService {
       storeId,
       store: { tenantId },
       deletedAt: null,
+      tenantId,
       product: {
         isDeleted: false,
       },
@@ -462,6 +470,7 @@ export class StoreProductService {
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
       include: {
+        tenant: { select: { id: true } },
         store: {
           select: {
             tenantId: true,
@@ -479,10 +488,6 @@ export class StoreProductService {
       throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
 
-    if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId) {
-      throw new ForbiddenException('No tienes permiso para actualizar este producto');
-    }
-
     if ((storeProduct as any).deletedAt) {
       throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
@@ -493,6 +498,10 @@ export class StoreProductService {
 
     // Si no es admin y no se permite saltar la restricción de propietario,
     // verificar que el producto pertenece al usuario
+    if (!storeProduct.tenantId || storeProduct.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permiso para actualizar este producto');
+    }
+
     if (!isAdmin && !bypassOwnership && storeProduct.userId !== userId) {
       throw new ForbiddenException('No tienes permiso para actualizar este producto');
     }
@@ -562,6 +571,7 @@ export class StoreProductService {
       where: {
         userId: userId,
         deletedAt: null,
+        tenantId,
         store: { tenantId },
         product: { isDeleted: false },
       } as any,
@@ -600,6 +610,7 @@ export class StoreProductService {
       where: {
         id,
         deletedAt: null,
+        tenantId,
         store: { tenantId },
         product: { isDeleted: false },
       } as any,
@@ -682,6 +693,7 @@ export class StoreProductService {
       where: { id },
       include: {
         product: true,
+        tenant: { select: { id: true } },
         store: {
           select: {
             tenantId: true,
@@ -873,6 +885,7 @@ export class StoreProductService {
             isDeleted: true,
           },
         },
+        tenant: { select: { id: true } },
         store: {
           select: {
             tenantId: true,
@@ -885,7 +898,7 @@ export class StoreProductService {
       throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
 
-    if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId) {
+    if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId || !storeProduct.tenantId || storeProduct.tenantId !== tenantId) {
       throw new ForbiddenException('No tienes permiso para eliminar este producto');
     }
 
