@@ -55,4 +55,7 @@ export class ListOrderItemDto {
 
   @ApiProperty({ type: [OrderListPaymentMethodDto] })
   paymentMethods!: OrderListPaymentMethodDto[];
+
+  @ApiProperty({ type: [OrderListPaymentMethodDto] })
+  refundPaymentMethods!: OrderListPaymentMethodDto[];
 }

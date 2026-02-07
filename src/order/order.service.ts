@@ -5,7 +5,7 @@ import { CompleteOrderDto } from './dto/complete-order.dto';
 import { PayOrderPaymentsDto } from './dto/pay-order-payments.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType, ServiceType as PrismaServiceType, TenantFeature } from '@prisma/client';
+import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType, MovementType, ServiceType as PrismaServiceType, TenantFeature } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
 import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
@@ -870,6 +870,14 @@ export class OrderService {
               createdAt: true,
             },
           },
+          cashMovements: {
+            where: { type: MovementType.EXPENSE },
+            select: {
+              payment: true,
+              amount: true,
+              createdAt: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -905,6 +913,19 @@ export class OrderService {
           .map((pm) => ({
             type: pm.type,
             amount: (pm.amount as any)?.toNumber ? (pm.amount as any).toNumber() : Number(pm.amount ?? 0),
+          })),
+        refundPaymentMethods: (order.cashMovements || [])
+          .slice()
+          .sort((a: any, b: any) => {
+            const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return aTime - bTime;
+          })
+          .map((movement) => ({
+            type: movement.payment || PaymentType.EFECTIVO,
+            amount: (movement.amount as any)?.toNumber
+              ? (movement.amount as any).toNumber()
+              : Number(movement.amount ?? 0),
           })),
       })),
       total,
