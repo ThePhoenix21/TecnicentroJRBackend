@@ -961,6 +961,8 @@ export class CashSessionService {
         });
       });
 
+    const ordersFiltered = orders.filter((o) => this.toNumber(o.amount) > 0);
+
     const expenses = (closingReport.expenses ?? []).map((expense) => ({
       description: expense.description,
       amount: this.toNumber(expense.amount ?? 0),
@@ -988,7 +990,7 @@ export class CashSessionService {
       balance,
       paymentSummary,
       expenseSummary,
-      orders,
+      orders: ordersFiltered,
       expenses,
       printedBy: printedByUser?.name ?? null,
       printedAt: closingReport.printedAt,
