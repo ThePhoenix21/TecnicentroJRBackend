@@ -242,6 +242,7 @@ export class StoreProductService {
         productId: productId,
         storeId: store.id,
         userId: userId,
+        tenantId,
         price: store.id === createStoreProductDto.storeId 
           ? originPrice
           : 0, // Precio 0 para otras tiendas
