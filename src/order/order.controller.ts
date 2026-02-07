@@ -35,6 +35,7 @@ import { HardDeleteOrdersByDateRangeDto } from './dto/hard-delete-orders-by-date
 import { ListOrdersDto } from './dto/list-orders.dto';
 import { ListOrdersResponseDto } from './dto/list-orders-response.dto';
 import { SaleStatusLookupItemDto } from './dto/sale-status-lookup-item.dto';
+import { OrderNumberLookupDto } from './dto/order-number-lookup.dto';
 import { SaleStatus } from '@prisma/client';
 import { PayOrderPaymentsDto } from './dto/pay-order-payments.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
@@ -401,6 +402,19 @@ export class OrderController {
   @ApiOperation({ summary: 'Listado paginado de órdenes (filtros combinables)' })
   async list(@Req() req: Request & { user: any }, @Query() query: ListOrdersDto): Promise<ListOrdersResponseDto> {
     return this.orderService.list(query, req.user as any);
+  }
+
+  @Get('lookup-order-numbers')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
+  @ApiOperation({ summary: 'Lookup de números de orden (solo valores)' })
+  async lookupOrderNumbers(
+    @Req() req: Request & { user: any },
+    @Query() query: OrderNumberLookupDto,
+  ): Promise<string[]> {
+    return this.orderService.lookupOrderNumbers(query, req.user as any);
   }
 
   @Get('lookup-status')

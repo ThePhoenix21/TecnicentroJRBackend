@@ -5,6 +5,11 @@ import { SaleStatus } from '@prisma/client';
 import { BasePaginationDto } from '../../common/dto/base-pagination.dto';
 
 export class ListOrdersDto extends BasePaginationDto {
+  @ApiPropertyOptional({ example: '001-20260207', description: 'Filtro por número de orden (búsqueda parcial, case-insensitive)' })
+  @IsOptional()
+  @IsString()
+  orderNumber?: string;
+
   @ApiPropertyOptional({ example: 'Juan' })
   @IsOptional()
   @IsString()

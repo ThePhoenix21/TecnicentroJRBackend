@@ -825,6 +825,13 @@ export class OrderService {
       where.services = { some: {} };
     }
 
+    if (query.orderNumber) {
+      where.orderNumber = {
+        contains: query.orderNumber,
+        mode: 'insensitive',
+      };
+    }
+
     const [total, orders] = await Promise.all([
       this.prisma.order.count({ where }),
       this.prisma.order.findMany({
@@ -932,6 +939,58 @@ export class OrderService {
       page,
       pageSize,
     );
+  }
+
+  async lookupOrderNumbers(
+    query: { search?: string; storeId?: string; fromDate?: string; toDate?: string; limit?: number },
+    user: AuthUser,
+  ): Promise<string[]> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const take = Math.min(Math.max(Number(query.limit ?? 50), 1), 200);
+
+    const where: Prisma.OrderWhereInput = {
+      cashSession: {
+        Store: {
+          tenantId,
+        },
+      },
+    };
+
+    if (query.storeId) {
+      await this.assertStoreAccess(query.storeId, user);
+      where.cashSession = {
+        ...(where.cashSession as any),
+        StoreId: query.storeId,
+      } as any;
+    }
+
+    if (query.fromDate || query.toDate) {
+      where.createdAt = {
+        ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+        ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+      };
+    }
+
+    if (query.search) {
+      where.orderNumber = {
+        contains: query.search,
+        mode: 'insensitive',
+      };
+    }
+
+    const rows = await this.prisma.order.findMany({
+      where,
+      select: { orderNumber: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      distinct: ['orderNumber'],
+      take,
+    });
+
+    return rows.map((r) => r.orderNumber);
   }
 
   async findAll(user: AuthUser): Promise<Order[]> {
