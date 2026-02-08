@@ -634,15 +634,15 @@ model Employed {
   position                          String?
   status                            EmployedStatus @default(ACTIVE)
   
-  // nuevos campos para documentos
-  documentUrls                      String[]  @default([])
-
   //soft delete
   deletedAt                         DateTime?
 
   // acceso al sistema (opcional)
   userId                            String? @unique
   user                              User?   @relation("EmployedUser", fields: [userId], references: [id])
+
+  // documentos
+  documents                         EmployeeDocument[]
 
   // auditoria
   createdByUserId                   String
@@ -664,6 +664,31 @@ enum EmployedStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+}
+
+//===================EMPLOYED DOCUMENTS===================
+
+model EmployeeDocument {
+  id                             String @id @default(uuid())
+  url                            String
+  originalName                   String
+  mimeType                       String
+  status                         DocumentStatus @default(ACTIVE)
+  size                           Int
+
+  employedId                     String
+  employed                       Employed @relation(fields: [employedId], references: [id])
+
+  updatedByUserId                String?
+  updatedByUser                  User?   @relation("EmployeeDocumentUpdatedBy", fields: [updatedByUserId], references: [id])
+
+  createdAt                      DateTime @default(now())
+}
+
+enum DocumentStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
 }
 
 //===================EMPLOYED HISTORY===================

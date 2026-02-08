@@ -125,6 +125,7 @@ export class StoreService {
           const storeProductsData = allProducts.map(product => ({
             productId: product.id,
             storeId: newStore.id,
+            tenantId: adminUser.tenantId,
             stock: 0,
             price: product.basePrice || 0,
             userId: adminUser.id,
