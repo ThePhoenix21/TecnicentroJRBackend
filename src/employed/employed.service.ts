@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../common/utility/supabase-storage.util';
-import { EmployedStatus } from '@prisma/client';
+import { DocumentStatus, EmployedStatus } from '@prisma/client';
 import { ListEmployedDto } from './dto/list-employed.dto';
 
 type AuthUser = {
@@ -20,6 +20,7 @@ type FileUpload = {
   buffer: Buffer;
   originalname: string;
   mimetype: string;
+  size?: number;
 };
 
 @Injectable()
@@ -560,31 +561,55 @@ export class EmployedService {
 
   async uploadDocuments(employedId: string, files: FileUpload[], user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
-    const employed = await this.findEmployedOrThrow(employedId, tenantId);
+    await this.findEmployedOrThrow(employedId, tenantId);
 
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron archivos');
     }
 
+    const actorUserId = this.getAuthUserIdOrThrow(user);
+
     const uploads = await Promise.all(
       files.map(async (file) => {
         const uploaded = await this.supabaseStorage.uploadFile(file, `employed/${employedId}`);
-        return uploaded.url;
+        return {
+          url: uploaded.url,
+          originalName: file.originalname,
+          mimeType: file.mimetype,
+          size: file.size ?? file.buffer.length,
+        };
       }),
     );
 
-    return this.prisma.employed.update({
-      where: { id: employedId },
-      data: {
-        documentUrls: {
-          set: [...(employed.documentUrls || []), ...uploads],
-        },
-      },
+    await this.prisma.employeeDocument.createMany({
+      data: uploads.map((upload) => ({
+        employedId,
+        url: upload.url,
+        originalName: upload.originalName,
+        mimeType: upload.mimeType,
+        size: upload.size,
+        updatedByUserId: actorUserId,
+      })),
+    });
+
+    const documents = await this.prisma.employeeDocument.findMany({
+      where: { employedId, status: DocumentStatus.ACTIVE },
       select: {
         id: true,
-        documentUrls: true,
+        url: true,
+        originalName: true,
+        mimeType: true,
+        status: true,
+        size: true,
+        createdAt: true,
       },
+      orderBy: { createdAt: 'desc' },
     });
+
+    return {
+      id: employedId,
+      documents,
+    };
   }
 
   async terminate(employedId: string, reason: string | undefined, user: AuthUser) {
