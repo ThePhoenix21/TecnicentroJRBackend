@@ -905,4 +905,102 @@ export class SupplyOrderService {
       throw new BadRequestException('Error generando PDF o enviando email');
     }
   }
+
+  async update(orderId: string, updateDto: any, user?: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+    const updaterId = this.getAuthUserIdOrThrow(user);
+
+    // Verificar que la orden existe y pertenece al tenant
+    const existingOrder = await this.prisma.supplyOrder.findFirst({
+      where: { id: orderId, tenantId },
+      include: {
+        products: true,
+      },
+    });
+
+    if (!existingOrder) {
+      throw new NotFoundException('Orden de suministro no encontrada');
+    }
+
+    // Verificar que la orden no esté anulada
+    if (existingOrder.status === SupplyOrderStatus.ANNULLATED) {
+      throw new BadRequestException('No se puede modificar una orden anulada');
+    }
+
+    // Verificar que la tienda existe y pertenece al tenant
+    const store = await this.prisma.store.findFirst({
+      where: { id: updateDto.storeId, tenantId },
+    });
+
+    if (!store) {
+      throw new NotFoundException('Tienda no encontrada o no pertenece a tu tenant');
+    }
+
+    // Verificar que todos los productos existan
+    const productIds = updateDto.products.map(p => p.productId);
+    const products = await this.prisma.product.findMany({
+      where: { 
+        id: { in: productIds },
+        isDeleted: false,
+      },
+    });
+
+    if (products.length !== productIds.length) {
+      throw new BadRequestException('Uno o más productos no existen');
+    }
+
+    // Actualizar la orden y sus productos en una transacción
+    const updatedOrder = await this.prisma.$transaction(async (prisma) => {
+      // Eliminar productos existentes de la orden
+      await prisma.supplyOrderProduct.deleteMany({
+        where: { supplyOrderId: orderId },
+      });
+
+      // Actualizar la orden
+      const updated = await prisma.supplyOrder.update({
+        where: { id: orderId },
+        data: {
+          description: updateDto.description,
+          storeId: updateDto.storeId,
+        },
+        include: {
+          products: {
+            include: {
+              product: true,
+            },
+          },
+          store: true,
+          createdBy: true,
+        },
+      });
+
+      // Crear nuevos productos
+      const supplyOrderProducts = updateDto.products.map(product => ({
+        supplyOrderId: orderId,
+        productId: product.productId,
+        quantity: product.quantity,
+        note: product.note || null,
+      }));
+
+      await prisma.supplyOrderProduct.createMany({
+        data: supplyOrderProducts,
+      });
+
+      return updated;
+    });
+
+    // Obtener la orden actualizada con todos los datos
+    return this.prisma.supplyOrder.findFirst({
+      where: { id: orderId },
+      include: {
+        products: {
+          include: {
+            product: true,
+          },
+        },
+        store: true,
+        createdBy: true,
+      },
+    });
+  }
 }

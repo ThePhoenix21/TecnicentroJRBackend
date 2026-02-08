@@ -2,9 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString } from 'class-validator';
 
 export class CreateProviderDto {
-  @ApiProperty({ example: '20123456789' })
+  @ApiPropertyOptional({ example: '20123456789' })
+  @IsOptional()
   @IsString()
-  ruc: string;
+  ruc?: string;
 
   @ApiProperty({ example: 'Proveedor SAC' })
   @IsString()

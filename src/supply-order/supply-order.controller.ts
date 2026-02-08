@@ -1,15 +1,21 @@
 import {
-  Body,
   Controller,
   Get,
-  HttpCode,
-  HttpStatus,
-  Param,
   Post,
-  Query,
-  Req,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Param,
   UseGuards,
+  Req,
+  HttpStatus,
+  HttpCode,
+  ParseUUIDPipe,
+  Query,
   ValidationPipe,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -27,6 +33,7 @@ import { CreateSupplyOrderDto } from './dto/create-supply-order.dto';
 import { ListSupplyOrdersDto } from './dto/list-supply-orders.dto';
 import { ListSupplyOrdersResponseDto } from './dto/list-supply-orders-response.dto';
 import { ReceiveSupplyOrderDto } from './dto/receive-supply-order.dto';
+import { UpdateSupplyOrderDto } from './dto/update-supply-order.dto';
 
 @ApiTags('Órdenes de Suministro')
 @ApiBearerAuth()
@@ -154,5 +161,22 @@ export class SupplyOrderController {
   })
   async approveWithEmail(@Param('id') id: string, @Req() req: any) {
     return this.supplyOrderService.approveWithEmail(id, req.user);
+  }
+
+  @Put(':id')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @ApiOperation({ summary: 'Actualizar orden de suministro' })
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 20, windowSeconds: 60 }],
+  })
+  async update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateSupplyOrderDto,
+    @Req() req: any
+  ) {
+    return this.supplyOrderService.update(id, updateDto, req.user);
   }
 }

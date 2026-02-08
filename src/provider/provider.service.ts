@@ -54,29 +54,31 @@ export class ProviderService {
   }
 
   async create(
-    input: { ruc: string; name: string; phone?: string; email?: string; address?: string },
+    input: { ruc?: string; name: string; phone?: string; email?: string; address?: string },
     user: AuthUser,
   ) {
     const tenantId = this.getTenantIdOrThrow(user);
     const creatorUserId = this.getAuthUserIdOrThrow(user);
 
-    const ruc = String(input.ruc || '').trim();
+    const ruc = input.ruc ? String(input.ruc).trim() : null;
     const name = String(input.name || '').trim();
 
-    if (!ruc) throw new BadRequestException('ruc es obligatorio');
     if (!name) throw new BadRequestException('name es obligatorio');
 
-    const existing = await (this.prisma.provider as any).findFirst({
-      where: {
-        ruc,
-        deletedAt: null,
-        createdBy: { tenantId },
-      },
-      select: { id: true },
-    });
+    // Solo verificar duplicidad de RUC si se proporciona uno
+    if (ruc) {
+      const existing = await (this.prisma.provider as any).findFirst({
+        where: {
+          ruc,
+          deletedAt: null,
+          createdBy: { tenantId },
+        },
+        select: { id: true },
+      });
 
-    if (existing) {
-      throw new BadRequestException('Ya existe un proveedor con este ruc');
+      if (existing) {
+        throw new BadRequestException('Ya existe un proveedor con este ruc');
+      }
     }
 
     const created = await (this.prisma.provider as any).create({

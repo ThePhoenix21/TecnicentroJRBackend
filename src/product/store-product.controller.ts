@@ -33,6 +33,7 @@ import { TenantFeature } from '@prisma/client';
 import { ListStoreProductsDto } from './dto/list-store-products.dto';
 import { ListStoreProductsResponseDto } from './dto/list-store-products-response.dto';
 import { StoreProductDetailDto } from './dto/store-product-detail.dto';
+import { BasePaginationDto } from '../common/dto/base-pagination.dto';
 
 @ApiTags('Productos en Tienda')
 @RequireTenantFeatures(TenantFeature.INVENTORY)
@@ -125,8 +126,7 @@ export class StoreProductController {
   async findByStoreSimple(
     @Req() req: any,
     @Param('storeId') storeId: string,
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 20,
+    @Query() pagination: BasePaginationDto,
     @Query('search') search: string = ''
   ): Promise<any> {
     const tenantId = req.user?.tenantId;
@@ -135,7 +135,7 @@ export class StoreProductController {
       throw new BadRequestException('TenantId no encontrado en el token');
     }
 
-    return this.storeProductService.findByStoreSimple(tenantId, storeId, Number(page), Number(limit), search);
+    return this.storeProductService.findByStoreSimple(tenantId, storeId, pagination.page, pagination.pageSize, search);
   }
 
   @Patch(':id/stock')
