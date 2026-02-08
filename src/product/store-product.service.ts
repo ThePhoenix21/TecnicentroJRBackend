@@ -146,6 +146,7 @@ export class StoreProductService {
 
     try {
       let productId: string;
+      let catalogBasePrice = this.toNumber(createStoreProductDto.basePrice ?? 0);
 
       // Caso 1: Crear nuevo producto en el catálogo
       if (createStoreProductDto.createNewProduct) {
@@ -165,6 +166,7 @@ export class StoreProductService {
 
         const newProduct = await this.productService.create(createCatalogProductDto);
         productId = newProduct.id;
+        catalogBasePrice = this.toNumber(newProduct.basePrice ?? catalogBasePrice);
       } 
       // Caso 2: Usar producto existente del catálogo
       else {
@@ -186,6 +188,7 @@ export class StoreProductService {
         }
 
         productId = createStoreProductDto.productId;
+        catalogBasePrice = this.toNumber(catalogProduct.basePrice ?? catalogBasePrice);
       }
 
       // Verificar que la tienda exista
@@ -241,7 +244,8 @@ export class StoreProductService {
       }
 
       // Determinar el precio para la tienda origen (si no se envía, usar 0)
-      const originPrice = this.toNumber(createStoreProductDto.price ?? 0);
+      const originPrice = this.toNumber(createStoreProductDto.price ?? catalogBasePrice);
+      const priceForOtherStores = catalogBasePrice;
 
       // Crear los StoreProducts en todas las tiendas necesarias
       const storeProductsToCreate = storesToCreate.map(store => ({
@@ -251,7 +255,7 @@ export class StoreProductService {
         tenantId,
         price: store.id === createStoreProductDto.storeId 
           ? originPrice
-          : 0, // Precio 0 para otras tiendas
+          : priceForOtherStores, // Precio base para otras tiendas
         stock: store.id === createStoreProductDto.storeId 
           ? createStoreProductDto.stock 
           : 0, // Stock 0 para otras tiendas
