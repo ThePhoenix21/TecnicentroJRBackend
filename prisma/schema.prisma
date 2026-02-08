@@ -76,6 +76,7 @@ model User {
   employedHistoriesCreated            EmployedHistory[] @relation("EmployedHistoryCreatedBy")
   employedHistoriesUpdated            EmployedHistory[] @relation("EmployedUpdatedBy")
   ordersCanceled                      Order[]         @relation("OrderCanceledBy")
+  employeeDocumentsUpdated            EmployeeDocument[] @relation("EmployeeDocumentUpdatedBy")
 }
 
 ////===================PERFILES DE ACCESO===================
