@@ -40,6 +40,9 @@ import { UpdateEmployedDto } from './dto/update-employed.dto';
 import { ChangeEmployedStatusDto } from './dto/change-employed-status.dto';
 import { ReassignEmployedDto } from './dto/reassign-employed.dto';
 import { ListEmployedDto } from './dto/list-employed.dto';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+import * as path from 'path';
 
 @ApiTags('Empleados')
 @ApiBearerAuth('JWT-auth')
@@ -48,27 +51,92 @@ import { ListEmployedDto } from './dto/list-employed.dto';
 export class EmployedController {
   constructor(private readonly employedService: EmployedService) {}
 
+  private parseAndValidatePayload(payload: any): CreateEmployedDto {
+    let parsed: any = payload;
+    if (typeof payload === 'string') {
+      try {
+        parsed = JSON.parse(payload);
+      } catch {
+        throw new BadRequestException('payload debe ser un JSON válido');
+      }
+    }
+
+    const dto = plainToInstance(CreateEmployedDto, parsed);
+    const errors = validateSync(dto as any, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+
+    if (errors.length > 0) {
+      throw new BadRequestException('payload inválido');
+    }
+
+    return dto;
+  }
+
+  private validateDocuments(files: Array<Express.Multer.File>) {
+    const maxFiles = 6;
+    const maxPerFile = 10 * 1024 * 1024;
+    const maxTotal = 40 * 1024 * 1024;
+
+    if (!files || files.length === 0) return;
+
+    if (files.length > maxFiles) {
+      throw new BadRequestException(`Máximo ${maxFiles} archivos`);
+    }
+
+    const allowed = new Map<string, Set<string>>([
+      ['application/pdf', new Set(['.pdf'])],
+      ['image/jpeg', new Set(['.jpg', '.jpeg'])],
+      ['image/png', new Set(['.png'])],
+      ['image/webp', new Set(['.webp'])],
+      ['application/msword', new Set(['.doc'])],
+      ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', new Set(['.docx'])],
+      ['application/zip', new Set(['.zip'])],
+      ['text/plain', new Set(['.txt'])],
+    ]);
+
+    let totalSize = 0;
+    for (const f of files) {
+      totalSize += f.size ?? 0;
+      if ((f.size ?? 0) > maxPerFile) {
+        throw new BadRequestException('Archivo excede el tamaño máximo de 10MB');
+      }
+
+      const ext = path.extname(f.originalname || '').toLowerCase();
+      const exts = allowed.get(f.mimetype);
+      if (!exts || !exts.has(ext)) {
+        throw new BadRequestException('Formato inválido para documentos');
+      }
+    }
+
+    if (totalSize > maxTotal) {
+      throw new BadRequestException('Tamaño total excede 40MB');
+    }
+  }
+
   @Post()
   @Roles(Role.ADMIN)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 30, windowSeconds: 60 }],
   })
-  @ApiOperation({ summary: 'Crear empleado' })
-  @ApiBody({ type: CreateEmployedDto })
-  @ApiResponse({ status: 201 })
+  @ApiOperation({ summary: 'Crear empleado (con documentos opcionales)' })
+  @UseInterceptors(
+    FilesInterceptor('documents', 6, {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
   async create(
     @Req() req: Request & { user: { userId: string; email: string; role: string; tenantId?: string } },
-    @Body(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      }),
-    )
-    dto: CreateEmployedDto,
+    @Body('payload') payload: any,
+    @UploadedFiles() documents: Array<Express.Multer.File>,
   ) {
-    return this.employedService.create(dto, req.user as any);
+    const dto = this.parseAndValidatePayload(payload);
+    this.validateDocuments(documents || []);
+
+    return this.employedService.createWithDocuments(dto as any, documents as any, req.user as any);
   }
 
   @Get()

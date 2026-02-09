@@ -9,6 +9,15 @@ import { SupabaseStorageService } from '../common/utility/supabase-storage.util'
 import { DocumentStatus, EmployedStatus } from '@prisma/client';
 import { ListEmployedDto } from './dto/list-employed.dto';
 
+function safeSlug(input: string): string {
+  return String(input)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
 type AuthUser = {
   userId: string;
   email: string;
@@ -330,6 +339,101 @@ export class EmployedService {
 
       return this.buildBasicResponse(prisma, employed.id, tenantId);
     });
+  }
+
+  async createWithDocuments(
+    input: {
+      firstName: string;
+      lastName: string;
+      document?: string;
+      phone?: string;
+      email?: string;
+      position?: string;
+      storeId?: string;
+      warehouseId?: string;
+      assignmentRole?: string;
+    },
+    files: FileUpload[] | undefined,
+    user: AuthUser,
+  ) {
+    const created = await this.create(input, user);
+    const employedId = created?.id;
+    if (!employedId) {
+      throw new BadRequestException('No se pudo crear el empleado');
+    }
+
+    if (!files || files.length === 0) {
+      return { employed: created, documents: [] };
+    }
+
+    const actorUserId = this.getAuthUserIdOrThrow(user);
+
+    const uploadedPaths: string[] = [];
+    try {
+      const uploads = await Promise.all(
+        files.map(async (file) => {
+          const ext = String(file.originalname).split('.').pop() || 'bin';
+          const stamp = Date.now();
+          const base = safeSlug(String(file.originalname).replace(/\.[^/.]+$/, ''));
+          const fileName = `${stamp}-${base}.${ext}`;
+          const uploaded = await this.supabaseStorage.uploadEmployeeDocument(file as any, employedId, fileName);
+          uploadedPaths.push(uploaded.path);
+          return {
+            path: uploaded.path,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size ?? file.buffer.length,
+          };
+        }),
+      );
+
+      await this.prisma.employeeDocument.createMany({
+        data: uploads.map((u) => ({
+          employedId,
+          url: u.path,
+          originalName: u.originalName,
+          mimeType: u.mimeType,
+          size: u.size,
+          updatedByUserId: actorUserId,
+        })),
+      });
+
+      const documents = await this.prisma.employeeDocument.findMany({
+        where: { employedId, status: DocumentStatus.ACTIVE },
+        select: {
+          id: true,
+          url: true,
+          originalName: true,
+          mimeType: true,
+          status: true,
+          size: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return { employed: created, documents };
+    } catch (err) {
+      try {
+        await this.supabaseStorage.deletePaths(uploadedPaths, 'employee-docs');
+      } catch (e) {
+        console.error('Rollback: no se pudieron eliminar archivos subidos', e);
+      }
+
+      try {
+        await this.prisma.$transaction(async (prisma) => {
+          await prisma.employeeDocument.deleteMany({ where: { employedId } });
+          await prisma.storeEmployed.deleteMany({ where: { employedId } });
+          await prisma.warehouseEmployed.deleteMany({ where: { employedId } });
+          await prisma.employedHistory.deleteMany({ where: { employedId } });
+          await prisma.employed.delete({ where: { id: employedId } });
+        });
+      } catch (e) {
+        console.error('Rollback: no se pudo eliminar el empleado creado', e);
+      }
+
+      throw err;
+    }
   }
 
   async update(
