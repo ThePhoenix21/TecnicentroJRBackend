@@ -283,8 +283,8 @@ model StoreService {
   ServiceDefinitionId String
   ServiceDefinition   ServiceDefinition @relation(fields: [ServiceDefinitionId], references: [id])
 
-  ServiceCategoryId String
-  ServiceCategory   ServiceCategory @relation(fields: [ServiceCategoryId], references: [id])
+  ServiceCategoryId String?
+  ServiceCategory   ServiceCategory? @relation(fields: [ServiceCategoryId], references: [id])
 
   services Service[]
 
