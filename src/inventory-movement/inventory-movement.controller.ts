@@ -23,6 +23,7 @@ export class InventoryMovementController {
 
   @Post()
   @Roles(Role.ADMIN, Role.USER) // USER puede registrar entradas/salidas? Según requerimiento sí, ADJUST solo supervisores.
+  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
   @ApiOperation({ summary: 'Registrar un movimiento manual (Entrada/Salida)' })
   create(@Body() createDto: CreateInventoryMovementDto, @Req() req: any) {
     // Validación adicional de rol para ADJUST
@@ -33,6 +34,7 @@ export class InventoryMovementController {
   }
 
   @Get()
+  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
   @ApiOperation({ summary: 'Obtener historial de movimientos con filtros' })
   findAll(@Query() filterDto: FilterInventoryMovementDto, @Req() req: any) {
     return this.inventoryMovementService.findAll(filterDto, req.user);
@@ -40,12 +42,13 @@ export class InventoryMovementController {
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Obtener estadísticas para dashboard de inventario' })
-  @RequirePermissions(PERMISSIONS.VIEW_DASHBOARD)
+  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY, PERMISSIONS.VIEW_DASHBOARD)
   getDashboard(@Query('storeId') storeId: string | undefined, @Req() req: any) {
     return this.inventoryMovementService.getDashboardStats(storeId, req.user);
   }
 
   @Get('product/:id')
+  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
   @ApiOperation({ summary: 'Obtener últimos movimientos de un producto' })
   getProductMovements(@Param('id') id: string, @Req() req: any) {
     return this.inventoryMovementService.getProductMovements(id, req.user);

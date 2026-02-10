@@ -221,7 +221,6 @@ export class ProductController {
 
   @Get('lookup')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 200, windowSeconds: 60 }],
