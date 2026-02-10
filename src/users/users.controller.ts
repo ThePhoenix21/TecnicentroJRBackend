@@ -100,7 +100,7 @@ export class UsersController {
 
   @Post('from-employed')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.CONVERT_EMPLOYEE_TO_USER)
   @RateLimit({
     keyType: 'user',
@@ -246,7 +246,7 @@ export class UsersController {
 
   @Post('create')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_USERS)
   async createUser(@Body() createUserDto: CreateSimpleUserDto, @Request() req: any) {
     this.logger.debug('Iniciando creación de usuario');
@@ -295,7 +295,7 @@ export class UsersController {
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_USERS)
   async findAll(@Request() req: any) {
     const tenantId = req.user?.tenantId;
@@ -377,7 +377,8 @@ export class UsersController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_USERS)
   async findOne(@Param('id') id: string, @Request() req: any) {
     this.logger.debug(`Buscando usuario con ID: ${id}`);
@@ -456,7 +457,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_USERS)
-  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Request() req: Request & { user: { userId: string; email: string; role: Role } }) {
+  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Request() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }) {
     this.logger.debug(`Iniciando actualización de usuario con ID: ${id}`);
     this.logger.debug(`Datos recibidos: ${JSON.stringify(updateUserDto)}`);
     this.logger.debug(`Usuario solicitante: ${req.user.userId}, Rol: ${req.user.role}`);
@@ -469,23 +470,37 @@ export class UsersController {
         throw new NotFoundException('Usuario no encontrado');
       }
 
-      // Validar permisos: USER solo puede editar sus propios datos, ADMIN puede editar cualquiera
+      // Validar permisos: 
+      // - USER solo puede editar sus propios datos, a menos que tenga permiso MANAGE_USERS
+      // - ADMIN puede editar cualquiera
       if (req.user.role === Role.USER && req.user.userId !== id) {
-        this.logger.warn(`USER ${req.user.userId} intentando editar datos de otro usuario ${id}`);
-        throw new ForbiddenException('No tienes permisos para editar este usuario');
+        // Verificar si el usuario tiene el permiso MANAGE_USERS
+        const userPermissions = req.user.permissions || [];
+        const hasManageUsersPermission = userPermissions.includes(PERMISSIONS.MANAGE_USERS);
+        
+        if (!hasManageUsersPermission) {
+          this.logger.warn(`USER ${req.user.userId} intentando editar datos de otro usuario ${id} sin permiso MANAGE_USERS`);
+          throw new ForbiddenException('No tienes permisos para editar este usuario');
+        }
       }
 
       // Para USER, restringir algunos campos que solo ADMIN puede modificar
+      // a menos que tenga el permiso MANAGE_USERS
       if (req.user.role === Role.USER) {
-        const { storeId, status, verified, ...allowedUpdateData } = updateUserDto;
+        const userPermissions = req.user.permissions || [];
+        const hasManageUsersPermission = userPermissions.includes(PERMISSIONS.MANAGE_USERS);
         
-        // Si USER intenta modificar campos restringidos, lanzar error
-        if (storeId || status !== undefined || verified !== undefined) {
-          this.logger.warn(`USER ${req.user.userId} intentando modificar campos restringidos`);
-          throw new ForbiddenException('No tienes permisos para modificar estos campos. Se requiere permiso de administrador.');
+        if (!hasManageUsersPermission) {
+          const { storeId, status, verified, ...allowedUpdateData } = updateUserDto;
+          
+          // Si USER intenta modificar campos restringidos, lanzar error
+          if (storeId || status !== undefined || verified !== undefined) {
+            this.logger.warn(`USER ${req.user.userId} intentando modificar campos restringidos sin permiso MANAGE_USERS`);
+            throw new ForbiddenException('No tienes permisos para modificar estos campos. Se requiere permiso de administrador.');
+          }
+          
+          updateUserDto = allowedUpdateData;
         }
-        
-        updateUserDto = allowedUpdateData;
       }
 
       // Si se incluye storeId, validar que exista y manejar el cambio
@@ -641,7 +656,7 @@ export class UsersController {
 
   @Put('change-role')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_USERS)
   async changeRole(@Body() changeRoleDto: ChangeRoleDto, @Request() req: any) {
     this.logger.debug(`Iniciando cambio de rol para el email: ${changeRoleDto.email}`);
@@ -649,10 +664,21 @@ export class UsersController {
     this.logger.debug(`Usuario ADMIN ejecutando: ${req.user.email} (ID: ${req.user.sub})`);
 
     try {
-      // Verificar que el usuario que hace la petición sea ADMIN (redundante, pero explícito)
+      // Verificar que el usuario que hace la petición sea ADMIN o USER con permiso MANAGE_USERS
       if (req.user.role !== Role.ADMIN) {
-        this.logger.warn(`Intento no autorizado de cambio de rol por usuario no ADMIN: ${req.user.email}`);
-        throw new ForbiddenException('Solo usuarios con rol ADMIN pueden cambiar roles');
+        // Si no es ADMIN, verificar que sea USER con permiso MANAGE_USERS
+        if (req.user.role === Role.USER) {
+          const userPermissions = req.user.permissions || [];
+          const hasManageUsersPermission = userPermissions.includes(PERMISSIONS.MANAGE_USERS);
+          
+          if (!hasManageUsersPermission) {
+            this.logger.warn(`Intento no autorizado de cambio de rol por USER sin permiso MANAGE_USERS: ${req.user.email}`);
+            throw new ForbiddenException('No tienes permisos para cambiar roles. Se requiere permiso MANAGE_USERS.');
+          }
+        } else {
+          this.logger.warn(`Intento no autorizado de cambio de rol por usuario no autorizado: ${req.user.email}`);
+          throw new ForbiddenException('No tienes permisos para cambiar roles');
+        }
       }
 
       // Validar las credenciales del usuario cuyo rol se quiere cambiar
@@ -660,11 +686,28 @@ export class UsersController {
 
       this.logger.debug(`Usuario a actualizar validado: ${userToUpdate.email} (ID: ${userToUpdate.id})`);
 
+      // Verificar que el usuario no esté intentando cambiar su propio rol
+      if (req.user.sub === userToUpdate.id || req.user.email === userToUpdate.email) {
+        this.logger.warn(`Usuario ${req.user.email} intentando cambiar su propio rol`);
+        throw new ForbiddenException('No puedes cambiar tu propio rol');
+      }
+
       // Verificar que el usuario validado exista en la base de datos
       const currentUser = await this.usersService.findOne(userToUpdate.id, req.user);
       if (!currentUser) {
         this.logger.warn(`Usuario validado no encontrado en la base de datos: ${userToUpdate.id}`);
         throw new NotFoundException('Usuario no encontrado');
+      }
+
+      // Validar que el usuario solo pueda asignar roles que él mismo posee
+      if (req.user.role !== Role.ADMIN) {
+        // Si no es ADMIN, solo puede asignar roles que él mismo tenga
+        const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [req.user.role];
+        
+        if (!userRoles.includes(changeRoleDto.newRole)) {
+          this.logger.warn(`Usuario ${req.user.email} intentando asignar rol ${changeRoleDto.newRole} que no posee`);
+          throw new ForbiddenException(`No puedes asignar el rol ${changeRoleDto.newRole} porque no lo posees. Tus roles actuales: ${userRoles.join(', ')}`);
+        }
       }
 
       // Actualizar el rol del usuario validado

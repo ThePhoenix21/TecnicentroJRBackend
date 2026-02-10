@@ -16,6 +16,7 @@ type AuthUser = {
   email: string;
   role: string;
   tenantId?: string;
+  permissions?: string[];
 };
 
 @Injectable()
@@ -35,7 +36,17 @@ export class UsersService {
     private assertSelfOrAdmin(targetUserId: string, user?: AuthUser) {
         if (!user) return;
         if (user.role !== 'ADMIN' && user.userId !== targetUserId) {
-            throw new UnauthorizedException('No tienes permisos para acceder a este usuario');
+            // Si es USER y no es el mismo usuario, verificar si tiene permiso VIEW_USERS
+            if (user.role === 'USER') {
+                const userPermissions = user.permissions || [];
+                const hasViewUsersPermission = userPermissions.includes('VIEW_USERS');
+                
+                if (!hasViewUsersPermission) {
+                    throw new UnauthorizedException('No tienes permisos para acceder a este usuario');
+                }
+            } else {
+                throw new UnauthorizedException('No tienes permisos para acceder a este usuario');
+            }
         }
     }
 

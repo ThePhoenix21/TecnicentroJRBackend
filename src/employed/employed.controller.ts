@@ -43,6 +43,8 @@ import { ListEmployedDto } from './dto/list-employed.dto';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import * as path from 'path';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 
 @ApiTags('Empleados')
 @ApiBearerAuth('JWT-auth')
@@ -117,6 +119,7 @@ export class EmployedController {
 
   @Post()
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 30, windowSeconds: 60 }],
@@ -140,7 +143,8 @@ export class EmployedController {
   }
 
   @Get()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -151,7 +155,7 @@ export class EmployedController {
   }
 
   @Get('lookup')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -162,7 +166,7 @@ export class EmployedController {
   }
 
   @Get('lookup-position')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -173,7 +177,7 @@ export class EmployedController {
   }
 
   @Get('lookup-status')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -184,7 +188,8 @@ export class EmployedController {
   }
 
   @Get('deleted')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 60, windowSeconds: 60 }],
@@ -196,6 +201,7 @@ export class EmployedController {
 
   @Post('bulk/status')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 10, windowSeconds: 60 }],
@@ -221,7 +227,8 @@ export class EmployedController {
   }
 
   @Get(':id/simple')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -236,7 +243,8 @@ export class EmployedController {
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -252,6 +260,7 @@ export class EmployedController {
 
   @Patch(':id')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 60, windowSeconds: 60 }],
@@ -276,6 +285,7 @@ export class EmployedController {
 
   @Post(':id/recreate')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 10, windowSeconds: 60 }],
@@ -303,6 +313,7 @@ export class EmployedController {
 
   @Post(':id/documents')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 10, windowSeconds: 60 }],
@@ -334,6 +345,7 @@ export class EmployedController {
 
   @Post(':id/terminate')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 20, windowSeconds: 60 }],
@@ -359,6 +371,7 @@ export class EmployedController {
 
   @Post(':id/suspend')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 30, windowSeconds: 60 }],
@@ -375,6 +388,7 @@ export class EmployedController {
 
   @Post(':id/activate')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 30, windowSeconds: 60 }],
@@ -400,6 +414,7 @@ export class EmployedController {
 
   @Post(':id/reassign')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 30, windowSeconds: 60 }],
