@@ -4,6 +4,9 @@ import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
@@ -13,11 +16,12 @@ import { TenantFeature } from '@prisma/client';
 @ApiTags('Stores')
 @Controller('store')
 @RequireTenantFeatures(TenantFeature.STORE)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
 export class StoreController {
   constructor(private readonly storeService: StoreService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Crear nueva tienda',
@@ -78,7 +82,6 @@ export class StoreController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Obtener todas las tiendas',
@@ -124,7 +127,6 @@ export class StoreController {
   }
 
   @Get('simple')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Obtener lista simple de tiendas',
@@ -157,7 +159,6 @@ export class StoreController {
   }
 
   @Get('lookup')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Lookup de tiendas (solo id y nombre)',
@@ -223,7 +224,6 @@ export class StoreController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Actualizar tienda',
@@ -286,8 +286,8 @@ export class StoreController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.DELETE_PRODUCTS)
   @ApiOperation({
     summary: 'Eliminar tienda',
     description: 'Elimina una tienda del sistema permanentemente. Esta acción no se puede deshacer. Requiere rol ADMIN.'
