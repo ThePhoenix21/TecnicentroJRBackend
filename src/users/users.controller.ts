@@ -44,6 +44,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { CreateUserFromEmployedDto } from './dto/create-user-from-employed.dto';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 
 @ApiTags('Users')
 @Controller('users')
@@ -99,6 +101,7 @@ export class UsersController {
   @Post('from-employed')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_USERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 20, windowSeconds: 60 }],
@@ -242,8 +245,9 @@ export class UsersController {
   }
 
   @Post('create')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_USERS)
   async createUser(@Body() createUserDto: CreateSimpleUserDto, @Request() req: any) {
     this.logger.debug('Iniciando creación de usuario');
     this.logger.debug(`Datos recibidos: ${JSON.stringify(createUserDto)}`);
@@ -290,8 +294,9 @@ export class UsersController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_USERS)
   async findAll(@Request() req: any) {
     const tenantId = req.user?.tenantId;
 
@@ -303,8 +308,9 @@ export class UsersController {
   }
 
   @Get('lookup')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_USERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -314,8 +320,9 @@ export class UsersController {
   }
 
   @Put('change-password')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER)
+  @RequirePermissions(PERMISSIONS.MANAGE_USERS)
   async changePassword(@Body() changePasswordDto: ChangePasswordDto, @Request() req: any) {
     try {
       const userId = req.user?.id || req.user?.sub || req.user?.userId;
@@ -371,7 +378,8 @@ export class UsersController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.VIEW_USERS)
   async findOne(@Param('id') id: string, @Request() req: any) {
     this.logger.debug(`Buscando usuario con ID: ${id}`);
     
@@ -446,8 +454,9 @@ export class UsersController {
   }
 
   @Put('update/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.MANAGE_USERS)
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Request() req: Request & { user: { userId: string; email: string; role: Role } }) {
     this.logger.debug(`Iniciando actualización de usuario con ID: ${id}`);
     this.logger.debug(`Datos recibidos: ${JSON.stringify(updateUserDto)}`);
@@ -632,8 +641,9 @@ export class UsersController {
   }
 
   @Put('change-role')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_USERS)
   async changeRole(@Body() changeRoleDto: ChangeRoleDto, @Request() req: any) {
     this.logger.debug(`Iniciando cambio de rol para el email: ${changeRoleDto.email}`);
     this.logger.debug(`Nuevo rol solicitado: ${changeRoleDto.newRole}`);
@@ -695,8 +705,9 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.DELETE_USERS)
   async remove(@Param('id') id: string, @Request() req: any) {
     this.logger.debug(`Iniciando soft delete del usuario con ID: ${id}`);
     
