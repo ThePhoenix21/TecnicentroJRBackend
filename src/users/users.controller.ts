@@ -101,7 +101,7 @@ export class UsersController {
   @Post('from-employed')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_USERS)
+  @RequirePermissions(PERMISSIONS.CONVERT_EMPLOYEE_TO_USER)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 20, windowSeconds: 60 }],
@@ -308,9 +308,8 @@ export class UsersController {
   }
 
   @Get('lookup')
-  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.VIEW_USERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
