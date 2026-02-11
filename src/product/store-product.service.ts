@@ -660,6 +660,7 @@ export class StoreProductService {
       id: storeProduct.id,
       price: this.toNumber(storeProduct.price),
       stock: storeProduct.stock,
+      stockThreshold: storeProduct.stockThreshold ? this.toNumber(storeProduct.stockThreshold) : 0,
       product: {
         id: storeProduct.product?.id ?? '',
         name: storeProduct.product?.name ?? 'Producto sin nombre',
@@ -685,6 +686,10 @@ export class StoreProductService {
     updateData: UpdateStoreProductDto,
     isAdmin: boolean = false,
     bypassOwnership: boolean = false,
+    options?: {
+      allowCatalogFields?: boolean;
+      allowCatalogPriceFields?: boolean;
+    },
   ): Promise<StoreProduct> {
     console.log('=== DEBUG UPDATE STORE PRODUCT ===');
     console.log('userId:', userId);
@@ -728,8 +733,15 @@ export class StoreProductService {
       storeProductFields.price = updateData.price;
     }
 
-    // Campos que solo los administradores pueden modificar (Product)
-    if (isAdmin) {
+    if (updateData.stockThreshold !== undefined) {
+      console.log('Agregando stockThreshold a storeProductFields:', updateData.stockThreshold);
+      storeProductFields.stockThreshold = updateData.stockThreshold;
+    }
+
+    const allowCatalogFields = options?.allowCatalogFields || isAdmin;
+    const allowCatalogPrices = options?.allowCatalogPriceFields || isAdmin;
+
+    if (allowCatalogFields) {
       if (updateData.name !== undefined) {
         console.log('Agregando name a productFields:', updateData.name);
         productFields.name = updateData.name;
@@ -738,6 +750,9 @@ export class StoreProductService {
         console.log('Agregando description a productFields:', updateData.description);
         productFields.description = updateData.description;
       }
+    }
+
+    if (allowCatalogPrices) {
       if (updateData.buyCost !== undefined) {
         console.log('Agregando buyCost a productFields:', updateData.buyCost);
         productFields.buyCost = updateData.buyCost;
@@ -752,16 +767,23 @@ export class StoreProductService {
     console.log('productFields finales:', JSON.stringify(productFields, null, 2));
 
     // Validar que un usuario normal no intente modificar campos de administrador
-    if (!isAdmin) {
-      const adminFields = ['name', 'description', 'buyCost', 'basePrice'];
-      const attemptedAdminFields = adminFields.filter(field => updateData[field] !== undefined);
-      if (attemptedAdminFields.length > 0) {
-        throw new ForbiddenException(`Solo los administradores pueden modificar los campos: ${attemptedAdminFields.join(', ')}`);
+    if (!allowCatalogFields || !allowCatalogPrices) {
+      const forbiddenFields: string[] = [];
+      if (!allowCatalogFields) {
+        if (updateData.name !== undefined) forbiddenFields.push('name');
+        if (updateData.description !== undefined) forbiddenFields.push('description');
+      }
+      if (!allowCatalogPrices) {
+        if (updateData.buyCost !== undefined) forbiddenFields.push('buyCost');
+        if (updateData.basePrice !== undefined) forbiddenFields.push('basePrice');
+      }
+      if (forbiddenFields.length > 0) {
+        throw new ForbiddenException(`No tienes permisos para modificar los campos: ${forbiddenFields.join(', ')}`);
       }
     }
 
-    // Actualizar el producto del catálogo si hay cambios y es administrador
-    if (Object.keys(productFields).length > 0 && isAdmin) {
+    // Actualizar el producto del catálogo si hay cambios permitidos
+    if (Object.keys(productFields).length > 0) {
       await this.prisma.product.update({
         where: { id: storeProduct.productId },
         data: productFields

@@ -246,21 +246,24 @@ export class StoreProductController {
       throw new ForbiddenException('Debes tener al menos uno de los permisos MANAGE_PRODUCTS o MANAGE_PRICES para actualizar este producto');
     }
 
-    if (updateData.description !== undefined) {
-      throw new ForbiddenException('No está permitido editar la descripción del producto');
-    }
-
-    const touchesCatalogFields = updateData.name !== undefined;
+    const touchesCatalogFields =
+      updateData.name !== undefined ||
+      updateData.description !== undefined;
 
     const touchesAnyPriceFields =
       updateData.price !== undefined ||
       updateData.basePrice !== undefined;
 
     const touchesBuyCost = updateData.buyCost !== undefined;
+    const touchesStockThreshold = updateData.stockThreshold !== undefined;
 
     // Cambios de catálogo requieren MANAGE_PRODUCTS
     if (touchesCatalogFields && !canManageProducts) {
       throw new ForbiddenException('No tienes permisos para modificar datos del catálogo');
+    }
+
+    if (touchesStockThreshold && !canManageProducts) {
+      throw new ForbiddenException('No tienes permisos para modificar el stock mínimo');
     }
 
     // Cambios de precios requieren MANAGE_PRICES
@@ -275,7 +278,18 @@ export class StoreProductController {
     // Ya validamos a nivel de controlador qué campos puede tocar según permisos,
     // por lo que podemos permitir que usuarios con MANAGE_INVENTORY / MANAGE_PRICES
     // actualicen aunque no sean el "propietario" original del storeProduct.
-    const res = await this.storeProductService.update(userId, tenantId, id, updateData, isAdmin, true);
+    const res = await this.storeProductService.update(
+      userId,
+      tenantId,
+      id,
+      updateData,
+      isAdmin,
+      true,
+      {
+        allowCatalogFields: canManageProducts,
+        allowCatalogPriceFields: canManagePrices,
+      },
+    );
     return this.stripSensitiveFields(res, req.user);
   }
 

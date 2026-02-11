@@ -43,6 +43,9 @@ export class StoreProductDetailDto {
   @ApiProperty({ description: 'Unidades disponibles en la tienda', example: 10 })
   stock!: number;
 
+  @ApiProperty({ description: 'Umbral de alerta de stock en la tienda', example: 3 })
+  stockThreshold!: number;
+
   @ApiProperty({ type: StoreProductDetailProductDto })
   product!: StoreProductDetailProductDto;
 
