@@ -13,6 +13,7 @@ import {
   ValidationPipe,
   UnauthorizedException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -198,13 +199,13 @@ export class OrderController {
   @Get('details/:id')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getOrderDetails(
     @Param('id') id: string,
-    @Req() req: Request & { user: { userId: string; email: string; role: Role } }
+    @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }
   ) {
     try {
       const order = await this.orderService.getOrderWithDetails(id, req.user as any);
+      this.assertOrderHistoryAccess(order, req.user);
       return this.formatOrderResponse(order);
     } catch (error) {
       throw new BadRequestException(`Error al obtener los detalles de la orden: ${error.message}`);
@@ -214,14 +215,16 @@ export class OrderController {
   @Get(':id/payment-methods')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   @RateLimit({ keyType: 'user', rules: [{ limit: 60, windowSeconds: 60 }] })
   @ApiOperation({ summary: 'Obtener métodos de pago de una orden' })
   @ApiResponse({ status: 200, type: OrderPaymentMethodsResponseDto })
   async getOrderPaymentMethods(
     @Param('id') id: string,
-    @Req() req: Request & { user: { userId: string; email: string; role: Role } },
+    @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } },
   ): Promise<OrderPaymentMethodsResponseDto> {
+    const order = await this.orderService.findOne(id, req.user as any);
+    this.assertOrderHistoryAccess(order, req.user);
+
     return this.orderService.getOrderPaymentMethods(id, req.user as any);
   }
 
@@ -383,12 +386,16 @@ export class OrderController {
   @Get('me')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
-  async findMe(@Req() req: Request & { user: { userId: string; email: string; role: Role } }) {
+  async findMe(@Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }) {
     const userId = req.user?.userId;
     
     if (!userId) {
       throw new UnauthorizedException('No se pudo autenticar al usuario');
+    }
+
+    // Los ADMIN no necesitan permisos de historial
+    if (req.user.role !== 'ADMIN') {
+      this.assertHasAnyHistoryPermissionOrThrow(req.user);
     }
 
     return this.orderService.findMe(userId, req.user as any);
@@ -398,9 +405,18 @@ export class OrderController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   @ApiOperation({ summary: 'Listado paginado de órdenes (filtros combinables)' })
   async list(@Req() req: Request & { user: any }, @Query() query: ListOrdersDto): Promise<ListOrdersResponseDto> {
+    // Los ADMIN no necesitan permisos de historial
+    if (req.user.role !== 'ADMIN') {
+      this.assertHasAnyHistoryPermissionOrThrow(req.user);
+    }
+
+    // Si no es ADMIN y no tiene VIEW_ALL_ORDERS_HISTORY, filtrar solo sus órdenes
+    if (req.user.role !== 'ADMIN' && !this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY)) {
+      (query as any).userId = req.user.userId;
+    }
+
     return this.orderService.list(query, req.user as any);
   }
 
@@ -408,7 +424,6 @@ export class OrderController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   @ApiOperation({ summary: 'Lookup de números de orden (solo valores)' })
   async lookupOrderNumbers(
     @Req() req: Request & { user: any },
@@ -421,7 +436,6 @@ export class OrderController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   @ApiOperation({ summary: 'Lookup de estados de órdenes (value y label)' })
   async lookupStatus(): Promise<SaleStatusLookupItemDto[]> {
     return Object.values(SaleStatus).map((s) => ({ value: s, label: s }));
@@ -429,30 +443,40 @@ export class OrderController {
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
-  async getOrders(@Req() req: Request & { user: { userId: string; email: string; role: Role } }) {
-    return this.orderService.findAll(req.user as any);
+  @Roles(Role.USER, Role.ADMIN)
+  async getOrders(@Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }) {
+    // Los ADMIN no necesitan permisos de historial
+    if (req.user.role !== 'ADMIN') {
+      this.assertHasAnyHistoryPermissionOrThrow(req.user);
+    }
+
+    if (req.user.role === 'ADMIN' || this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY)) {
+      return this.orderService.findAll(req.user as any);
+    }
+
+    return this.orderService.findMe(req.user.userId, req.user as any);
   }
 
   @Get('store/:storeId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getOrdersByStore(
     @Param('storeId') storeId: string,
-    @Req() req: Request & { user: { userId: string; email: string; role: Role } }
+    @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }
   ) {
+    // Los ADMIN no necesitan permisos de historial
+    if (req.user.role !== 'ADMIN' && !this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY)) {
+      throw new ForbiddenException('No tienes permisos para ver el historial de órdenes de una tienda');
+    }
     return this.orderService.findByStore(storeId, req.user as any);
   }
 
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getOrderById(
     @Param('id') id: string,
-    @Req() req: Request & { user: { userId: string; email: string; role: Role } }
+    @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }
   ) {
     const userId = req.user?.userId;
     
@@ -460,17 +484,22 @@ export class OrderController {
       throw new UnauthorizedException('No se pudo autenticar al usuario');
     }
 
-    return this.orderService.findOne(id, req.user as any);
+    const order = await this.orderService.findOne(id, req.user as any);
+    this.assertOrderHistoryAccess(order, req.user);
+    return order;
   }
 
   @Get('user/:userId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
+  @Roles(Role.USER, Role.ADMIN)
   async getUserOrders(
     @Param('userId') userId: string,
-    @Req() req: Request & { user: { userId: string; email: string; role: Role } }
+    @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }
   ) {
+    // Los ADMIN no necesitan permisos de historial
+    if (req.user.role !== 'ADMIN' && !this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY)) {
+      throw new ForbiddenException('No tienes permisos para ver órdenes de otros usuarios');
+    }
     return this.orderService.findMe(userId, req.user as any);
   }
 
@@ -537,5 +566,45 @@ export class OrderController {
         throw new BadRequestException('El monto de pago debe ser mayor a cero');
       }
     }
+  }
+
+  private hasPermission(user: { permissions?: string[] } | undefined, permission: string): boolean {
+    const permissions = user?.permissions || [];
+    return permissions.includes(permission);
+  }
+
+  private assertHasAnyHistoryPermissionOrThrow(user: { permissions?: string[]; role: string }) {
+    // Los ADMIN no necesitan permisos de historial
+    if (user.role === 'ADMIN') {
+      return;
+    }
+
+    const hasAll = this.hasPermission(user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY);
+    const hasOwn = this.hasPermission(user, PERMISSIONS.VIEW_OWN_ORDERS_HISTORY);
+    if (!hasAll && !hasOwn) {
+      throw new ForbiddenException('No tienes permisos para ver historial de órdenes');
+    }
+  }
+
+  private assertOrderHistoryAccess(order: { userId?: string } | undefined, user: { userId: string; permissions?: string[]; role: string }) {
+    // Los ADMIN no necesitan permisos de historial
+    if (user.role === 'ADMIN') {
+      return;
+    }
+
+    this.assertHasAnyHistoryPermissionOrThrow(user);
+
+    if (this.hasPermission(user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY)) {
+      return;
+    }
+
+    if (this.hasPermission(user, PERMISSIONS.VIEW_OWN_ORDERS_HISTORY)) {
+      if (!order?.userId || order.userId !== user.userId) {
+        throw new ForbiddenException('No tienes permisos para ver órdenes de otro usuario');
+      }
+      return;
+    }
+
+    throw new ForbiddenException('No tienes permisos para ver historial de órdenes');
   }
 }

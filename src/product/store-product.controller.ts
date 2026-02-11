@@ -39,7 +39,6 @@ import { BasePaginationDto } from '../common/dto/base-pagination.dto';
 @RequireTenantFeatures(TenantFeature.INVENTORY)
 @Controller('store/products')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
 export class StoreProductController {
   constructor(private readonly storeProductService: StoreProductService) {}
 

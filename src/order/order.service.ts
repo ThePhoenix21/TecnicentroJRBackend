@@ -782,6 +782,11 @@ export class OrderService {
       },
     };
 
+    const queryUserId = (query as any)?.userId as string | undefined;
+    if (queryUserId) {
+      where.userId = queryUserId;
+    }
+
     if (cashSessionsId) {
       where.cashSessionsId = cashSessionsId;
     }
