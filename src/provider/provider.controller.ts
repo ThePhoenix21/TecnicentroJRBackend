@@ -25,8 +25,11 @@ import {
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Role } from '../auth/enums/role.enum';
+import { PERMISSIONS } from '../auth/permissions';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { ProviderService } from './provider.service';
 import { CreateProviderDto } from './dto/create-provider.dto';
@@ -38,12 +41,13 @@ import { ListProvidersResponseDto } from './dto/list-providers-response.dto';
 @ApiTags('Proveedores')
 @ApiBearerAuth('JWT-auth')
 @Controller('providers')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ProviderController {
   constructor(private readonly providerService: ProviderService) {}
 
   @Post()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.MANAGE_SUPPLIERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 30, windowSeconds: 60 }],
@@ -66,7 +70,8 @@ export class ProviderController {
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.MANAGE_SUPPLIERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 60, windowSeconds: 60 }],
@@ -91,7 +96,8 @@ export class ProviderController {
   }
 
   @Delete(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.DELETE_SUPPLIERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 30, windowSeconds: 60 }],
@@ -107,7 +113,8 @@ export class ProviderController {
   }
 
   @Post(':id/products')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.MANAGE_SUPPLIERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 20, windowSeconds: 60 }],
@@ -132,7 +139,7 @@ export class ProviderController {
   }
 
   @Get('lookup')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -157,7 +164,8 @@ export class ProviderController {
   }
 
   @Get()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SUPPLIERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -172,7 +180,7 @@ export class ProviderController {
   }
 
   @Get('lookup-ruc')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -197,7 +205,8 @@ export class ProviderController {
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SUPPLIERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 60, windowSeconds: 60 }],
