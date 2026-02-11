@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Query, UseGuards, Req, Param, ForbiddenExc
 import { InventoryMovementService } from './inventory-movement.service';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
 import { FilterInventoryMovementDto } from './dto/filter-inventory-movement.dto';
+import { InventoryMovementSummaryDto } from './dto/inventory-movement-summary.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -17,6 +18,7 @@ import { TenantFeature } from '@prisma/client';
 @Controller('inventory-movements')
 @RequireTenantFeatures(TenantFeature.INVENTORY)
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
 @ApiBearerAuth()
 export class InventoryMovementController {
   constructor(private readonly inventoryMovementService: InventoryMovementService) {}
@@ -34,7 +36,6 @@ export class InventoryMovementController {
   }
 
   @Get()
-  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
   @ApiOperation({ summary: 'Obtener historial de movimientos con filtros' })
   findAll(@Query() filterDto: FilterInventoryMovementDto, @Req() req: any) {
     return this.inventoryMovementService.findAll(filterDto, req.user);
@@ -42,13 +43,18 @@ export class InventoryMovementController {
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Obtener estadísticas para dashboard de inventario' })
-  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY, PERMISSIONS.VIEW_DASHBOARD)
+  @RequirePermissions(PERMISSIONS.VIEW_DASHBOARD)
   getDashboard(@Query('storeId') storeId: string | undefined, @Req() req: any) {
     return this.inventoryMovementService.getDashboardStats(storeId, req.user);
   }
 
+  @Get('summary')
+  @ApiOperation({ summary: 'Obtener resumen de movimientos (entradas/salidas/ventas/ajustes) con filtro por fecha' })
+  getSummary(@Query() query: InventoryMovementSummaryDto, @Req() req: any) {
+    return this.inventoryMovementService.getMovementsSummary(query, req.user);
+  }
+
   @Get('product/:id')
-  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
   @ApiOperation({ summary: 'Obtener últimos movimientos de un producto' })
   getProductMovements(@Param('id') id: string, @Req() req: any) {
     return this.inventoryMovementService.getProductMovements(id, req.user);

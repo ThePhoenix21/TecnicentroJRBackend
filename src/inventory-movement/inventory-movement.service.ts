@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
 import { FilterInventoryMovementDto } from './dto/filter-inventory-movement.dto';
+import { InventoryMovementSummaryDto } from './dto/inventory-movement-summary.dto';
 import { InventoryMovementType, Prisma } from '@prisma/client';
 import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
 import { ListInventoryMovementsResponseDto } from './dto/list-inventory-movements-response.dto';
@@ -55,6 +56,84 @@ export class InventoryMovementService {
     }
 
     return store;
+  }
+
+  async getMovementsSummary(query: InventoryMovementSummaryDto, user: AuthUser) {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const { fromDate, toDate, storeId } = query;
+
+    await this.assertStoreAccess(storeId, user);
+
+    const startDate = fromDate ? new Date(fromDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const endDate = toDate ? new Date(toDate) : new Date();
+
+    const where: Prisma.InventoryMovementWhereInput = {
+      storeProduct: {
+        storeId,
+        store: {
+          tenantId,
+          ...(user.role !== 'ADMIN'
+            ? {
+                storeUsers: {
+                  some: {
+                    userId: user.userId,
+                  },
+                },
+              }
+            : {}),
+        },
+      },
+      user: {
+        tenantId,
+      },
+    };
+
+    where.date = {
+      gte: startDate,
+      lte: endDate,
+    };
+
+    const grouped = await this.prisma.inventoryMovement.groupBy({
+      by: ['type'],
+      where,
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    const incoming = Math.abs(grouped.find((g) => g.type === InventoryMovementType.INCOMING)?._sum.quantity ?? 0);
+    const outgoing = Math.abs(grouped.find((g) => g.type === InventoryMovementType.OUTGOING)?._sum.quantity ?? 0);
+    const sales = Math.abs(grouped.find((g) => g.type === InventoryMovementType.SALE)?._sum.quantity ?? 0);
+
+    const adjustAgg = await this.prisma.inventoryMovement.aggregate({
+      where: {
+        ...where,
+        type: InventoryMovementType.ADJUST,
+      },
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    const adjustmentsNet = Number(adjustAgg._sum.quantity ?? 0);
+
+    return {
+      period: {
+        from: startDate.toISOString(),
+        to: endDate.toISOString(),
+      },
+      storeId: storeId ?? null,
+      totals: {
+        incoming,
+        outgoing,
+        sales,
+        adjustmentsNet,
+      },
+    };
   }
 
   private async assertStoreProductAccess(storeProductId: string, user: AuthUser) {
