@@ -12,15 +12,10 @@ import {
   HttpCode,
   ParseUUIDPipe,
   Query,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
-  ApiTags,
   ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiBody,
-  ApiParam,
-  ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -40,92 +35,16 @@ import { TenantFeature } from '@prisma/client';
 import { StoreProductStockDto } from './dto/store-product-stock.dto';
 import { AdminCredentialsDto } from './dto/admin-credentials.dto';
 
-@ApiTags('Catálogo de Productos')
-@ApiBearerAuth('JWT')
 @RequireTenantFeatures(TenantFeature.PRODUCTS)
 @Controller('catalog/products')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'No autorizado' })
-@ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No tiene permisos' })
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS, PERMISSIONS.MANAGE_PRICES)
-  @ApiOperation({ 
-    summary: 'Crear un nuevo producto en el catálogo maestro',
-    description: 'Crea un nuevo producto en el catálogo maestro que estará disponible para ser agregado a cualquier tienda. Este producto contiene la información básica como nombre, descripción, precios de referencia y costos.'
-  })
-  @ApiBody({
-    type: CreateCatalogProductDto,
-    description: 'Datos del producto a crear en el catálogo maestro',
-    examples: {
-      ejemploMotor: {
-        summary: 'Producto para automóvil',
-        value: {
-          name: 'Aceite de Motor 10W40',
-          description: 'Aceite sintético de alta calidad para motores de gasolina y diésel',
-          basePrice: 29.99,
-          buyCost: 20.50
-        }
-      },
-      ejemploAccesorio: {
-        summary: 'Accesorio para vehículo',
-        value: {
-          name: 'Filtro de Aire Universal',
-          description: 'Filtro de aire de alto flujo para vehículos de pasajeros',
-          basePrice: 15.99,
-          buyCost: 8.75
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'El producto del catálogo ha sido creado exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
-        name: { type: 'string', example: 'Aceite de Motor 10W40' },
-        description: { type: 'string', nullable: true, example: 'Aceite sintético de alta calidad' },
-        basePrice: { type: 'number', nullable: true, example: 29.99 },
-        buyCost: { type: 'number', nullable: true, example: 20.50 },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
-        createdById: { type: 'string', nullable: true, example: 'user-id-123' },
-        createdBy: {
-          type: 'object',
-          nullable: true,
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string' },
-            email: { type: 'string' }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Datos de entrada inválidos o producto duplicado',
-    schema: {
-      example: {
-        statusCode: 400,
-        message: 'El nombre del producto ya está en uso',
-        error: 'Bad Request'
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'No autorizado - Token JWT inválido o ausente'
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos para crear productos'
-  })
+  @ApiOperation({ summary: 'Crear producto en catálogo' })
   async create(
     @Req() req: any,
     @Body() createCatalogProductDto: CreateCatalogProductDto,
@@ -145,77 +64,26 @@ export class ProductController {
   @Get('all')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
-  @ApiOperation({ 
-    summary: 'Obtener todos los productos del catálogo',
-    description: 'Retorna una lista completa de todos los productos registrados en el catálogo maestro, ordenados por fecha de creación descendente. Incluye información del usuario que creó cada producto.'
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Lista de productos del catálogo obtenida exitosamente',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
-          name: { type: 'string', example: 'Aceite de Motor 10W40' },
-          description: { type: 'string', nullable: true, example: 'Aceite sintético de alta calidad' },
-          basePrice: { type: 'number', nullable: true, example: 29.99 },
-          buyCost: { type: 'number', nullable: true, example: 20.50 },
-          createdAt: { type: 'string', format: 'date-time' },
-          updatedAt: { type: 'string', format: 'date-time' },
-          createdById: { type: 'string', nullable: true, example: 'user-id-123' },
-          createdBy: {
-            type: 'object',
-            nullable: true,
-            properties: {
-              id: { type: 'string' },
-              name: { type: 'string', example: 'Juan Pérez' },
-              email: { type: 'string', example: 'juan@ejemplo.com' }
-            }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'No autorizado - Token JWT inválido o ausente'
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos para ver productos'
-  })
+  @ApiOperation({ summary: 'Listar productos de catálogo' })
   async findAll(@Req() req: any): Promise<CatalogProduct[]> {
     return this.productService.findAll(req.user);
   }
 
   @Get('store-stock')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
-  @ApiOperation({
-    summary: 'Listar stock por tienda',
-    description: 'Devuelve el ID y nombre de todos los productos del tenant junto con el stock actual en la tienda solicitada.',
-  })
-  @ApiQuery({
-    name: 'storeId',
-    description: 'ID de la tienda de la cual se desea consultar el stock',
-    required: true,
-    example: '456e7890-e12b-34d5-a678-426614174000',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Lista de productos con stock de la tienda',
-    type: [StoreProductStockDto],
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Parámetros inválidos o faltantes',
-  })
+  @ApiOperation({ summary: 'Stock por tienda' })
   async getStoreStock(
     @Req() req: any,
     @Query('storeId', ParseUUIDPipe) storeId: string,
   ): Promise<StoreProductStockDto[]> {
+    const perms: string[] = req.user?.permissions || [];
+    const canViewProducts = perms.includes(PERMISSIONS.VIEW_PRODUCTS);
+    const canViewInventory = perms.includes(PERMISSIONS.VIEW_INVENTORY);
+
+    if (!canViewProducts && !canViewInventory) {
+      throw new ForbiddenException('No tienes permisos para ver el stock por tienda');
+    }
+
     return this.productService.getStoreStock(req.user, storeId);
   }
 
@@ -225,38 +93,7 @@ export class ProductController {
     keyType: 'user',
     rules: [{ limit: 200, windowSeconds: 60 }],
   })
-  @ApiOperation({
-    summary: 'Lookup de productos (solo ID y nombre)',
-    description: 'Retorna una lista simplificada de productos del tenant con solo ID y nombre, ideal para selects y autocompletados.',
-  })
-  @ApiQuery({
-    name: 'search',
-    required: false,
-    description: 'Término de búsqueda para filtrar productos por nombre',
-    example: 'aceite',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Lista de productos simplificada obtenida exitosamente',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
-          name: { type: 'string', example: 'Aceite de Motor 10W40' },
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'No autorizado - Token JWT inválido o ausente',
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos para ver productos',
-  })
+  @ApiOperation({ summary: 'Lookup de productos de catálogo' })
   async lookup(
     @Req() req: any,
     @Query('search') search?: string,
@@ -267,64 +104,7 @@ export class ProductController {
   @Get('findOne/:id')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
-  @ApiOperation({ 
-    summary: 'Obtener un producto del catálogo por ID',
-    description: 'Retorna la información detallada de un producto específico del catálogo maestro usando su UUID. Incluye información del usuario que lo creó.'
-  })
-  @ApiParam({ 
-    name: 'id', 
-    description: 'UUID del producto a consultar',
-    example: '123e4567-e89b-12d3-a456-426614174000'
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Producto del catálogo encontrado exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
-        name: { type: 'string', example: 'Aceite de Motor 10W40' },
-        description: { type: 'string', nullable: true, example: 'Aceite sintético de alta calidad' },
-        basePrice: { type: 'number', nullable: true, example: 29.99 },
-        buyCost: { type: 'number', nullable: true, example: 20.50 },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
-        createdById: { type: 'string', nullable: true, example: 'user-id-123' },
-        createdBy: {
-          type: 'object',
-          nullable: true,
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string', example: 'Juan Pérez' },
-            email: { type: 'string', example: 'juan@ejemplo.com' }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Producto del catálogo no encontrado',
-    schema: {
-      example: {
-        statusCode: 404,
-        message: 'Producto del catálogo con ID 123e4567-e89b-12d3-a456-426614174000 no encontrado',
-        error: 'Not Found'
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'ID del producto inválido - debe ser un UUID válido'
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'No autorizado - Token JWT inválido o ausente'
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos para ver productos'
-  })
+  @ApiOperation({ summary: 'Obtener producto de catálogo por ID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: any,
@@ -335,84 +115,7 @@ export class ProductController {
   @Patch('update/:id')
   @Roles(Role.ADMIN)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS, PERMISSIONS.MANAGE_PRICES)
-  @ApiOperation({ 
-    summary: 'Actualizar un producto del catálogo',
-    description: 'Actualiza la información de un producto existente en el catálogo maestro. Solo los administradores pueden realizar esta operación. Los cambios afectan al producto base pero no a los inventarios existentes en las tiendas.'
-  })
-  @ApiParam({ 
-    name: 'id', 
-    description: 'UUID del producto a actualizar',
-    example: '123e4567-e89b-12d3-a456-426614174000'
-  })
-  @ApiBody({ 
-    type: UpdateProductDto,
-    description: 'Datos del producto a actualizar',
-    examples: {
-      actualizarNombre: {
-        summary: 'Actualizar nombre y descripción',
-        value: {
-          name: 'Aceite de Motor 10W40 Premium',
-          description: 'Aceite sintético de alta calidad con aditivos de protección'
-        }
-      },
-      actualizarPrecios: {
-        summary: 'Actualizar precios de referencia',
-        value: {
-          basePrice: 32.99,
-          buyCost: 22.75
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Producto del catálogo actualizado exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
-        name: { type: 'string', example: 'Aceite de Motor 10W40 Premium' },
-        description: { type: 'string', nullable: true, example: 'Aceite sintético con aditivos' },
-        basePrice: { type: 'number', nullable: true, example: 32.99 },
-        buyCost: { type: 'number', nullable: true, example: 22.75 },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
-        createdById: { type: 'string', nullable: true, example: 'user-id-123' },
-        createdBy: {
-          type: 'object',
-          nullable: true,
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string', example: 'Juan Pérez' },
-            email: { type: 'string', example: 'juan@ejemplo.com' }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Producto del catálogo no encontrado',
-    schema: {
-      example: {
-        statusCode: 404,
-        message: 'Producto del catálogo con ID 123e4567-e89b-12d3-a456-426614174000 no encontrado',
-        error: 'Not Found'
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Datos de entrada inválidos o ID de producto inválido'
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'No autorizado - Token JWT inválido o ausente'
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos de administrador para actualizar productos'
-  })
+  @ApiOperation({ summary: 'Actualizar producto de catálogo' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateProductDto: UpdateProductDto,
@@ -424,82 +127,7 @@ export class ProductController {
   @Delete('remove/:id')
   @Roles(Role.ADMIN)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS)
-  @ApiOperation({ 
-    summary: 'Eliminar un producto del catálogo (Soft Delete)',
-    description: 'Marca un producto del catálogo como eliminado (soft delete). Esta operación solo puede realizarla un administrador. El producto no se elimina físicamente, solo se marca como eliminado y ya no aparecerá en las consultas normales.'
-  })
-  @ApiBody({
-    type: AdminCredentialsDto,
-    description: 'Credenciales de un ADMIN para autorizar la eliminación del producto del catálogo',
-  })
-  @ApiParam({ 
-    name: 'id', 
-    description: 'UUID del producto a marcar como eliminado',
-    example: '123e4567-e89b-12d3-a456-426614174000'
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Producto del catálogo marcado como eliminado exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
-        name: { type: 'string', example: 'Aceite de Motor 10W40' },
-        description: { type: 'string', nullable: true, example: 'Aceite sintético de alta calidad' },
-        basePrice: { type: 'number', nullable: true, example: 29.99 },
-        buyCost: { type: 'number', nullable: true, example: 20.50 },
-        isDeleted: { type: 'boolean', example: true },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
-        createdById: { type: 'string', nullable: true, example: 'user-id-123' },
-        createdBy: {
-          type: 'object',
-          nullable: true,
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string', example: 'Juan Pérez' },
-            email: { type: 'string', example: 'juan@ejemplo.com' }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Producto del catálogo no encontrado o ya está eliminado',
-    schema: {
-      examples: {
-        noEncontrado: {
-          summary: 'Producto no encontrado',
-          value: {
-            statusCode: 404,
-            message: 'Producto del catálogo con ID 123e4567-e89b-12d3-a456-426614174000 no encontrado',
-            error: 'Not Found'
-          }
-        },
-        yaEliminado: {
-          summary: 'Producto ya eliminado',
-          value: {
-            statusCode: 404,
-            message: 'Producto del catálogo con ID 123e4567-e89b-12d3-a456-426614174000 ya está eliminado',
-            error: 'Not Found'
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'ID del producto inválido'
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'No autorizado - Token JWT inválido o ausente'
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'No tiene permisos de administrador para eliminar productos'
-  })
+  @ApiOperation({ summary: 'Eliminar producto de catálogo' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() credentials: AdminCredentialsDto,

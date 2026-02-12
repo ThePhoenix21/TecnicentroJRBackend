@@ -16,7 +16,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -35,8 +35,7 @@ import { ListStoreProductsResponseDto } from './dto/list-store-products-response
 import { StoreProductDetailDto } from './dto/store-product-detail.dto';
 import { BasePaginationDto } from '../common/dto/base-pagination.dto';
 
-@ApiTags('Productos en Tienda')
-@RequireTenantFeatures(TenantFeature.PRODUCTS)
+@RequireTenantFeatures(TenantFeature.INVENTORY)
 @Controller('store/products')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class StoreProductController {
@@ -77,7 +76,7 @@ export class StoreProductController {
   @Get('list')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
-  @ApiOperation({ summary: 'Listar productos de una tienda (paginado)' })
+  @ApiOperation({ summary: 'Listar productos en tienda' })
   list(@Query() query: ListStoreProductsDto, @Req() req: any): Promise<ListStoreProductsResponseDto> {
     return this.storeProductService.list(query, req.user).then((res) => this.stripSensitiveFields(res, req.user));
   }
@@ -85,7 +84,7 @@ export class StoreProductController {
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS)
-  @ApiOperation({ summary: 'Agregar producto a todas las tiendas' })
+  @ApiOperation({ summary: 'Crear producto en tienda' })
   async create(
     @Req() req: any,
     @Body() createStoreProductDto: CreateStoreProductDto,
@@ -123,10 +122,21 @@ export class StoreProductController {
     return this.stripSensitiveFields(res, req.user);
   }
 
+  @Get('lookup')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ summary: 'Lookup de productos en tienda' })
+  async lookup(
+    @Req() req: any,
+    @Query('search') search?: string,
+    @Query('storeId') storeId?: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    return this.storeProductService.lookup(req.user, search, storeId);
+  }
+
   @Get('my-products')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
-  @ApiOperation({ summary: 'Listar productos creados por el usuario autenticado' })
+  @ApiOperation({ summary: 'Listar mis productos en tienda' })
   async findMyProducts(@Req() req: any): Promise<StoreProduct[]> {
     const tenantId = req.user?.tenantId;
     const userId = req.user?.userId || req.user?.id;
@@ -141,8 +151,7 @@ export class StoreProductController {
 
   @Get('store/:storeId')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
-  @ApiOperation({ summary: 'Listar productos de una tienda específica' })
+  @ApiOperation({ summary: 'Listar productos por tienda' })
   async findByStore(
     @Req() req: any,
     @Param('storeId') storeId: string,
@@ -150,6 +159,14 @@ export class StoreProductController {
     @Query('limit') limit: number = 20,
     @Query('search') search: string = ''
   ): Promise<any> {
+    const perms: string[] = req.user?.permissions || [];
+    const canViewProducts = perms.includes(PERMISSIONS.VIEW_PRODUCTS);
+    const canViewInventory = perms.includes(PERMISSIONS.VIEW_INVENTORY);
+
+    if (!canViewProducts && !canViewInventory) {
+      throw new ForbiddenException('No tienes permisos para ver productos de la tienda');
+    }
+
     const tenantId = req.user?.tenantId;
 
     if (!tenantId) {
@@ -163,7 +180,7 @@ export class StoreProductController {
   @Get('store/:storeId/simple')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
-  @ApiOperation({ summary: 'Listar productos simples de una tienda' })
+  @ApiOperation({ summary: 'Listar productos simples por tienda' })
   async findByStoreSimple(
     @Req() req: any,
     @Param('storeId') storeId: string,
@@ -183,7 +200,7 @@ export class StoreProductController {
   @Patch(':id/stock')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS)
-  @ApiOperation({ summary: 'Actualizar stock de un producto en tienda' })
+  @ApiOperation({ summary: 'Actualizar stock en tienda' })
   async updateStock(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
@@ -209,7 +226,7 @@ export class StoreProductController {
   @Get('findOne/:id')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
-  @ApiOperation({ summary: 'Obtener un producto en tienda por ID' })
+  @ApiOperation({ summary: 'Obtener producto en tienda' })
   async findOne(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
@@ -227,7 +244,7 @@ export class StoreProductController {
   @Patch('update/:id')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
-  @ApiOperation({ summary: 'Actualizar datos de un producto en tienda' })
+  @ApiOperation({ summary: 'Actualizar producto en tienda' })
   async update(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
@@ -302,7 +319,7 @@ export class StoreProductController {
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.DELETE_PRODUCTS)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Eliminar un producto de una tienda' })
+  @ApiOperation({ summary: 'Eliminar producto en tienda' })
   async remove(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,

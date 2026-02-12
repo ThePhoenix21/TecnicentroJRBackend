@@ -24,6 +24,97 @@ export class StoreProductService {
     return value.toNumber();
   }
 
+  async lookup(
+    user: { tenantId?: string; userId: string; role: string },
+    search?: string,
+    storeId?: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    if (storeId) {
+      const store = await this.prisma.store.findFirst({
+        where: {
+          id: storeId,
+          tenantId,
+          ...(user.role !== 'ADMIN'
+            ? {
+                storeUsers: {
+                  some: {
+                    userId: user.userId,
+                  },
+                },
+              }
+            : {}),
+        },
+        select: { id: true },
+      });
+
+      if (!store) {
+        throw new ForbiddenException('No tiene permisos para ver productos de esta tienda');
+      }
+    }
+
+    const where: any = {
+      tenantId,
+      deletedAt: null,
+      product: {
+        isDeleted: false,
+      },
+      store: {
+        tenantId,
+        ...(user.role !== 'ADMIN'
+          ? {
+              storeUsers: {
+                some: {
+                  userId: user.userId,
+                },
+              },
+            }
+          : {}),
+      },
+    };
+
+    if (storeId) {
+      where.storeId = storeId;
+    }
+
+    if (search) {
+      where.product = {
+        ...(where.product ?? {}),
+        name: {
+          contains: search,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    const rows = await this.prisma.storeProduct.findMany({
+      where,
+      select: {
+        id: true,
+        product: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        product: {
+          name: 'asc',
+        },
+      },
+      take: 200,
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.product?.name ?? 'Producto sin nombre',
+    }));
+  }
+
   async list(filterDto: ListStoreProductsDto, user: { tenantId?: string; userId: string; role: string }): Promise<ListStoreProductsResponseDto> {
     const tenantId = user?.tenantId;
     if (!tenantId) {
