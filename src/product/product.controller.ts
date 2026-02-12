@@ -52,7 +52,7 @@ export class ProductController {
 
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.MANAGE_PRODUCTS, PERMISSIONS.MANAGE_PRICES)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS, PERMISSIONS.MANAGE_PRICES)
   @ApiOperation({ 
     summary: 'Crear un nuevo producto en el catálogo maestro',
     description: 'Crea un nuevo producto en el catálogo maestro que estará disponible para ser agregado a cualquier tienda. Este producto contiene la información básica como nombre, descripción, precios de referencia y costos.'
@@ -334,7 +334,7 @@ export class ProductController {
 
   @Patch('update/:id')
   @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_PRODUCTS, PERMISSIONS.MANAGE_PRICES)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS, PERMISSIONS.MANAGE_PRICES)
   @ApiOperation({ 
     summary: 'Actualizar un producto del catálogo',
     description: 'Actualiza la información de un producto existente en el catálogo maestro. Solo los administradores pueden realizar esta operación. Los cambios afectan al producto base pero no a los inventarios existentes en las tiendas.'
@@ -423,7 +423,7 @@ export class ProductController {
 
   @Delete('remove/:id')
   @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_PRODUCTS)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS)
   @ApiOperation({ 
     summary: 'Eliminar un producto del catálogo (Soft Delete)',
     description: 'Marca un producto del catálogo como eliminado (soft delete). Esta operación solo puede realizarla un administrador. El producto no se elimina físicamente, solo se marca como eliminado y ya no aparecerá en las consultas normales.'

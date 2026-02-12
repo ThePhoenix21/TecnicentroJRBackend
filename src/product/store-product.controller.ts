@@ -36,7 +36,7 @@ import { StoreProductDetailDto } from './dto/store-product-detail.dto';
 import { BasePaginationDto } from '../common/dto/base-pagination.dto';
 
 @ApiTags('Productos en Tienda')
-@RequireTenantFeatures(TenantFeature.INVENTORY)
+@RequireTenantFeatures(TenantFeature.PRODUCTS)
 @Controller('store/products')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class StoreProductController {
@@ -76,6 +76,7 @@ export class StoreProductController {
 
   @Get('list')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @ApiOperation({ summary: 'Listar productos de una tienda (paginado)' })
   list(@Query() query: ListStoreProductsDto, @Req() req: any): Promise<ListStoreProductsResponseDto> {
     return this.storeProductService.list(query, req.user).then((res) => this.stripSensitiveFields(res, req.user));
@@ -83,7 +84,7 @@ export class StoreProductController {
 
   @Post('create')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.MANAGE_PRODUCTS)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS)
   @ApiOperation({ summary: 'Agregar producto a todas las tiendas' })
   async create(
     @Req() req: any,
@@ -124,6 +125,7 @@ export class StoreProductController {
 
   @Get('my-products')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @ApiOperation({ summary: 'Listar productos creados por el usuario autenticado' })
   async findMyProducts(@Req() req: any): Promise<StoreProduct[]> {
     const tenantId = req.user?.tenantId;
@@ -139,6 +141,7 @@ export class StoreProductController {
 
   @Get('store/:storeId')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @ApiOperation({ summary: 'Listar productos de una tienda específica' })
   async findByStore(
     @Req() req: any,
@@ -159,6 +162,7 @@ export class StoreProductController {
 
   @Get('store/:storeId/simple')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @ApiOperation({ summary: 'Listar productos simples de una tienda' })
   async findByStoreSimple(
     @Req() req: any,
@@ -178,7 +182,7 @@ export class StoreProductController {
 
   @Patch(':id/stock')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.MANAGE_PRODUCTS)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS)
   @ApiOperation({ summary: 'Actualizar stock de un producto en tienda' })
   async updateStock(
     @Req() req: any,
@@ -204,6 +208,7 @@ export class StoreProductController {
 
   @Get('findOne/:id')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @ApiOperation({ summary: 'Obtener un producto en tienda por ID' })
   async findOne(
     @Req() req: any,
@@ -221,6 +226,7 @@ export class StoreProductController {
 
   @Patch('update/:id')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @ApiOperation({ summary: 'Actualizar datos de un producto en tienda' })
   async update(
     @Req() req: any,
@@ -294,7 +300,7 @@ export class StoreProductController {
 
   @Delete('remove/:id')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.DELETE_PRODUCTS)
+  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.DELETE_PRODUCTS)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar un producto de una tienda' })
   async remove(
