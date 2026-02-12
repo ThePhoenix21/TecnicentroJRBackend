@@ -760,11 +760,23 @@ export class OrderService {
 
       const store = await this.assertStoreAccess(query.storeId, user);
 
+      // Si se especifica userId, buscar sesión de ese usuario específico
+      const sessionWhere: any = {
+        StoreId: store.id,
+        status: SessionStatus.OPEN,
+      };
+
+      // Si se proporciona userId en query, buscar sesión de ese usuario
+      const queryUserId = (query as any)?.userId as string | undefined;
+      if (queryUserId) {
+        sessionWhere.UserId = queryUserId;
+      } else {
+        // Si no, buscar sesión del usuario autenticado
+        sessionWhere.UserId = user.userId;
+      }
+
       const session = await this.prisma.cashSession.findFirst({
-        where: {
-          StoreId: store.id,
-          status: SessionStatus.OPEN,
-        },
+        where: sessionWhere,
         select: { id: true },
       });
 
