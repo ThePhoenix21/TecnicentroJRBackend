@@ -5,7 +5,9 @@ import { UpdateCashSessionDto } from './dto/update-cash-session.dto';
 import { CloseCashSessionDto } from './dto/close-cash-session.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -16,10 +18,12 @@ import { TenantFeature } from '@prisma/client';
 import { ListClosedCashSessionsDto } from './dto/list-closed-cash-sessions.dto';
 import { ListCashMovementsDto } from '../cash-movement/dto/list-cash-movements.dto';
 import { ListCashMovementsResponseDto } from '../cash-movement/dto/list-cash-movements-response.dto';
+import { PERMISSIONS } from '../auth/permissions';
 
 @ApiTags('Cash Sessions')
 @Controller('cash-session')
 @RequireTenantFeatures(TenantFeature.CASH)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class CashSessionController {
   constructor(
     private readonly cashSessionService: CashSessionService,
@@ -27,9 +31,15 @@ export class CashSessionController {
     private readonly cashMovementService: CashMovementService
   ) {}
 
+  private hasPermission(user: any, permission: string): boolean {
+    if (!user?.permissions) return false;
+    return user.permissions.includes(permission);
+  }
+
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_CASH)
   @ApiOperation({ summary: 'Crear nueva sesión de caja' })
   async create(@Body() createCashSessionDto: CreateCashSessionDto, @Req() req: any) {
     console.log('Usuario en request:', req.user);
@@ -43,8 +53,9 @@ export class CashSessionController {
   }
 
   @Get(':id/closing-print')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.PRINT_CASH_CLOSURE)
   @ApiOperation({ summary: 'Obtener datos para imprimir cierre de caja' })
   async getClosingPrintData(@Param('id') id: string, @Req() req: any) {
     return this.cashSessionService.getClosingPrintData(id, req.user);
@@ -60,8 +71,9 @@ export class CashSessionController {
   }
 
   @Get('current/:storeId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_CASH)
   @ApiOperation({ summary: 'Obtener sesión de caja actual de una tienda' })
   findCurrentSessionByStore(@Param('storeId') storeId: string, @Req() req: any) {
     return this.cashSessionService.findOpenSessionByStore(storeId, req.user);
@@ -81,15 +93,16 @@ export class CashSessionController {
   }
 
   @Get('store/:storeId/open')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_CASH)
   @ApiOperation({ summary: 'Obtener sesión abierta actual de una tienda' })
   findOpenSessionByStore(@Param('storeId') storeId: string, @Req() req: any) {
     return this.cashSessionService.findOpenSessionByStore(storeId, req.user);
   }
 
   @Post('store/closed')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
   @ApiOperation({ summary: 'Listar cajas cerradas de una tienda (ADMIN)' })
   async listClosedCashSessions(
@@ -97,6 +110,25 @@ export class CashSessionController {
     @Req() req: any,
   ) {
     const user = req.user;
+
+    // Validar permisos de historial de caja
+    if (user.role !== Role.ADMIN) {
+      const hasAllHistory = this.hasPermission(user, PERMISSIONS.VIEW_ALL_CASH_HISTORY);
+      const hasOwnHistory = this.hasPermission(user, PERMISSIONS.VIEW_OWN_CASH_HISTORY);
+      
+      if (!hasAllHistory && !hasOwnHistory) {
+        throw new ForbiddenException('No tienes permisos para ver historial de cajas cerradas');
+      }
+      
+      // Si tiene VIEW_ALL_CASH_HISTORY, no filtrar (ver todas las sesiones)
+      // Si solo tiene VIEW_OWN_CASH_HISTORY, filtrar por sus sesiones
+      if (!hasAllHistory && hasOwnHistory) {
+        // Extraer el nombre del usuario del email (parte antes del @)
+        const userName = user.email?.split('@')[0] || 'unknown';
+        body.openedByName = userName; // Forzar filtro por usuario
+      }
+      // Si tiene VIEW_ALL_CASH_HISTORY, no aplicar filtro (body.openedByName queda undefined/null)
+    }
 
     const tokenStores: string[] = Array.isArray(user?.stores) ? user.stores : [];
     const storeIdFromToken = tokenStores.length === 1 ? tokenStores[0] : undefined;
@@ -147,7 +179,7 @@ export class CashSessionController {
   }
 
   @Get(':sessionId/movements')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
   @ApiOperation({ summary: 'Obtener movimientos de una sesión de caja' })
   async getMovements(
@@ -162,8 +194,21 @@ export class CashSessionController {
   @ApiOperation({ summary: 'Cerrar sesión de caja' })
   async closeCashSession(
     @Param('id') id: string,
-    @Body() closeCashSessionDto: CloseCashSessionDto
+    @Body() closeCashSessionDto: CloseCashSessionDto,
+    @Req() req: any
   ) {
+    // Validar permisos de gestión de caja
+    if (req.user?.role !== Role.ADMIN) {
+      const user = await this.authService.validateAnyUser(
+        closeCashSessionDto.email,
+        closeCashSessionDto.password
+      );
+
+      if (!user || !this.hasPermission(user, PERMISSIONS.MANAGE_CASH)) {
+        throw new ForbiddenException('No tienes permisos para gestionar cajas');
+      }
+    }
+
     // 1. Validar credenciales del usuario
     const user = await this.authService.validateAnyUser(
       closeCashSessionDto.email,

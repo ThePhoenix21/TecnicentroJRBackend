@@ -4,14 +4,16 @@ import { UpdateCashMovementDto } from './dto/update-cash-movement.dto';
 import { ListCashMovementsDto, CashMovementOperationFilter } from './dto/list-cash-movements.dto';
 import { ListCashMovementsResponseDto } from './dto/list-cash-movements-response.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { MovementType, SessionStatus, PaymentType } from '@prisma/client';
+import { MovementType, SessionStatus, PaymentType, TenantFeature } from '@prisma/client';
 import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
 
 type AuthUser = {
   userId: string;
   email: string;
   role: string;
+  permissions?: string[];
   tenantId?: string;
+  tenantFeatures?: TenantFeature[];
 };
 
 type MovementListItem = {
@@ -195,6 +197,12 @@ export class CashMovementService {
     const requireOpen = options?.requireOpen ?? false;
     if (requireOpen && cashSession.status !== SessionStatus.OPEN) {
       throw new BadRequestException('La sesión de caja está cerrada. No se pueden realizar movimientos.');
+    }
+
+    // Si tiene VIEW_ALL_CASH_HISTORY, permitir acceso a cualquier sesión
+    if (user.permissions?.includes('VIEW_ALL_CASH_HISTORY')) {
+      console.log('DEBUG SERVICE: Usuario tiene VIEW_ALL_CASH_HISTORY, omitiendo validación de ownership');
+      return cashSession;
     }
 
     const allowAdmin = options?.allowAdmin ?? false;
@@ -775,7 +783,21 @@ export class CashMovementService {
     });
   }
 
-  // Método adicional: Obtener movimientos por sesión con paginación
+  // Método para obtener el propietario de una sesión de caja
+  async getSessionOwner(sessionId: string) {
+    const cashSession = await this.prisma.cashSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true, UserId: true }
+    });
+    
+    if (!cashSession) {
+      throw new NotFoundException('Sesión de caja no encontrada');
+    }
+    
+    return cashSession;
+  }
+
+  // Método para obtener movimientos por sesión con paginación
   async findBySession(
     sessionId: string,
     query: ListCashMovementsDto,
@@ -790,7 +812,39 @@ export class CashMovementService {
     });
 
     if (user) {
-      await this.assertCashSessionAccess(sessionId, user);
+      console.log('DEBUG SERVICE: User permissions:', user.permissions);
+      console.log('DEBUG SERVICE: User role:', user.role);
+      console.log('DEBUG SERVICE: User ID:', user.userId);
+      
+      // Para usuarios con VIEW_ALL_CASH_HISTORY, permitir acceso a cualquier sesión
+      if (user.role !== 'ADMIN') {
+        const hasAllHistory = user.permissions?.includes('VIEW_ALL_CASH_HISTORY') || false;
+        const hasOwnHistory = user.permissions?.includes('VIEW_OWN_CASH_HISTORY') || false;
+        
+        console.log('DEBUG SERVICE: hasAllHistory:', hasAllHistory);
+        console.log('DEBUG SERVICE: hasOwnHistory:', hasOwnHistory);
+        
+        // Si tiene VIEW_ALL_CASH_HISTORY, no validar ownership
+        if (hasAllHistory) {
+          console.log('DEBUG SERVICE: Usando VIEW_ALL_CASH_HISTORY - allowAdmin: true');
+          // Solo validar tenant y store, no ownership
+          await this.assertCashSessionAccess(sessionId, user, { allowAdmin: true, requireOpen: false });
+        } 
+        // Si tiene VIEW_OWN_CASH_HISTORY, validar ownership
+        else if (hasOwnHistory) {
+          console.log('DEBUG SERVICE: Usando VIEW_OWN_CASH_HISTORY - allowAdmin: false');
+          await this.assertCashSessionAccess(sessionId, user, { allowAdmin: false, requireOpen: false });
+        }
+        // Si no tiene permisos de historial, validar ownership normal
+        else {
+          console.log('DEBUG SERVICE: Sin permisos de historial - allowAdmin: false');
+          await this.assertCashSessionAccess(sessionId, user, { allowAdmin: false, requireOpen: false });
+        }
+      } else {
+        console.log('DEBUG SERVICE: Usuario ADMIN - allowAdmin: true');
+        // Admin siempre tiene acceso
+        await this.assertCashSessionAccess(sessionId, user, { allowAdmin: true, requireOpen: false });
+      }
     }
 
     const cashMovementWhere: any = {

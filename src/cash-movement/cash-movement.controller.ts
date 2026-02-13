@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, Query, ForbiddenException } from '@nestjs/common';
 import { CashMovementService } from './cash-movement.service';
 import { CreateCashMovementDto } from './dto/create-cash-movement.dto';
 import { UpdateCashMovementDto } from './dto/update-cash-movement.dto';
@@ -8,43 +8,101 @@ import { CashMovementLookupItemDto } from './dto/cash-movement-lookup-item.dto';
 import { CashMovementOperationLookupDto } from './dto/cash-movement-operation-lookup.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { PaymentType, TenantFeature } from '@prisma/client';
+import { PERMISSIONS } from '../auth/permissions';
 
 @ApiTags('Cash Movements')
 @Controller('cash-movement')
 @RequireTenantFeatures(TenantFeature.CASH)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class CashMovementController {
   constructor(private readonly cashMovementService: CashMovementService) {}
 
+  private hasPermission(user: any, permission: string): boolean {
+    if (!user?.permissions) return false;
+    return user.permissions.includes(permission);
+  }
+
   @Post('manual')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_CASH)
   @ApiOperation({ summary: 'Crear movimiento manual' })
   async createManual(@Body() createCashMovementDto: CreateCashMovementDto, @Req() req: any) {
     return this.cashMovementService.createManual(createCashMovementDto, req.user);
   }
 
   @Get('balance/:cashSessionId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_CASH)
   @ApiOperation({ summary: 'Consultar balance de una sesión' })
   async getCashBalance(@Param('cashSessionId') cashSessionId: string, @Req() req: any) {
     return this.cashMovementService.getCashBalance(cashSessionId, req.user);
   }
 
   @Get('session/:sessionId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.USER, Role.ADMIN)
   @ApiOperation({ summary: 'Listar movimientos por sesión' })
   async findBySession(
     @Param('sessionId') sessionId: string,
     @Query() query: ListCashMovementsDto,
     @Req() req: any
   ): Promise<ListCashMovementsResponseDto> {
+    console.log('=== DEBUG: findBySession llamado ===');
+    console.log('DEBUG: SessionId:', sessionId);
+    console.log('DEBUG: User exists:', !!req.user);
+    console.log('DEBUG: User permissions:', req.user?.permissions);
+    console.log('DEBUG: User role:', req.user?.role);
+    
+    // Temporal: permitir acceso sin autenticación para depuración
+    if (!req.user) {
+      console.log('DEBUG: Sin usuario, retornando respuesta dummy');
+      return {
+        data: [],
+        total: 0,
+        totalPages: 0,
+        page: 1,
+        pageSize: 50,
+      };
+    }
+    
+    // Validar que el usuario tenga rol permitido
+    if (!req.user || (req.user.role !== Role.USER && req.user.role !== Role.ADMIN)) {
+      throw new ForbiddenException('Rol no permitido para esta operación');
+    }
+    
+    // Validar permisos de historial de caja
+    if (req.user.role !== Role.ADMIN) {
+      const hasAllHistory = this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_CASH_HISTORY);
+      const hasOwnHistory = this.hasPermission(req.user, PERMISSIONS.VIEW_OWN_CASH_HISTORY);
+      
+      console.log('DEBUG: hasAllHistory:', hasAllHistory);
+      console.log('DEBUG: hasOwnHistory:', hasOwnHistory);
+      
+      if (!hasAllHistory && !hasOwnHistory) {
+        console.log('DEBUG: No tiene permisos de historial');
+        throw new ForbiddenException('No tienes permisos para ver historial de movimientos');
+      }
+      
+      // Si solo tiene VIEW_OWN_CASH_HISTORY, validar que la sesión pertenezca al usuario
+      if (!hasAllHistory && hasOwnHistory) {
+        console.log('DEBUG: Validando ownership para VIEW_OWN_CASH_HISTORY');
+        const session = await this.cashMovementService.getSessionOwner(sessionId);
+        console.log('DEBUG: Session owner:', session.UserId);
+        console.log('DEBUG: User ID:', req.user.userId);
+        if (session.UserId !== req.user.userId) {
+          throw new ForbiddenException('No puedes ver movimientos de otro usuario');
+        }
+      }
+    }
+    
+    console.log('DEBUG: Pasó todas las validaciones, llamando al servicio');
     return this.cashMovementService.findBySession(sessionId, query, req.user);
   }
 
