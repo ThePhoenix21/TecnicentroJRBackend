@@ -35,14 +35,17 @@ export class StoreController {
   }
 
   @Post()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_STORES)
+  @ApiOperation({ summary: 'Crear una nueva tienda para el tenant' })
   create(@Body() createStoreDto: CreateStoreDto) {
     return this.storeService.create(createStoreDto);
   }
 
   @Get()
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_STORES)
+  @ApiOperation({ summary: 'Listar todas las tiendas del tenant' })
   findAll(@Req() req: any) {
     const tenantId = req.user?.tenantId;
 
@@ -54,7 +57,9 @@ export class StoreController {
   }
 
   @Get('simple')
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_STORES)
+  @ApiOperation({ summary: 'Listar tiendas con información básica' })
   findAllSimple(@Req() req: any) {
     const tenantId = req.user?.tenantId;
 
@@ -67,6 +72,7 @@ export class StoreController {
 
   @Get('lookup')
   @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ summary: 'Lookup de tiendas (solo id y nombre)' })
   lookup(@Req() req: any) {
     const tenantId = req.user?.tenantId;
 
@@ -78,21 +84,25 @@ export class StoreController {
   }
 
   @Get(':id')
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_STORES)
+  @ApiOperation({ summary: 'Obtener detalle completo de una tienda' })
   findOne(@Param('id') id: string, @Req() req: any) {
     return this.storeService.findOne(id, req.user);
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_STORES)
+  @ApiOperation({ summary: 'Actualizar datos de una tienda' })
   update(@Param('id') id: string, @Body() updateStoreDto: UpdateStoreDto, @Req() req: any) {
     return this.storeService.update(id, updateStoreDto, req.user);
   }
 
   @Delete(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_STORES)
+  @ApiOperation({ summary: 'Eliminar una tienda del tenant' })
   remove(@Param('id') id: string, @Req() req: any) {
     return this.storeService.remove(id, req.user);
   }
