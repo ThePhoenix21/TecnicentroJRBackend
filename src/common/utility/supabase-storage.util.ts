@@ -39,6 +39,29 @@ export class SupabaseStorageService {
     this.supabase = createClient(supabaseUrl, keyToUse);
   }
 
+  private extractPathFromUrlOrPath(urlOrPath: string, bucket: string): string | null {
+    if (!urlOrPath) return null;
+
+    const marker = `/storage/v1/object/public/${bucket}/`;
+
+    if (!/^https?:\/\//i.test(urlOrPath)) {
+      return urlOrPath.replace(/^\/+/, '').split('?')[0] || null;
+    }
+
+    try {
+      const parsed = new URL(urlOrPath);
+      const pathWithQuery = `${parsed.pathname}${parsed.search || ''}`;
+      const markerIndex = pathWithQuery.indexOf(marker);
+      if (markerIndex >= 0) {
+        return pathWithQuery.slice(markerIndex + marker.length).split('?')[0] || null;
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
   private async uploadToStorage(file: FileUpload, options: UploadOptions): Promise<{ path: string }> {
     const bucket = options.bucket ?? this.bucketName;
     const { error: uploadError } = await this.supabase.storage
@@ -102,11 +125,11 @@ export class SupabaseStorageService {
     if (!urls || urls.length === 0) return;
 
     const deletePromises = urls.map(async (url) => {
-      const filePath = url.split('/').pop();
+      const filePath = this.extractPathFromUrlOrPath(url, this.bucketName);
       if (filePath) {
         const { error } = await this.supabase.storage
           .from(this.bucketName)
-          .remove([`services/${filePath}`]);
+          .remove([filePath]);
         
         if (error) {
           console.error(`Error al eliminar archivo ${filePath}:`, error);
@@ -154,8 +177,12 @@ export class SupabaseStorageService {
 
       await this.uploadToStorage(file, { path: filePath, contentType: file.mimetype });
 
+      const { data: { publicUrl } } = this.supabase.storage
+        .from(this.bucketName)
+        .getPublicUrl(filePath);
+
       return {
-        url: filePath,
+        url: publicUrl,
         path: filePath,
       };
     } catch (error) {
