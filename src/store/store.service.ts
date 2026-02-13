@@ -193,6 +193,28 @@ export class StoreService {
     });
   }
 
+  async getTenantStoresInfo(tenantId: string) {
+    return this.prisma.store.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        createdAt: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  }
+
   async findOne(id: string, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
     const store = await this.prisma.store.findFirst({

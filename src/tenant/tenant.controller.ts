@@ -11,6 +11,9 @@ import { memoryStorage } from 'multer';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Role } from '../auth/enums/role.enum';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 
 @ApiTags('tenants')
 @Controller('tenant')
@@ -119,8 +122,9 @@ export class TenantController {
   }
 
   @Patch('logo')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.CHANGE_STORE_LOGO)
   @ApiOperation({ summary: 'Actualizar logo del tenant' })
   @UseInterceptors(FileInterceptor('logo', {
     storage: memoryStorage(),
