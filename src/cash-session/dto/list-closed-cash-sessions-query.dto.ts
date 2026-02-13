@@ -1,13 +1,16 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { BasePaginationDto } from '../../common/dto/base-pagination.dto';
 
-export class ListClosedCashSessionsDto {
+export class ListClosedCashSessionsQueryDto extends BasePaginationDto {
   @ApiPropertyOptional({
     description: 'Filtrar por storeId. Si el token trae varias tiendas, se recomienda enviar este campo.',
     example: '468c41d9-60a4-4daf-843d-7509fa70b817',
   })
   @IsOptional()
   @IsUUID('4')
+  @Transform(({ value }) => value?.trim())
   storeId?: string;
 
   @ApiPropertyOptional({
@@ -32,5 +35,6 @@ export class ListClosedCashSessionsDto {
   })
   @IsOptional()
   @IsString()
+  @Transform(({ value }) => value?.trim())
   openedByName?: string;
 }

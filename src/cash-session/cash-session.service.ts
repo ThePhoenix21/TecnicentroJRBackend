@@ -3,6 +3,7 @@ import { CreateCashSessionDto } from './dto/create-cash-session.dto';
 import { UpdateCashSessionDto } from './dto/update-cash-session.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MovementType, PaymentType, User, SessionStatus } from '@prisma/client';
+import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
 
 type AuthUser = {
   userId: string;
@@ -26,7 +27,7 @@ export class CashSessionService {
 
   async listClosedSessionsByStore(
     storeId: string,
-    filters: { from?: string; to?: string; openedByName?: string },
+    filters: { from?: string; to?: string; openedByName?: string; page?: number; pageSize?: number; userId?: string },
     user: AuthUser,
   ) {
     const tenantId = user?.tenantId;
@@ -35,6 +36,14 @@ export class CashSessionService {
     }
 
     await this.assertStoreAccess(storeId, user);
+
+    const { page, pageSize, skip } = getPaginationParams({
+      page: filters.page,
+      pageSize: filters.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 50,
+    });
 
     const where: any = {
       StoreId: storeId,
@@ -55,7 +64,14 @@ export class CashSessionService {
           mode: 'insensitive',
         },
       };
+    } else if (filters?.userId) {
+      where.UserId = filters.userId;
     }
+
+    // Get total count for pagination
+    const total = await this.prisma.cashSession.count({
+      where,
+    });
 
     const sessions = await this.prisma.cashSession.findMany({
       where,
@@ -70,6 +86,8 @@ export class CashSessionService {
         closedById: true,
       },
       orderBy: { closedAt: 'desc' },
+      skip,
+      take: pageSize,
     });
 
     const closerIds = Array.from(
@@ -92,7 +110,7 @@ export class CashSessionService {
 
     const closerById = new Map(closers.map((u) => [u.id, u.name] as const));
 
-    return (sessions || []).map((s) => ({
+    const data = (sessions || []).map((s) => ({
       id: s.id,
       openedAt: s.openedAt,
       closedAt: s.closedAt,
@@ -102,6 +120,8 @@ export class CashSessionService {
       closingAmount: s.closingAmount,
       declaredAmount: s.declaredAmount,
     }));
+
+    return buildPaginatedResponse(data, total, page, pageSize);
   }
 
   async findOneForClose(id: string, user: AuthUser) {
@@ -236,10 +256,6 @@ export class CashSessionService {
   }
 
   async create(createCashSessionDto: CreateCashSessionDto, user: AuthUser) {
-    console.log('Usuario recibido en servicio:', user);
-    console.log('ID del usuario:', user?.userId);
-    console.log('Email del usuario:', user?.email);
-    
     const { storeId, openingAmount = 0.00 } = createCashSessionDto;
     
     this.logger.log(`Iniciando creación de sesión de caja para usuario: ${user.email} en tienda: ${storeId}`);

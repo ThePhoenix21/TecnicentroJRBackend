@@ -15,7 +15,7 @@ import { AuthService } from '../auth/auth.service';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
-import { ListClosedCashSessionsDto } from './dto/list-closed-cash-sessions.dto';
+import { ListClosedCashSessionsQueryDto } from './dto/list-closed-cash-sessions-query.dto';
 import { ListCashMovementsDto } from '../cash-movement/dto/list-cash-movements.dto';
 import { ListCashMovementsResponseDto } from '../cash-movement/dto/list-cash-movements-response.dto';
 import { PERMISSIONS } from '../auth/permissions';
@@ -70,6 +70,93 @@ export class CashSessionController {
     return this.cashSessionService.findAll(req.user);
   }
 
+  @Get('store/closed')
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @ApiOperation({ summary: 'Listar cajas cerradas de una tienda (ADMIN)' })
+  async listClosedCashSessions(
+    @Query(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) query: ListClosedCashSessionsQueryDto,
+    @Req() req: any,
+  ) {
+    const user = req.user;
+
+    // Validar permisos de historial de caja
+    if (user.role !== Role.ADMIN) {
+      const hasAllHistory = this.hasPermission(user, PERMISSIONS.VIEW_ALL_CASH_HISTORY);
+      const hasOwnHistory = this.hasPermission(user, PERMISSIONS.VIEW_OWN_CASH_HISTORY);
+      
+      if (!hasAllHistory && !hasOwnHistory) {
+        throw new ForbiddenException('No tienes permisos para ver historial de cajas cerradas');
+      }
+      
+      // Si tiene VIEW_ALL_CASH_HISTORY, no filtrar (ver todas las sesiones)
+      // Si solo tiene VIEW_OWN_CASH_HISTORY, filtrar por sus sesiones
+      if (!hasAllHistory && hasOwnHistory) {
+        // Filtrar por userId en lugar de nombre para mayor precisión
+        const filtersWithUserId = {
+          from: query.from,
+          to: query.to,
+          openedByName: undefined, // No filtrar por nombre
+          userId: user.userId, // Filtrar por userId
+          page: query.page,
+          pageSize: query.pageSize
+        };
+
+        const tokenStores: string[] = Array.isArray(user?.stores) ? user.stores : [];
+        const storeIdFromToken = tokenStores.length === 1 ? tokenStores[0] : undefined;
+
+        let storeId: string | undefined;
+        if (user?.role === Role.ADMIN) {
+          storeId = query.storeId || storeIdFromToken;
+          if (!storeId) {
+            throw new BadRequestException('storeId es requerido para ADMIN cuando el token trae múltiples tiendas o no trae stores');
+          }
+        } else {
+          storeId = storeIdFromToken;
+          if (!storeId) {
+            throw new BadRequestException('El token debe contener exactamente una tienda (stores) para este endpoint');
+          }
+        }
+
+        if (tokenStores.length > 0 && !tokenStores.includes(storeId)) {
+          throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+        }
+
+        return this.cashSessionService.listClosedSessionsByStore(storeId, filtersWithUserId, user);
+      }
+      // Si tiene VIEW_ALL_CASH_HISTORY, no aplicar filtro (query.openedByName queda undefined/null)
+    }
+
+    const tokenStores: string[] = Array.isArray(user?.stores) ? user.stores : [];
+    const storeIdFromToken = tokenStores.length === 1 ? tokenStores[0] : undefined;
+
+    let storeId: string | undefined;
+
+    if (user?.role === Role.ADMIN) {
+      storeId = query.storeId || storeIdFromToken;
+      if (!storeId) {
+        throw new BadRequestException('storeId es requerido para ADMIN cuando el token trae múltiples tiendas o no trae stores');
+      }
+    } else {
+      storeId = storeIdFromToken;
+      if (!storeId) {
+        throw new BadRequestException('El token debe contener exactamente una tienda (stores) para este endpoint');
+      }
+    }
+
+    if (tokenStores.length > 0 && !tokenStores.includes(storeId)) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
+    }
+
+    return this.cashSessionService.listClosedSessionsByStore(storeId, { 
+      from: query.from, 
+      to: query.to, 
+      openedByName: query.openedByName,
+      page: query.page,
+      pageSize: query.pageSize
+    }, user);
+  }
+
   @Get('current/:storeId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
@@ -99,59 +186,6 @@ export class CashSessionController {
   @ApiOperation({ summary: 'Obtener sesión abierta actual de una tienda' })
   findOpenSessionByStore(@Param('storeId') storeId: string, @Req() req: any) {
     return this.cashSessionService.findOpenSessionByStore(storeId, req.user);
-  }
-
-  @Post('store/closed')
-  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-  @Roles(Role.USER, Role.ADMIN)
-  @ApiOperation({ summary: 'Listar cajas cerradas de una tienda (ADMIN)' })
-  async listClosedCashSessions(
-    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) body: ListClosedCashSessionsDto,
-    @Req() req: any,
-  ) {
-    const user = req.user;
-
-    // Validar permisos de historial de caja
-    if (user.role !== Role.ADMIN) {
-      const hasAllHistory = this.hasPermission(user, PERMISSIONS.VIEW_ALL_CASH_HISTORY);
-      const hasOwnHistory = this.hasPermission(user, PERMISSIONS.VIEW_OWN_CASH_HISTORY);
-      
-      if (!hasAllHistory && !hasOwnHistory) {
-        throw new ForbiddenException('No tienes permisos para ver historial de cajas cerradas');
-      }
-      
-      // Si tiene VIEW_ALL_CASH_HISTORY, no filtrar (ver todas las sesiones)
-      // Si solo tiene VIEW_OWN_CASH_HISTORY, filtrar por sus sesiones
-      if (!hasAllHistory && hasOwnHistory) {
-        // Extraer el nombre del usuario del email (parte antes del @)
-        const userName = user.email?.split('@')[0] || 'unknown';
-        body.openedByName = userName; // Forzar filtro por usuario
-      }
-      // Si tiene VIEW_ALL_CASH_HISTORY, no aplicar filtro (body.openedByName queda undefined/null)
-    }
-
-    const tokenStores: string[] = Array.isArray(user?.stores) ? user.stores : [];
-    const storeIdFromToken = tokenStores.length === 1 ? tokenStores[0] : undefined;
-
-    let storeId: string | undefined;
-
-    if (user?.role === Role.ADMIN) {
-      storeId = body.storeId || storeIdFromToken;
-      if (!storeId) {
-        throw new BadRequestException('storeId es requerido para ADMIN cuando el token trae múltiples tiendas o no trae stores');
-      }
-    } else {
-      storeId = storeIdFromToken;
-      if (!storeId) {
-        throw new BadRequestException('El token debe contener exactamente una tienda (stores) para este endpoint');
-      }
-    }
-
-    if (tokenStores.length > 0 && !tokenStores.includes(storeId)) {
-      throw new ForbiddenException('No tienes permisos para acceder a esta tienda');
-    }
-
-    return this.cashSessionService.listClosedSessionsByStore(storeId, { from: body.from, to: body.to, openedByName: body.openedByName }, user);
   }
 
   @Get(':id')
