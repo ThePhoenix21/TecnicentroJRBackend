@@ -7,7 +7,6 @@ import {
   Param, 
   Delete, 
   ParseUUIDPipe, 
-  HttpStatus,
   Query,
   UseGuards,
   Request,
@@ -18,10 +17,6 @@ import {
 import { 
   ApiTags, 
   ApiOperation, 
-  ApiResponse, 
-  ApiBody, 
-  ApiParam,
-  ApiQuery,
   ApiBearerAuth
 } from '@nestjs/swagger';
 import { ClientService } from './client.service';
@@ -33,7 +28,10 @@ import { ListClientsResponseDto } from './dto/list-clients-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Role } from '../auth/enums/role.enum';
+import { PERMISSIONS } from '../auth/permissions';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
 
@@ -41,16 +39,21 @@ import { TenantFeature } from '@prisma/client';
 @ApiBearerAuth()
 @RequireTenantFeatures(TenantFeature.CLIENTS)
 @Controller('clientes')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ClientController {
   constructor(private readonly clientService: ClientService) {}
 
+  private getAuthenticatedUserId(req: any): string | undefined {
+    return req.user?.userId ?? req.user?.sub;
+  }
+
+  private hasPermission(req: any, permission: string): boolean {
+    return Array.isArray(req.user?.permissions) && req.user.permissions.includes(permission);
+  }
+
   @Post()
-  @ApiOperation({ summary: 'Crear un nuevo cliente', description: 'Crea un nuevo registro de cliente en el sistema' })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'El cliente ha sido creado exitosamente' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Datos de entrada inválidos' })
-  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'El cliente ya existe (email, RUC o DNI duplicado)' })
-  @ApiBody({ type: CreateClientDto })
+  @ApiOperation({ summary: 'Crear un nuevo cliente' })
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS)
   @Roles(Role.ADMIN, Role.USER) // Público también puede crear (sin autenticación)
   @UseGuards(JwtAuthGuard, RolesGuard)
   async create(@Body() createClientDto: CreateClientDto, @Request() req: any): Promise<Client> {
@@ -61,11 +64,9 @@ export class ClientController {
 
   @Get()
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiOperation({ summary: 'Obtener clientes (paginado y filtrable)', description: 'Obtiene una lista paginada de clientes del tenant con filtros combinables y conteos de órdenes.' })
-  @ApiResponse({ status: HttpStatus.OK, type: ListClientsResponseDto })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Lista de clientes obtenida exitosamente' })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
+  @ApiOperation({ summary: 'Obtener clientes (paginado y filtrable)' })
   async findAll(@Query() query: ListClientsDto, @Request() req: any): Promise<ListClientsResponseDto> {
     const tenantId = req.user?.tenantId;
 
@@ -80,7 +81,6 @@ export class ClientController {
   @Roles(Role.ADMIN, Role.USER)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Lookup de nombres de clientes (id, name)' })
-  @ApiResponse({ status: HttpStatus.OK })
   async lookupName(@Request() req: any) {
     const tenantId = req.user?.tenantId;
     return this.clientService.lookupName(tenantId);
@@ -90,7 +90,6 @@ export class ClientController {
   @Roles(Role.ADMIN, Role.USER)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Lookup de teléfonos de clientes (id, phone)' })
-  @ApiResponse({ status: HttpStatus.OK })
   async lookupPhone(@Request() req: any) {
     const tenantId = req.user?.tenantId;
     return this.clientService.lookupPhone(tenantId);
@@ -100,7 +99,6 @@ export class ClientController {
   @Roles(Role.ADMIN, Role.USER)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Lookup de DNI de clientes (id, dni)' })
-  @ApiResponse({ status: HttpStatus.OK })
   async lookupDni(@Request() req: any) {
     const tenantId = req.user?.tenantId;
     return this.clientService.lookupDni(tenantId);
@@ -108,15 +106,9 @@ export class ClientController {
 
   @Get(':id/full')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS, PERMISSIONS.MANAGE_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiOperation({
-    summary: 'Obtener cliente completo (con relaciones)',
-    description: 'Devuelve el cliente con relaciones: usuario asociado y órdenes con detalles (productos, servicios, pagos, caja y auditoría de anulación).',
-  })
-  @ApiParam({ name: 'id', description: 'ID único del cliente (UUID)', type: String })
-  @ApiResponse({ status: HttpStatus.OK })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Cliente no encontrado' })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
+  @ApiOperation({ summary: 'Obtener cliente completo (con relaciones)' })
   async getFull(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
@@ -128,8 +120,10 @@ export class ClientController {
     }
 
     const client = await this.clientService.getFull(id, tenantId);
+    const requesterUserId = this.getAuthenticatedUserId(req);
+    const canManageClients = this.hasPermission(req, PERMISSIONS.MANAGE_CLIENTS);
 
-    if (req.user.role !== 'ADMIN' && req.user.userId !== (client as any).userId) {
+    if (req.user.role !== 'ADMIN' && !canManageClients && requesterUserId !== (client as any).userId) {
       throw new ForbiddenException('No tienes permiso para ver este perfil');
     }
 
@@ -139,21 +133,19 @@ export class ClientController {
 
   @Get(':id')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS, PERMISSIONS.MANAGE_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiOperation({ summary: 'Obtener un cliente por ID', description: 'Obtiene los detalles de un cliente específico. Los usuarios solo pueden ver su propio perfil' })
-  @ApiParam({ name: 'id', description: 'ID único del cliente (UUID)', type: String })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Cliente encontrado' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Cliente no encontrado' })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
+  @ApiOperation({ summary: 'Obtener un cliente por ID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any
   ): Promise<Client> {
     const tenantId = req.user?.tenantId;
     const client = await this.clientService.findOne(id, tenantId);
+    const requesterUserId = this.getAuthenticatedUserId(req);
     
     // Si no es ADMIN y no es el dueño del perfil, denegar acceso
-    if (req.user.role !== 'ADMIN' && req.user.userId !== client.userId) {
+    if (req.user.role !== 'ADMIN' && requesterUserId !== client.userId) {
       throw new ForbiddenException('No tienes permiso para ver este perfil');
     }
     
@@ -162,14 +154,9 @@ export class ClientController {
 
   @Patch(':id')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiOperation({ summary: 'Actualizar un cliente', description: 'Actualiza los datos de un cliente existente. Los usuarios solo pueden actualizar su propio perfil' })
-  @ApiParam({ name: 'id', description: 'ID único del cliente (UUID)', type: String })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Cliente actualizado exitosamente' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Cliente no encontrado' })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
-  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Conflicto con datos únicos (email, RUC o DNI duplicado)' })
-  @ApiBody({ type: UpdateClientDto })
+  @ApiOperation({ summary: 'Actualizar un cliente' })
   async update(
     @Param('id', ParseUUIDPipe) id: string, 
     @Body() updateClientDto: UpdateClientDto,
@@ -179,7 +166,8 @@ export class ClientController {
     if (req.user.role !== 'ADMIN') {
       const tenantId = req.user?.tenantId;
       const client = await this.clientService.findOne(id, tenantId);
-      if (client.userId !== req.user.userId) {
+      const requesterUserId = this.getAuthenticatedUserId(req);
+      if (client.userId !== requesterUserId) {
         throw new ForbiddenException('Solo puedes actualizar tu propio perfil');
       }
     }
@@ -190,12 +178,9 @@ export class ClientController {
 
   @Delete(':id')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS, PERMISSIONS.MANAGE_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiOperation({ summary: 'Eliminar un cliente', description: 'Elimina un cliente del sistema. Solo para ADMIN' })
-  @ApiParam({ name: 'id', description: 'ID único del cliente (UUID)', type: String })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Cliente eliminado exitosamente' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Cliente no encontrado' })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
+  @ApiOperation({ summary: 'Eliminar un cliente' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any
@@ -204,13 +189,10 @@ export class ClientController {
   }
 
   @Patch(':id/soft-delete')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN,Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS, PERMISSIONS.MANAGE_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiOperation({ summary: 'Soft delete de cliente', description: 'Marca al cliente como eliminado estableciendo deletedAt. Solo para ADMIN.' })
-  @ApiParam({ name: 'id', description: 'ID único del cliente (UUID)', type: String })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Cliente marcado como eliminado' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Cliente no encontrado' })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
+  @ApiOperation({ summary: 'Soft delete de cliente' })
   async softDelete(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
@@ -221,11 +203,9 @@ export class ClientController {
 
   @Get('search')
   @Roles(Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiOperation({ summary: 'Buscar clientes', description: 'Busca clientes por nombre, email o teléfono. Solo para ADMIN' })
-  @ApiQuery({ name: 'query', required: true, description: 'Término de búsqueda' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Resultados de la búsqueda' })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No autorizado' })
+  @ApiOperation({ summary: 'Buscar clientes' })
   async search(@Query('query') query: string, @Request() req: any) {
     const tenantId = req.user?.tenantId;
     return this.clientService.search(query, tenantId);
@@ -233,72 +213,9 @@ export class ClientController {
 
   @Get('dni/:dni')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS, PERMISSIONS.MANAGE_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiOperation({ 
-    summary: 'Obtener cliente por DNI', 
-    description: 'Busca un cliente específico mediante su número de DNI. Disponible para usuarios ADMIN y USER. Ambos roles pueden ver cualquier cliente del sistema.' 
-  })
-  @ApiParam({ 
-    name: 'dni', 
-    description: 'Número de DNI del cliente a buscar', 
-    example: '76543210',
-    required: true 
-  })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
-    description: 'Cliente encontrado exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174001' },
-        name: { type: 'string', example: 'Juan Pérez' },
-        email: { type: 'string', example: 'juan.perez@email.com' },
-        phone: { type: 'string', example: '987654321' },
-        address: { type: 'string', example: 'Av. Principal 123' },
-        ruc: { type: 'string', example: '20123456789' },
-        dni: { type: 'string', example: '76543210' },
-        userId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
-        createdAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00Z' },
-        updatedAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00Z' }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: HttpStatus.NOT_FOUND, 
-    description: 'No se encontró ningún cliente con el DNI proporcionado',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 404 },
-        message: { type: 'string', example: 'No se encontró cliente con DNI 76543210' },
-        error: { type: 'string', example: 'Not Found' }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: HttpStatus.FORBIDDEN, 
-    description: 'No autorizado - Se requiere autenticación JWT',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 403 },
-        message: { type: 'string', example: 'No autorizado' },
-        error: { type: 'string', example: 'Forbidden' }
-      }
-    }
-  })
-  @ApiResponse({ 
-    status: HttpStatus.BAD_REQUEST, 
-    description: 'Formato de DNI inválido',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 400 },
-        message: { type: 'string', example: 'El DNI debe ser un número de 8 dígitos' },
-        error: { type: 'string', example: 'Bad Request' }
-      }
-    }
-  })
+  @ApiOperation({ summary: 'Obtener cliente por DNI' })
   async findByDni(
     @Param('dni') dni: string,
     @Request() req: any
