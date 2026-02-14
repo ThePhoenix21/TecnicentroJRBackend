@@ -1,6 +1,6 @@
 import { BasePaginationDto } from '../../common/dto/base-pagination.dto';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsOptional, IsBoolean } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsBoolean, IsUUID } from 'class-validator';
 import { ServiceStatus } from '@prisma/client';
 
 export class ListServicesDto extends BasePaginationDto {
@@ -23,4 +23,9 @@ export class ListServicesDto extends BasePaginationDto {
   @IsOptional()
   @IsDateString()
   toDate?: string;
+
+  @ApiPropertyOptional({ description: 'Tienda a consultar (requerido para usuarios con VIEW_ALL_SERVICES)', example: 'f1b7c2b8-7a75-4e85-8eab-a8535f2d9df0' })
+  @IsOptional()
+  @IsUUID()
+  storeId?: string;
 }

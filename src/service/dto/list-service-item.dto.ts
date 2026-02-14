@@ -1,8 +1,14 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ListServiceItemDto {
+  @ApiPropertyOptional({ example: '802144c0-f00b-4636-9298-4b29a5ea443e' })
+  clientId?: string | null;
+
   @ApiProperty({ example: 'Juan Perez' })
   clientName!: string;
+
+  @ApiPropertyOptional({ example: '40498a52-f6a1-48e3-819c-bdf4ab397ab6' })
+  serviceId?: string;
 
   @ApiProperty({ example: 'Servicio de mantenimiento' })
   serviceName!: string;

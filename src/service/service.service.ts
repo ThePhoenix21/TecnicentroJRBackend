@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -6,14 +6,18 @@ import { Service, ServiceStatus, ServiceType } from '@prisma/client';
 import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
 import { ListServicesDto } from './dto/list-services.dto';
 import { ListServicesResponseDto } from './dto/list-services-response.dto';
+import { ListServicesWithClientsDto, ServicesCashSessionScope } from './dto/list-services-with-clients.dto';
 import { ServiceLookupItemDto } from './dto/service-lookup-item.dto';
 import { ServiceDetailResponseDto } from './dto/service-detail-response.dto';
+import { PERMISSIONS } from '../auth/permissions';
 
 type AuthUser = {
   userId: string;
   email: string;
   role: string;
   tenantId?: string;
+  permissions?: string[];
+  stores?: string[];
 };
 
 @Injectable()
@@ -34,8 +38,41 @@ export class ServiceService {
     return tenantId;
   }
 
+  private hasPermission(user: AuthUser, permission: string): boolean {
+    return Array.isArray(user?.permissions) && user.permissions.includes(permission);
+  }
+
+  private hasViewAllServices(user: AuthUser): boolean {
+    if (user?.role === 'ADMIN') return true;
+    return this.hasPermission(user, PERMISSIONS.VIEW_ALL_SERVICES);
+  }
+
+  private getCurrentStoreId(user: AuthUser): string | undefined {
+    const tokenStores: string[] = Array.isArray(user?.stores) ? user.stores : [];
+    return tokenStores.length === 1 ? tokenStores[0] : undefined;
+  }
+
+  private resolveStoreScopeForServiceQueries(user: AuthUser, requestedStoreId?: string): {
+    canViewAll: boolean;
+    effectiveStoreId?: string;
+  } {
+    const canViewAll = this.hasViewAllServices(user);
+    const effectiveStoreId = requestedStoreId || this.getCurrentStoreId(user);
+
+    if (user.role !== 'ADMIN' && canViewAll && !effectiveStoreId) {
+      throw new BadRequestException('storeId es requerido para usuarios con VIEW_ALL_SERVICES');
+    }
+
+    if (user.role !== 'ADMIN' && effectiveStoreId && Array.isArray(user?.stores) && user.stores.length > 0 && !user.stores.includes(effectiveStoreId)) {
+      throw new ForbiddenException('No tienes permisos para acceder a servicios de esa tienda');
+    }
+
+    return { canViewAll, effectiveStoreId };
+  }
+
   async list(query: ListServicesDto, user: AuthUser): Promise<ListServicesResponseDto> {
     const tenantId = this.getTenantIdOrThrow(user);
+    const { canViewAll, effectiveStoreId } = this.resolveStoreScopeForServiceQueries(user, query.storeId);
     const { page, pageSize, skip } = getPaginationParams({
       page: query.page,
       pageSize: query.pageSize,
@@ -46,10 +83,12 @@ export class ServiceService {
 
     const where: any = {
       order: {
+        ...(!canViewAll ? { userId: user.userId } : {}),
         cashSession: {
+          ...(effectiveStoreId ? { StoreId: effectiveStoreId } : {}),
           Store: {
             tenantId,
-            ...(user.role !== 'ADMIN'
+            ...(canViewAll && user.role !== 'ADMIN'
               ? {
                   storeUsers: {
                     some: {
@@ -307,6 +346,8 @@ export class ServiceService {
 
   private async assertOrderAccess(orderId: string, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
+    const canViewAll = this.hasViewAllServices(user);
+    const currentStoreId = this.getCurrentStoreId(user);
 
     const order = await this.prisma.order.findFirst({
       where: {
@@ -319,6 +360,7 @@ export class ServiceService {
       },
       select: {
         id: true,
+        userId: true,
         cashSession: {
           select: {
             StoreId: true,
@@ -336,12 +378,27 @@ export class ServiceService {
       throw new ForbiddenException('No tienes permisos para acceder a esta orden');
     }
 
-    await this.assertStoreMembership(storeId, user);
+    if (user.role !== 'ADMIN') {
+      if (!canViewAll) {
+        if (order.userId !== user.userId) {
+          throw new ForbiddenException('No tienes permisos para acceder a esta orden');
+        }
+      } else if (currentStoreId) {
+        if (storeId !== currentStoreId) {
+          throw new ForbiddenException('No tienes permisos para acceder a servicios de otra tienda');
+        }
+      } else {
+        await this.assertStoreMembership(storeId, user);
+      }
+    }
+
     return { orderId: order.id, storeId };
   }
 
   private async assertServiceAccess(serviceId: string, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
+    const canViewAll = this.hasViewAllServices(user);
+    const currentStoreId = this.getCurrentStoreId(user);
 
     const service = await this.prisma.service.findFirst({
       where: {
@@ -359,6 +416,7 @@ export class ServiceService {
         orderId: true,
         order: {
           select: {
+            userId: true,
             cashSession: {
               select: {
                 StoreId: true,
@@ -378,7 +436,20 @@ export class ServiceService {
       throw new ForbiddenException('No tienes permisos para acceder a este servicio');
     }
 
-    await this.assertStoreMembership(storeId, user);
+    if (user.role !== 'ADMIN') {
+      if (!canViewAll) {
+        if (service.order?.userId !== user.userId) {
+          throw new ForbiddenException('No tienes permisos para acceder a este servicio');
+        }
+      } else if (currentStoreId) {
+        if (storeId !== currentStoreId) {
+          throw new ForbiddenException('No tienes permisos para acceder a servicios de otra tienda');
+        }
+      } else {
+        await this.assertStoreMembership(storeId, user);
+      }
+    }
+
     return service;
   }
 
@@ -404,6 +475,7 @@ export class ServiceService {
   async findAll(
     status?: ServiceStatus,
     type?: ServiceType,
+    storeId?: string,
     user?: AuthUser,
   ): Promise<Service[]> {
     if (!user) {
@@ -411,16 +483,19 @@ export class ServiceService {
     }
 
     const tenantId = this.getTenantIdOrThrow(user);
+    const { canViewAll, effectiveStoreId } = this.resolveStoreScopeForServiceQueries(user, storeId);
 
     return this.prisma.service.findMany({
       where: {
         ...(status && { status }),
         ...(type && { type }),
         order: {
+          ...(!canViewAll ? { userId: user.userId } : {}),
           cashSession: {
+            ...(effectiveStoreId ? { StoreId: effectiveStoreId } : {}),
             Store: {
               tenantId,
-              ...(user.role !== 'ADMIN'
+              ...(canViewAll && user.role !== 'ADMIN'
                 ? {
                     storeUsers: {
                       some: {
@@ -554,80 +629,104 @@ export class ServiceService {
   }
 
   async findAllWithClients(
-    status?: ServiceStatus,
-    type?: ServiceType,
-    storeId?: string,
-    clientName?: string,
-    serviceName?: string,
-    user?: AuthUser
-  ): Promise<any[]> {
+    query: ListServicesWithClientsDto,
+    user?: AuthUser,
+  ): Promise<ListServicesResponseDto> {
     if (!user) {
       throw new ForbiddenException('Usuario no autenticado');
     }
 
-    const tenantId = this.getTenantIdOrThrow(user);
+    const { page, pageSize, skip } = getPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
+    });
 
-    const services = await this.prisma.service.findMany({
-      where: {
-        ...(status && { status }),
-        ...(type && { type }),
-        ...(serviceName && serviceName.trim() && {
-          name: { contains: serviceName.trim(), mode: 'insensitive' },
+    const tenantId = this.getTenantIdOrThrow(user);
+    const { canViewAll, effectiveStoreId } = this.resolveStoreScopeForServiceQueries(user, query.storeId);
+
+    const where: any = {
+      ...(query.status && { status: query.status }),
+      ...(query.type && { type: query.type }),
+      ...(query.fromDate || query.toDate
+        ? {
+            createdAt: {
+              ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+              ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+            },
+          }
+        : {}),
+      ...(query.serviceName && query.serviceName.trim() && {
+        name: { contains: query.serviceName.trim(), mode: 'insensitive' },
+      }),
+      order: {
+        ...(!canViewAll ? { userId: user.userId } : {}),
+        ...(query.clientName && query.clientName.trim() && {
+          client: {
+            name: { contains: query.clientName.trim(), mode: 'insensitive' },
+          },
         }),
-        order: {
-          ...(clientName && clientName.trim() && {
-            client: {
-              name: { contains: clientName.trim(), mode: 'insensitive' },
-            },
-          }),
-          cashSession: {
-            ...(storeId ? { StoreId: storeId } : {}),
-            Store: {
-              tenantId,
-              ...(user.role !== 'ADMIN'
-                ? {
-                    storeUsers: {
-                      some: {
-                        userId: user.userId,
-                      },
+        cashSession: {
+          ...(effectiveStoreId ? { StoreId: effectiveStoreId } : {}),
+          ...(query.cashSessionScope === ServicesCashSessionScope.CURRENT ? { status: 'OPEN' } : {}),
+          Store: {
+            tenantId,
+            ...(canViewAll && user.role !== 'ADMIN'
+              ? {
+                  storeUsers: {
+                    some: {
+                      userId: user.userId,
                     },
-                  }
-                : {}),
-            },
+                  },
+                }
+              : {}),
           },
         },
       },
-      include: {
-        order: {
-          include: {
-            client: true,
-            paymentMethods: true,
-            cashSession: {
-              include: {
-                Store: true
-              }
-            }
-          }
-        },
-      },
-    });
+    };
 
-    // Formatear la respuesta para incluir cliente, tienda y orden
-    return services.map((service: any) => ({
-      ...service,
-      hasPendingPayment: (service.price || 0) - ((service.order?.paymentMethods || []).reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0)) > 0,
-      client: service.order?.client || null,
-      store: service.order?.cashSession?.Store || null,
-      cashSession: service.order?.cashSession || null,
-      order: service.order ? {
-        id: service.order.id,
-        clientId: service.order.clientId,
-        cashSessionsId: service.order.cashSessionsId,
-        storeId: service.order.cashSession?.StoreId,
-        totalAmount: service.order.totalAmount,
-        status: service.order.status,
-        createdAt: service.order.createdAt
-      } : null
-    }));
+    const [total, services] = await Promise.all([
+      this.prisma.service.count({ where }),
+      this.prisma.service.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          price: true,
+          createdAt: true,
+          order: {
+            select: {
+              client: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    return buildPaginatedResponse(
+      services.map((service: any) => ({
+        clientId: service.order?.client?.id ?? null,
+        clientName: service.order?.client?.name ?? '',
+        serviceId: service.id,
+        serviceName: service.name,
+        status: service.status,
+        price: this.toNumber(service.price),
+        createdAt: service.createdAt,
+      })),
+      total,
+      page,
+      pageSize,
+    );
   }
 }

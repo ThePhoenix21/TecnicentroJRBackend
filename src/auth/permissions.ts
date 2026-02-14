@@ -22,6 +22,7 @@ export const PERMISSIONS = {
 
   // servicios
   VIEW_SERVICES: 'VIEW_SERVICES',
+  VIEW_ALL_SERVICES: 'VIEW_ALL_SERVICES',
   MANAGE_SERVICES: 'MANAGE_SERVICES',
 
   // productos

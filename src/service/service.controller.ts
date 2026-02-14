@@ -14,6 +14,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ForbiddenException,
   Req
 } from '@nestjs/common';
 import { ApiOperation } from '@nestjs/swagger';
@@ -24,6 +25,7 @@ import { UpdateServiceDto } from './dto/update-service.dto';
 import { Service } from './entities/service.entity';
 import { ListServicesDto } from './dto/list-services.dto';
 import { ListServicesResponseDto } from './dto/list-services-response.dto';
+import { ListServicesWithClientsDto } from './dto/list-services-with-clients.dto';
 import { ServiceLookupItemDto } from './dto/service-lookup-item.dto';
 import { ServiceDetailResponseDto } from './dto/service-detail-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -48,6 +50,11 @@ export class ServiceController {
     private readonly supabaseStorage: SupabaseStorageService
   ) {}
 
+  private hasPermission(user: any, permission: string): boolean {
+    if (!user?.permissions) return false;
+    return user.permissions.includes(permission);
+  }
+
   @Get()
   @HttpCode(HttpStatus.OK)
   @Roles(Role.ADMIN, Role.USER)
@@ -60,7 +67,6 @@ export class ServiceController {
   @Get('lookup')
   @HttpCode(HttpStatus.OK)
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   @ApiOperation({ summary: 'Lookup de servicios (id y value)' })
   async lookup(@Req() req: any): Promise<ServiceLookupItemDto[]> {
     return this.serviceService.lookup(req.user);
@@ -83,7 +89,7 @@ export class ServiceController {
   }))
   @ApiOperation({ summary: 'Crear un nuevo servicio' })
   @HttpCode(HttpStatus.CREATED)
-  @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async create(
     @Body() createServiceDto: CreateServiceDto,
     @Req() req: any,
@@ -114,8 +120,9 @@ export class ServiceController {
     @Req() req: any,
     @Query('status') status?: ServiceStatus,
     @Query('type') type?: ServiceType,
+    @Query('storeId') storeId?: string,
   ): Promise<Service[]> {
-    return this.serviceService.findAll(status, type, req.user);
+    return this.serviceService.findAll(status, type, storeId, req.user);
   }
 
   @Get('findOne/:id')
@@ -129,7 +136,7 @@ export class ServiceController {
   @Patch('update/:id')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ summary: 'Actualizar un servicio' })
-  @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async update(
     @Param('id', ParseUUIDPipe) id: string, 
     @Body() updateServiceDto: UpdateServiceDto,
@@ -141,7 +148,7 @@ export class ServiceController {
   @Patch('status/:id')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ summary: 'Cambiar estado de un servicio' })
-  @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async updateStatus(
     @Param('id', ParseUUIDPipe) id: string, 
     @Body() updateStatusDto: { status: 'IN_PROGRESS' | 'COMPLETED' | 'DELIVERED' | 'PAID' | 'ANNULLATED' },
@@ -154,7 +161,7 @@ export class ServiceController {
   @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar un servicio' })
-  @RequirePermissions(PERMISSIONS.MANAGE_SERVICES)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: any): Promise<void> {
     return this.serviceService.remove(id, req.user);
   }
@@ -170,16 +177,21 @@ export class ServiceController {
   @Get('findAllWithClients')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ summary: 'Obtener servicios con información de clientes' })
-  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   async findAllWithClients(
     @Req() req: any,
-    @Query('status') status?: ServiceStatus,
-    @Query('type') type?: ServiceType,
-    @Query('storeId') storeId?: string,
-    @Query('clientName') clientName?: string,
-    @Query('serviceName') serviceName?: string,
-  ): Promise<any[]> {
-    return this.serviceService.findAllWithClients(status, type, storeId, clientName, serviceName, req.user);
+    @Query() query: ListServicesWithClientsDto,
+  ): Promise<ListServicesResponseDto> {
+    const user = req.user;
+    if (user?.role !== Role.ADMIN) {
+      const hasViewOwn = this.hasPermission(user, PERMISSIONS.VIEW_SERVICES);
+      const hasViewAll = this.hasPermission(user, PERMISSIONS.VIEW_ALL_SERVICES);
+
+      if (!hasViewOwn && !hasViewAll) {
+        throw new ForbiddenException('No tienes permisos para ver servicios');
+      }
+    }
+
+    return this.serviceService.findAllWithClients(query, req.user);
   }
 
   @Get(':id')
