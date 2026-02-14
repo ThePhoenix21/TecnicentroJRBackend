@@ -18,6 +18,7 @@ import {
 import { Request } from 'express';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { OrderService } from './order.service';
+import { BasePaginationDto } from '../common/dto/base-pagination.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompleteOrderDto } from './dto/complete-order.dto';
 import { plainToInstance } from 'class-transformer';
@@ -462,13 +463,14 @@ export class OrderController {
   @Roles(Role.USER, Role.ADMIN)
   async getOrdersByStore(
     @Param('storeId') storeId: string,
+    @Query() query: BasePaginationDto & { currentCash?: boolean },
     @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }
   ) {
     // Los ADMIN no necesitan permisos de historial
     if (req.user.role !== 'ADMIN' && !this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY)) {
       throw new ForbiddenException('No tienes permisos para ver el historial de órdenes de una tienda');
     }
-    return this.orderService.findByStore(storeId, req.user as any);
+    return this.orderService.findByStore(storeId, req.user as any, query);
   }
 
   @Get(':id')

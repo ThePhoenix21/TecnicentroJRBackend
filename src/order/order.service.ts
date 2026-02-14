@@ -11,6 +11,7 @@ import { CashMovementService } from '../cash-movement/cash-movement.service';
 import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
 import { ListOrdersDto } from './dto/list-orders.dto';
 import { ListOrdersResponseDto } from './dto/list-orders-response.dto';
+import { BasePaginationDto } from '../common/dto/base-pagination.dto';
 
 type AuthUser = {
   userId: string;
@@ -1076,8 +1077,44 @@ export class OrderService {
     }) as unknown as Promise<Order[]>;
   }
 
-  async findByStore(storeId: string, user: AuthUser): Promise<Order[]> {
+  async findByStore(storeId: string, user: AuthUser, pagination?: BasePaginationDto & { 
+  currentCash?: boolean;
+  clientName?: string;
+  sellerName?: string;
+  orderNumber?: string;
+  status?: string;
+}): Promise<any> {
     await this.assertStoreAccess(storeId, user);
+
+    let cashSessionsId: string | undefined;
+    if (pagination?.currentCash) {
+      const store = await this.assertStoreAccess(storeId, user);
+
+      // Si se especifica userId, buscar sesión de ese usuario específico
+      const sessionWhere: any = {
+        StoreId: store.id,
+        status: SessionStatus.OPEN,
+      };
+
+      // Si se proporciona userId en query, buscar sesión de ese usuario
+      const queryUserId = (pagination as any)?.userId as string | undefined;
+      if (queryUserId) {
+        sessionWhere.UserId = queryUserId;
+      } else {
+        // Si no, buscar sesión del usuario autenticado
+        sessionWhere.UserId = user.userId;
+      }
+
+      const session = await this.prisma.cashSession.findFirst({
+        where: sessionWhere,
+        select: { id: true },
+      });
+
+      if (!session) {
+        throw new NotFoundException('No hay una sesión de caja abierta para la tienda indicada');
+      }
+      cashSessionsId = session.id;
+    }
 
     // Construir el where base
     const baseWhere = {
@@ -1094,8 +1131,110 @@ export class OrderService {
           userId: user.userId
         };
 
+    // Aplicar filtro de cashSession si es necesario
+    let finalWhere: any = cashSessionsId 
+      ? { ...whereClause, cashSessionsId }
+      : whereClause;
+
+    // Agregar filtros dinámicos
+    if (pagination?.clientName) {
+      finalWhere.client = {
+        name: {
+          contains: pagination.clientName,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (pagination?.sellerName) {
+      finalWhere.user = {
+        name: {
+          contains: pagination.sellerName,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (pagination?.orderNumber) {
+      finalWhere.orderNumber = {
+        contains: pagination.orderNumber,
+        mode: 'insensitive',
+      };
+    }
+
+    if (pagination?.status) {
+      finalWhere.status = pagination.status;
+    }
+
+    // Si se proporciona paginación, usarla
+    if (pagination) {
+      const { page, pageSize, skip } = getPaginationParams({
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        defaultPage: 1,
+        defaultPageSize: 12,
+        maxPageSize: 100,
+      });
+
+      const [total, orders] = await Promise.all([
+        this.prisma.order.count({ where: finalWhere }),
+        this.prisma.order.findMany({
+          where: finalWhere,
+          select: {
+            id: true,
+            totalAmount: true,
+            createdAt: true,
+            status: true,
+            client: {
+              select: {
+                name: true,
+              },
+            },
+            user: {
+              select: {
+                name: true,
+              },
+            },
+            orderProducts: {
+              select: {
+                quantity: true,
+                price: true,
+                product: {
+                  select: {
+                    product: {
+                      select: { name: true },
+                    },
+                  },
+                },
+              },
+            },
+            services: {
+              select: {
+                name: true,
+                price: true,
+                status: true,
+              },
+            },
+            paymentMethods: {
+              select: {
+                type: true,
+                amount: true,
+                createdAt: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: pageSize,
+        }),
+      ]);
+
+      return buildPaginatedResponse(orders, total, page, pageSize);
+    }
+
+    // Si no hay paginación, comportamiento original
     return this.prisma.order.findMany({
-      where: whereClause,
+      where: finalWhere,
       select: {
         id: true,
         totalAmount: true,
