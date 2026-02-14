@@ -14,8 +14,6 @@ import {
   ParseUUIDPipe,
   Query,
   ValidationPipe,
-  ForbiddenException,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -45,8 +43,8 @@ export class SupplyOrderController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SUPPLY_ORDERS)
   @ApiOperation({ summary: 'Listar órdenes de suministro' })
   @ApiOkResponse({ type: ListSupplyOrdersResponseDto })
   async list(@Req() req: any, @Query() query: ListSupplyOrdersDto): Promise<ListSupplyOrdersResponseDto> {
@@ -55,8 +53,7 @@ export class SupplyOrderController {
 
   @Get('lookup')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ summary: 'Lookup de órdenes de suministro (id y código)' })
   @RateLimit({
     keyType: 'user',
@@ -68,8 +65,8 @@ export class SupplyOrderController {
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SUPPLY_ORDERS)
   @ApiOperation({ summary: 'Obtener orden de suministro por ID' })
   async findOne(@Param('id') id: string, @Req() req: any) {
     return this.supplyOrderService.findOne(id, req.user);
@@ -77,8 +74,8 @@ export class SupplyOrderController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.CREATE_SUPPLY_ORDER)
   @ApiOperation({ summary: 'Crear orden de suministro' })
   @ApiBody({ type: CreateSupplyOrderDto })
   @RateLimit({
@@ -101,8 +98,8 @@ export class SupplyOrderController {
 
   @Post(':id/receive')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.RECEIVE_SUPPLY_ORDER)
   @ApiOperation({ summary: 'Registrar recepción de orden de suministro' })
   @ApiBody({ type: ReceiveSupplyOrderDto })
   @RateLimit({
@@ -126,8 +123,8 @@ export class SupplyOrderController {
 
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.APPROVE_SUPPLY_ORDER)
   @ApiOperation({ summary: 'Aprobar orden de suministro' })
   @RateLimit({
     keyType: 'user',
@@ -139,8 +136,8 @@ export class SupplyOrderController {
 
   @Post(':id/annull')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.CANCEL_SUPPLY_ORDER)
   @ApiOperation({ summary: 'Anular orden de suministro' })
   @RateLimit({
     keyType: 'user',
@@ -152,8 +149,8 @@ export class SupplyOrderController {
 
   @Post(':id/approve-with-email')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.APPROVE_SUPPLY_ORDER)
   @ApiOperation({ summary: 'Aprobar orden de suministro y enviar email' })
   @RateLimit({
     keyType: 'user',
@@ -165,8 +162,8 @@ export class SupplyOrderController {
 
   @Put(':id')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.MANAGE_INVENTORY)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.EDIT_EMITTED_SUPPLY_ORDER)
   @ApiOperation({ summary: 'Actualizar orden de suministro' })
   @RateLimit({
     keyType: 'user',
