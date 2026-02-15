@@ -57,8 +57,7 @@ export class StoreController {
   }
 
   @Get('simple')
-  @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.VIEW_STORES)
+  @Roles(Role.ADMIN, Role.USER)  
   @ApiOperation({ summary: 'Listar tiendas con información básica' })
   findAllSimple(@Req() req: any) {
     const tenantId = req.user?.tenantId;
