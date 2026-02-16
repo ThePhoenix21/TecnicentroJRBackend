@@ -1123,13 +1123,24 @@ export class OrderService {
       }
     };
 
-    // Si no es ADMIN, filtrar por userId del usuario autenticado
-    const whereClause = user.role === 'ADMIN' 
-      ? baseWhere
-      : {
+    // Si no es ADMIN, verificar si se debe filtrar por userId
+    let whereClause: any;
+    if (user.role === 'ADMIN') {
+      whereClause = baseWhere;
+    } else {
+      // Verificar si el controller envió un userId específico
+      const queryUserId = (pagination as any)?.userId as string | undefined;
+      if (queryUserId) {
+        // Si el controller envió userId, usar ese (para filtrar por órdenes propias)
+        whereClause = {
           ...baseWhere,
-          userId: user.userId
+          userId: queryUserId
         };
+      } else {
+        // Si no, no filtrar por userId (para VIEW_ALL_ORDERS_HISTORY)
+        whereClause = baseWhere;
+      }
+    }
 
     // Aplicar filtro de cashSession si es necesario
     let finalWhere: any = cashSessionsId 

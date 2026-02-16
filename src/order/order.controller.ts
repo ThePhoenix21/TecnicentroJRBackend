@@ -434,10 +434,33 @@ export class OrderController {
     @Query() query: BasePaginationDto & { currentCash?: boolean },
     @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }
   ) {
-    // Los ADMIN no necesitan permisos de historial
-    if (req.user.role !== 'ADMIN' && !this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY)) {
-      throw new ForbiddenException('No tienes permisos para ver el historial de órdenes de una tienda');
+    // Validar permisos de historial de órdenes
+    if (req.user.role !== 'ADMIN') {
+      const hasAllOrdersHistory = this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY);
+      const hasOwnOrdersHistory = this.hasPermission(req.user, PERMISSIONS.VIEW_OWN_ORDERS_HISTORY);
+      
+      if (!hasAllOrdersHistory && !hasOwnOrdersHistory) {
+        throw new ForbiddenException('No tienes permisos para ver el historial de órdenes de una tienda');
+      }
+      
+      // Lógica corregida según requerimientos
+      const isCurrentCash = query.currentCash === true || String(query.currentCash) === 'true';
+      
+      if (isCurrentCash) {
+        // Si currentCash=true → siempre filtrar por userId (correcto)
+        (query as any).userId = req.user.userId;
+      } else {
+        // Si currentCash=false o no se envía
+        if (hasAllOrdersHistory) {
+          // Si tiene VIEW_ALL_ORDERS_HISTORY → NO filtrar por userId
+          // No hacer nada, query.userId queda undefined
+        } else if (hasOwnOrdersHistory) {
+          // Si solo tiene VIEW_OWN_ORDERS_HISTORY → SÍ filtrar por userId
+          (query as any).userId = req.user.userId;
+        }
+      }
     }
+    
     return this.orderService.findByStore(storeId, req.user as any, query);
   }
 
