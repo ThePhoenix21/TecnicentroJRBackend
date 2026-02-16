@@ -372,14 +372,10 @@ export class EmployedService {
     try {
       const uploads = await Promise.all(
         files.map(async (file) => {
-          const ext = String(file.originalname).split('.').pop() || 'bin';
-          const stamp = Date.now();
-          const base = safeSlug(String(file.originalname).replace(/\.[^/.]+$/, ''));
-          const fileName = `${stamp}-${base}.${ext}`;
-          const uploaded = await this.supabaseStorage.uploadEmployeeDocument(file as any, employedId, fileName);
-          uploadedPaths.push(uploaded.path);
+          const uploaded = await this.supabaseStorage.uploadFile(file, `employed/${employedId}`);
+          uploadedPaths.push(uploaded.url);
           return {
-            path: uploaded.path,
+            url: uploaded.url,
             originalName: file.originalname,
             mimeType: file.mimetype,
             size: file.size ?? file.buffer.length,
@@ -390,7 +386,7 @@ export class EmployedService {
       await this.prisma.employeeDocument.createMany({
         data: uploads.map((u) => ({
           employedId,
-          url: u.path,
+          url: u.url,
           originalName: u.originalName,
           mimeType: u.mimeType,
           size: u.size,

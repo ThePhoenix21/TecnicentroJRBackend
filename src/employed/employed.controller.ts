@@ -118,7 +118,7 @@ export class EmployedController {
   }
 
   @Post()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
@@ -200,7 +200,7 @@ export class EmployedController {
   }
 
   @Post('bulk/status')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
@@ -259,7 +259,7 @@ export class EmployedController {
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
@@ -284,7 +284,7 @@ export class EmployedController {
   }
 
   @Post(':id/recreate')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
@@ -312,7 +312,7 @@ export class EmployedController {
   }
 
   @Post(':id/documents')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
@@ -344,7 +344,7 @@ export class EmployedController {
   }
 
   @Post(':id/terminate')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
@@ -370,7 +370,7 @@ export class EmployedController {
   }
 
   @Post(':id/suspend')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
@@ -387,7 +387,7 @@ export class EmployedController {
   }
 
   @Post(':id/activate')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
@@ -413,7 +413,7 @@ export class EmployedController {
   }
 
   @Post(':id/reassign')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
