@@ -179,7 +179,6 @@ export class StoreProductController {
 
   @Get('store/:storeId/simple')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS)
   @ApiOperation({ summary: 'Listar productos simples por tienda' })
   async findByStoreSimple(
     @Req() req: any,

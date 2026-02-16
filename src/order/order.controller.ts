@@ -16,7 +16,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { BasePaginationDto } from '../common/dto/base-pagination.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -29,7 +29,6 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
-import { OrderCreateResponseDto } from './dto/order-create-response.dto';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
 import { AuthService } from '../auth/auth.service';
@@ -41,11 +40,8 @@ import { OrderNumberLookupDto } from './dto/order-number-lookup.dto';
 import { SaleStatus } from '@prisma/client';
 import { PayOrderPaymentsDto } from './dto/pay-order-payments.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
-import { OrderPaymentMethodsResponseDto } from './dto/order-payment-methods-response.dto';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
-@ApiTags('Órdenes')
-@ApiBearerAuth('JWT-auth')
 @RequireTenantFeatures(TenantFeature.SALES)
 @Controller('orders')
 @UseGuards(RolesGuard)
@@ -61,11 +57,7 @@ export class OrderController {
   @Roles(Role.ADMIN)
   @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
   @RequireTenantFeatures(TenantFeature.SALES, TenantFeature.HARD_DELETE_SALES_HISTORY)
-  @ApiOperation({
-    summary: 'Hard delete de órdenes por rango de fechas (irreversible)',
-    description: 'Elimina físicamente órdenes y entidades relacionadas dentro del rango indicado, solo si el tenant tiene habilitada la feature HARD_DELETE_SALES_HISTORY. Requiere re-autenticación (email y password) y ejecuta auditoría mínima no borrable.'
-  })
-  @ApiBody({ type: HardDeleteOrdersByDateRangeDto })
+  @ApiOperation({ summary: 'Hard delete de órdenes por rango de fechas (irreversible)' })
   async hardDeleteOrdersByDateRange(
     @Req() req: Request & { user: { userId: string; email: string; role: Role; tenantId?: string } },
     @Body(new ValidationPipe({
@@ -106,55 +98,7 @@ export class OrderController {
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
   @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
-  @ApiOperation({
-    summary: 'Crear una orden',
-    description: 'Crea una orden con productos y/o servicios. Los pagos se registran a nivel de orden en paymentMethods. Los campos legacy products[].payments y services[].payments, si se envían, serán ignorados. Regla especial: si la orden contiene SOLO servicios (sin products) y el tenant tiene la feature FASTSERVICE habilitada (presente en el JWT como tenantFeatures), entonces se exige pago total: la suma de paymentMethods.amount debe ser igual a la suma de services.price y los servicios/la orden se crean como COMPLETED.'
-  })
-  @ApiBody({
-    type: CreateOrderDto,
-    examples: {
-      ejemploConProductoYServicio: {
-        summary: 'Orden con 1 producto y 1 servicio',
-        value: {
-          clientInfo: {
-            name: 'Juan Pérez',
-            email: 'juan@email.com',
-            phone: '987654321',
-            address: 'Av. Principal 123',
-            dni: '12345678',
-            ruc: '20123456789'
-          },
-          products: [
-            {
-              productId: '1c5e23f3-253b-4cc3-a902-0efc86ad2766',
-              quantity: 1,
-              price: 20
-            }
-          ],
-          services: [
-            {
-              name: 'Cambio de aceite',
-              description: 'Servicio de mantenimiento',
-              price: 50,
-              type: 'MISELANEOUS'
-            }
-          ],
-          paymentMethods: [
-            {
-              type: 'EFECTIVO',
-              amount: 70
-            }
-          ],
-          cashSessionId: '33403c01-fb0f-4d17-b6f6-2990df45551f'
-        }
-      }
-    }
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Orden creada exitosamente',
-    type: OrderCreateResponseDto,
-  })
+  @ApiOperation({ summary: 'Crear una orden' })
   async create(
     @Req() req: Request & { user: { userId: string; email: string; role: Role } },
     @Body(new ValidationPipe({ 
@@ -200,6 +144,7 @@ export class OrderController {
   @Get('details/:id')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.DETAIL_ORDERS)
   async getOrderDetails(
     @Param('id') id: string,
     @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }
@@ -216,13 +161,13 @@ export class OrderController {
   @Get(':id/payment-methods')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.DETAIL_ORDERS)
   @RateLimit({ keyType: 'user', rules: [{ limit: 60, windowSeconds: 60 }] })
   @ApiOperation({ summary: 'Obtener métodos de pago de una orden' })
-  @ApiResponse({ status: 200, type: OrderPaymentMethodsResponseDto })
   async getOrderPaymentMethods(
     @Param('id') id: string,
     @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } },
-  ): Promise<OrderPaymentMethodsResponseDto> {
+  ) {
     const order = await this.orderService.findOne(id, req.user as any);
     this.assertOrderHistoryAccess(order, req.user);
 
@@ -387,6 +332,7 @@ export class OrderController {
   @Get('me')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async findMe(@Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }) {
     const userId = req.user?.userId;
     
@@ -406,11 +352,19 @@ export class OrderController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   @ApiOperation({ summary: 'Listado paginado de órdenes (filtros combinables)' })
   async list(@Req() req: Request & { user: any }, @Query() query: ListOrdersDto): Promise<ListOrdersResponseDto> {
+    const canSeeOrderDetails =
+      req.user.role === 'ADMIN' || this.hasPermission(req.user, PERMISSIONS.DETAIL_ORDERS);
+
     // Los ADMIN no necesitan permisos de historial
     if (req.user.role !== 'ADMIN') {
       this.assertHasAnyHistoryPermissionOrThrow(req.user);
+    }
+
+    if (!canSeeOrderDetails) {
+      (query as any).sellerName = undefined;
     }
 
     // Si no es ADMIN y no tiene VIEW_ALL_ORDERS_HISTORY, filtrar solo sus órdenes
@@ -418,7 +372,19 @@ export class OrderController {
       (query as any).userId = req.user.userId;
     }
 
-    return this.orderService.list(query, req.user as any);
+    const response = await this.orderService.list(query, req.user as any);
+
+    if (canSeeOrderDetails) {
+      return response;
+    }
+
+    return {
+      ...response,
+      data: response.data.map((item: any) => {
+        const { sellerName, ...rest } = item;
+        return rest;
+      }),
+    } as ListOrdersResponseDto;
   }
 
   @Get('lookup-order-numbers')
@@ -445,6 +411,7 @@ export class OrderController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getOrders(@Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }) {
     // Los ADMIN no necesitan permisos de historial
     if (req.user.role !== 'ADMIN') {
@@ -461,6 +428,7 @@ export class OrderController {
   @Get('store/:storeId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getOrdersByStore(
     @Param('storeId') storeId: string,
     @Query() query: BasePaginationDto & { currentCash?: boolean },
@@ -476,6 +444,7 @@ export class OrderController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.DETAIL_ORDERS)
   async getOrderById(
     @Param('id') id: string,
     @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }
@@ -494,6 +463,7 @@ export class OrderController {
   @Get('user/:userId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   async getUserOrders(
     @Param('userId') userId: string,
     @Req() req: Request & { user: { userId: string; email: string; role: Role; permissions?: string[] } }

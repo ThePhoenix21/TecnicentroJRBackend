@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentType, SaleStatus } from '@prisma/client';
 
 export class OrderListPaymentMethodDto {
@@ -38,8 +38,8 @@ export class ListOrderItemDto {
   @ApiProperty({ example: 'Juan Pérez' })
   clientName!: string;
 
-  @ApiProperty({ example: 'Pedro Vendedor' })
-  sellerName!: string;
+  @ApiPropertyOptional({ example: 'Pedro Vendedor' })
+  sellerName?: string;
 
   @ApiProperty({ example: 333 })
   total!: number;
