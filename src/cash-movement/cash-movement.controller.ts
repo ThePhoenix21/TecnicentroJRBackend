@@ -48,61 +48,32 @@ export class CashMovementController {
   }
 
   @Get('session/:sessionId')
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_CASH)
   @ApiOperation({ summary: 'Listar movimientos por sesión' })
   async findBySession(
     @Param('sessionId') sessionId: string,
     @Query() query: ListCashMovementsDto,
     @Req() req: any
   ): Promise<ListCashMovementsResponseDto> {
-    console.log('=== DEBUG: findBySession llamado ===');
-    console.log('DEBUG: SessionId:', sessionId);
-    console.log('DEBUG: User exists:', !!req.user);
-    console.log('DEBUG: User permissions:', req.user?.permissions);
-    console.log('DEBUG: User role:', req.user?.role);
+    // Validar que el usuario tenga al menos uno de los permisos requeridos
+    const hasViewCash = this.hasPermission(req.user, PERMISSIONS.VIEW_CASH);
+    const hasOwnHistory = this.hasPermission(req.user, PERMISSIONS.VIEW_OWN_CASH_HISTORY);
+    const hasAllHistory = this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_CASH_HISTORY);
     
-    // Temporal: permitir acceso sin autenticación para depuración
-    if (!req.user) {
-      console.log('DEBUG: Sin usuario, retornando respuesta dummy');
-      return {
-        data: [],
-        total: 0,
-        totalPages: 0,
-        page: 1,
-        pageSize: 50,
-      };
+    if (!hasViewCash && !hasOwnHistory && !hasAllHistory) {
+      throw new ForbiddenException('No tienes permisos para ver movimientos de caja');
     }
     
-    // Validar que el usuario tenga rol permitido
-    if (!req.user || (req.user.role !== Role.USER && req.user.role !== Role.ADMIN)) {
-      throw new ForbiddenException('Rol no permitido para esta operación');
-    }
-    
-    // Validar permisos de historial de caja
-    if (req.user.role !== Role.ADMIN) {
-      const hasAllHistory = this.hasPermission(req.user, PERMISSIONS.VIEW_ALL_CASH_HISTORY);
-      const hasOwnHistory = this.hasPermission(req.user, PERMISSIONS.VIEW_OWN_CASH_HISTORY);
-      
-      console.log('DEBUG: hasAllHistory:', hasAllHistory);
-      console.log('DEBUG: hasOwnHistory:', hasOwnHistory);
-      
-      if (!hasAllHistory && !hasOwnHistory) {
-        console.log('DEBUG: No tiene permisos de historial');
-        throw new ForbiddenException('No tienes permisos para ver historial de movimientos');
-      }
-      
-      // Si solo tiene VIEW_OWN_CASH_HISTORY, validar que la sesión pertenezca al usuario
-      if (!hasAllHistory && hasOwnHistory) {
-        console.log('DEBUG: Validando ownership para VIEW_OWN_CASH_HISTORY');
-        const session = await this.cashMovementService.getSessionOwner(sessionId);
-        console.log('DEBUG: Session owner:', session.UserId);
-        console.log('DEBUG: User ID:', req.user.userId);
-        if (session.UserId !== req.user.userId) {
-          throw new ForbiddenException('No puedes ver movimientos de otro usuario');
-        }
+    // Si solo tiene permiso para ver su propio historial, validar que la sesión sea suya
+    if (!hasViewCash && !hasAllHistory && hasOwnHistory) {
+      const session = await this.cashMovementService.getSessionOwner(sessionId);
+      if (session.UserId !== req.user.userId) {
+        throw new ForbiddenException('Solo puedes ver tus propias sesiones de caja');
       }
     }
     
-    console.log('DEBUG: Pasó todas las validaciones, llamando al servicio');
     return this.cashMovementService.findBySession(sessionId, query, req.user);
   }
 
