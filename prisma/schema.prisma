@@ -240,7 +240,7 @@ model Order {
 
 model Service {
   id                            String        @id @default(uuid())
-  type                          ServiceType   @default(REPAIR)
+  type                          ServiceType   @default(MISELANEOUS)
   status                        ServiceStatus @default(IN_PROGRESS)
   name                          String
   description                   String
@@ -505,7 +505,7 @@ model Tenant {
   status         TenantStatus    @default(ACTIVE)
   plan           TenantPlan      @default(FREE)
   features       TenantFeature[]
-  defaultService ServiceType?    @default(REPAIR)
+  defaultService ServiceType?    @default(MISELANEOUS)
   currency       CurrencyCode?   @default(PEN)
   createdAt      DateTime        @default(now())
 

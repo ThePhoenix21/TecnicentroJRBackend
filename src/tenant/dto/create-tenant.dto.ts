@@ -42,7 +42,7 @@ export class CreateTenantDto {
   @ApiPropertyOptional({
     enum: ServiceType,
     description: 'Tipo de servicio por defecto del tenant',
-    example: ServiceType.REPAIR,
+    example: ServiceType.MISELANEOUS,
   })
   @IsOptional()
   @IsEnum(ServiceType)

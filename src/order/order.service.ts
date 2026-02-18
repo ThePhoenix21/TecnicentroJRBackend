@@ -50,19 +50,8 @@ export class OrderService {
   }
 
   private normalizeServiceType(type: unknown): PrismaServiceType {
-    if (type === 'OTHER') {
-      return PrismaServiceType.MISELANEOUS;
-    }
-
-    if (
-      type === PrismaServiceType.REPAIR ||
-      type === PrismaServiceType.MISELANEOUS ||
-      type === PrismaServiceType.WARRANTY
-    ) {
-      return type as PrismaServiceType;
-    }
-
-    throw new BadRequestException(`Tipo de servicio inválido: ${String(type)}`);
+    // Siempre forzar MISELANEOUS independientemente de lo que se envíe
+    return PrismaServiceType.MISELANEOUS;
   }
 
   private async assertStoreAccess(storeId: string, user: AuthUser) {

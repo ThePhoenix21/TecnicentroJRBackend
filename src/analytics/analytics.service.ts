@@ -397,7 +397,12 @@ export class AnalyticsService {
     for (const o of orders) {
       if (hasServices) {
         const services = (o.services as any[]) || [];
-        const servicesTotal = services.reduce((sum, s) => sum + (s.price || 0), 0);
+        
+        const servicesTotal = services.reduce((sum, s) => {
+          const price = Number(s.price) || 0;
+          return sum + price;
+        }, 0);
+        
         incomeServices += servicesTotal;
 
         const current = servicesByUser.get(o.userId) || { count: 0, total: 0 };
@@ -529,11 +534,16 @@ export class AnalyticsService {
           .slice(0, 10)
       : [];
 
+    // Validación final para evitar valores extremadamente grandes
+    const maxReasonableValue = 10000000000; // 10 billones como máximo razonable
+    const validatedIncomeServices = incomeServices > maxReasonableValue ? 0 : Number(incomeServices);
+    const validatedIncomeProducts = incomeProducts > maxReasonableValue ? 0 : Number(incomeProducts);
+
     return {
       summary: {
-        incomeProducts: hasProducts ? incomeProducts : 0,
-        incomeServices: hasServices ? incomeServices : 0,
-        totalIncome: (hasProducts ? incomeProducts : 0) + (hasServices ? incomeServices : 0),
+        incomeProducts: hasProducts ? validatedIncomeProducts : 0,
+        incomeServices: hasServices ? validatedIncomeServices : 0,
+        totalIncome: (hasProducts ? validatedIncomeProducts : 0) + (hasServices ? validatedIncomeServices : 0),
       },
       rankings: {
         ...(includeNamedServices ? { TotalUsersServices: totalUsersServices } : { topUsersServices }),
