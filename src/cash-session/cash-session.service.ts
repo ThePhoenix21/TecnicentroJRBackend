@@ -273,12 +273,29 @@ export class CashSessionService {
         where: {
           UserId: user.userId,
           status: SessionStatus.OPEN
-        }
+        },
+        select: {
+          id: true,
+          Store: {
+            select: {
+              name: true,
+            },
+          },
+        },
       });
 
       if (existingUserOpenSession) {
-        this.logger.warn(`Usuario ${user.email} ya tiene una sesión abierta: ${existingUserOpenSession.id}`);
-        throw new ConflictException('Ya tienes una sesión de caja abierta. Ciérrala antes de abrir otra.');
+        const openStoreName = existingUserOpenSession.Store?.name;
+        this.logger.warn(
+          `Usuario ${user.email} ya tiene una sesión abierta: ${existingUserOpenSession.id}${openStoreName ? ` en tienda ${openStoreName}` : ''}`,
+        );
+
+        throw new ConflictException({
+          message: openStoreName
+            ? `Ya tienes una sesión de caja abierta en la tienda ${openStoreName}. Ciérrala antes de abrir otra.`
+            : 'Ya tienes una sesión de caja abierta. Ciérrala antes de abrir otra.',
+          storeName: openStoreName ?? null,
+        });
       }
 
       // 5. Crear la sesión de caja
