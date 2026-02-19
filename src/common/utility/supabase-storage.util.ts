@@ -26,11 +26,6 @@ export class SupabaseStorageService {
     const supabaseServiceKey = this.configService.get<string>('SUPABASE_SERVICE_KEY');
     const supabaseAnonKey = this.configService.get<string>('SUPABASE_ANON_KEY');
     
-    console.log('Configuración de Supabase:');
-    console.log('URL:', supabaseUrl ? '✅ Configurada' : '❌ No configurada');
-    console.log('Service Key:', supabaseServiceKey ? '✅ Configurada' : '❌ No configurada');
-    console.log('Anon Key:', supabaseAnonKey ? '✅ Configurada' : '❌ No configurada');
-    
     const keyToUse = supabaseServiceKey || supabaseAnonKey;
     if (!supabaseUrl || !keyToUse) {
       throw new Error('SUPABASE_URL y SUPABASE_SERVICE_KEY (o SUPABASE_ANON_KEY) deben estar configurados en las variables de entorno');
