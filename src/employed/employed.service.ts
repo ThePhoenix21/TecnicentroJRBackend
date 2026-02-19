@@ -598,18 +598,26 @@ export class EmployedService {
             }
           : null,
       },
-      documents: (employed.documents ?? []).map((doc: any) => ({
-        id: doc.id,
-        originalName: doc.originalName,
-        mimeType: doc.mimeType,
-        size: doc.size,
-        status: doc.status === DocumentStatus.ACTIVE ? 'UPLOADED' : doc.status,
-        uploadedAt: doc.createdAt,
-        links: {
-          view: `${filesBaseUrl}/files/employed/${doc.id}/view`,
-          download: `${filesBaseUrl}/files/employed/${doc.id}/download`,
-        },
-      })),
+      documents: (employed.documents ?? []).map((doc: any) => {
+        const hasAbsoluteUrl = typeof doc.url === 'string' && /^https?:\/\//i.test(doc.url);
+        const viewUrl = hasAbsoluteUrl ? doc.url : `${filesBaseUrl}/files/employed/${doc.id}/view`;
+        const downloadUrl = hasAbsoluteUrl
+          ? `${doc.url}${doc.url.includes('?') ? '&' : '?'}download=${encodeURIComponent(doc.originalName ?? 'document')}`
+          : `${filesBaseUrl}/files/employed/${doc.id}/download`;
+
+        return {
+          id: doc.id,
+          originalName: doc.originalName,
+          mimeType: doc.mimeType,
+          size: doc.size,
+          status: doc.status === DocumentStatus.ACTIVE ? 'UPLOADED' : doc.status,
+          uploadedAt: doc.createdAt,
+          links: {
+            view: viewUrl,
+            download: downloadUrl,
+          },
+        };
+      }),
       history: (employed.employedHistories ?? []).map((history: any) => ({
         id: history.id,
         hiredAt: history.hiredAt,
