@@ -201,29 +201,6 @@ export class SupplyOrderService {
           skipDuplicates: false,
         });
 
-        if (input.warehouseId) {
-          await prisma.warehouseReception.create({
-            data: {
-              warehouseId: input.warehouseId,
-              supplyOrderId: supplyOrder.id,
-              tenantId,
-              createdById,
-            },
-            select: { id: true },
-          });
-        }
-
-        if (input.storeId) {
-          await prisma.storeReception.create({
-            data: {
-              storeId: input.storeId,
-              supplyOrderId: supplyOrder.id,
-              tenantId,
-              createdById,
-            },
-            select: { id: true },
-          });
-        }
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
@@ -406,11 +383,23 @@ export class SupplyOrderService {
           },
         },
         warehouseReceptions: {
+          where: {
+            products: {
+              some: {},
+            },
+          },
           select: {
             id: true,
             receivedAt: true,
             reference: true,
             notes: true,
+            createdBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
             products: {
               select: {
                 id: true,
@@ -422,11 +411,23 @@ export class SupplyOrderService {
           },
         },
         storeReceptions: {
+          where: {
+            products: {
+              some: {},
+            },
+          },
           select: {
             id: true,
             receivedAt: true,
             reference: true,
             notes: true,
+            createdBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
             products: {
               select: {
                 id: true,
@@ -460,12 +461,6 @@ export class SupplyOrderService {
         products: {
           select: { productId: true, quantity: true },
         },
-        warehouseReceptions: {
-          select: { id: true, warehouseId: true },
-        },
-        storeReceptions: {
-          select: { id: true, storeId: true },
-        },
       },
     });
 
@@ -498,13 +493,32 @@ export class SupplyOrderService {
       throw new BadRequestException('No se permiten productos duplicados en la recepción');
     }
 
+    const productsForNames = await this.prisma.product.findMany({
+      where: {
+        id: { in: productIds },
+        isDeleted: false,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+    const productNameById = new Map(productsForNames.map((p) => [p.id, p.name]));
+
     const orderProductsMap = new Map(
       supplyOrder.products.map((p) => [p.productId, p.quantity]),
     );
 
+    const notOrderedProducts: Array<{ productId: string; name: string | null; received: number }> = [];
+
     for (const product of input.products) {
       if (!orderProductsMap.has(product.productId)) {
-        throw new BadRequestException('Hay productos no solicitados en la orden');
+        notOrderedProducts.push({
+          productId: product.productId,
+          name: productNameById.get(product.productId) ?? null,
+          received: product.quantity,
+        });
+        continue;
       }
 
       if (product.batches && product.batches.length > 0) {
@@ -515,6 +529,13 @@ export class SupplyOrderService {
           );
         }
       }
+    }
+
+    if (notOrderedProducts.length > 0) {
+      throw new BadRequestException({
+        message: 'Hay productos no solicitados en la orden',
+        notOrderedProducts,
+      });
     }
 
     const previousReceived = new Map<string, number>();
@@ -545,14 +566,37 @@ export class SupplyOrderService {
       });
     }
 
+    const exceededProducts: Array<{
+      productId: string;
+      name: string | null;
+      ordered: number;
+      alreadyReceived: number;
+      attempted: number;
+      excess: number;
+    }> = [];
+
     for (const product of input.products) {
       const orderedQty = orderProductsMap.get(product.productId) ?? 0;
       const alreadyReceived = previousReceived.get(product.productId) ?? 0;
-      if (alreadyReceived + product.quantity > orderedQty) {
-        throw new BadRequestException(
-          `La cantidad recibida supera la cantidad pedida para el producto ${product.productId}`,
-        );
+      const remaining = Math.max(orderedQty - alreadyReceived, 0);
+      if (product.quantity > remaining) {
+        exceededProducts.push({
+          productId: product.productId,
+          name: productNameById.get(product.productId) ?? null,
+          ordered: orderedQty,
+          alreadyReceived,
+          attempted: product.quantity,
+          excess: product.quantity - remaining,
+        });
       }
+    }
+
+    if (exceededProducts.length > 0) {
+      throw new BadRequestException({
+        message:
+          'La cantidad recibida supera la cantidad pedida. Ajusta las cantidades y vuelve a intentar.',
+        exceededProducts,
+      });
     }
 
     const receivedTotals = new Map<string, number>();
@@ -580,18 +624,15 @@ export class SupplyOrderService {
 
     await this.prisma.$transaction(async (prisma) => {
       if (supplyOrder.warehouseId) {
-        const reception = supplyOrder.warehouseReceptions[0];
-        if (!reception?.id) {
-          throw new BadRequestException('Recepción de almacén no encontrada');
-        }
-
-        await prisma.warehouseReception.update({
-          where: { id: reception.id },
+        const reception = await prisma.warehouseReception.create({
           data: {
+            warehouseId: supplyOrder.warehouseId,
+            supplyOrderId: supplyOrder.id,
+            tenantId,
+            createdById: receivedById,
             reference: input.reference ?? null,
             notes: input.notes ?? null,
             receivedAt,
-            createdById: receivedById,
           },
           select: { id: true },
         });
@@ -640,18 +681,15 @@ export class SupplyOrderService {
       }
 
       if (supplyOrder.storeId) {
-        const reception = supplyOrder.storeReceptions[0];
-        if (!reception?.id) {
-          throw new BadRequestException('Recepción de tienda no encontrada');
-        }
-
-        await prisma.storeReception.update({
-          where: { id: reception.id },
+        const reception = await prisma.storeReception.create({
           data: {
+            storeId: supplyOrder.storeId,
+            supplyOrderId: supplyOrder.id,
+            tenantId,
+            createdById: receivedById,
             reference: input.reference ?? null,
             notes: input.notes ?? null,
             receivedAt,
-            createdById: receivedById,
           },
           select: { id: true },
         });
