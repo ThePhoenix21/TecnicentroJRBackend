@@ -78,6 +78,24 @@ export class SupabaseStorageService {
     return { path: options.path };
   }
 
+  private async buildAccessibleUrl(bucket: string, path: string): Promise<string> {
+    const { data: signedData, error: signedError } = await this.supabase.storage
+      .from(bucket)
+      .createSignedUrl(path, this.expiresIn, {
+        download: false,
+      });
+
+    if (!signedError && signedData?.signedUrl) {
+      return signedData.signedUrl;
+    }
+
+    const {
+      data: { publicUrl },
+    } = this.supabase.storage.from(bucket).getPublicUrl(path);
+
+    return publicUrl;
+  }
+
   async uploadServicePhotos(files: FileUpload[]): Promise<string[]> {
     if (!files || files.length === 0) return [];
     
@@ -153,7 +171,7 @@ export class SupabaseStorageService {
     file: FileUpload,
     employedId: string,
     fileName: string,
-  ): Promise<{ path: string; bucket: string }> {
+  ): Promise<{ path: string; bucket: string; url: string }> {
     const path = `${employedId}/${fileName}`;
     const result = await this.uploadToStorage(file, {
       bucket: this.employeeDocsBucket,
@@ -161,7 +179,9 @@ export class SupabaseStorageService {
       contentType: file.mimetype,
     });
 
-    return { path: result.path, bucket: this.employeeDocsBucket };
+    const url = await this.buildAccessibleUrl(this.employeeDocsBucket, result.path);
+
+    return { path: result.path, bucket: this.employeeDocsBucket, url };
   }
 
   async uploadFile(

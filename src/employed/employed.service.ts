@@ -199,6 +199,11 @@ export class EmployedService {
     return tenantId;
   }
 
+  private buildEmployeeDocumentFileName(originalname: string): string {
+    const ext = originalname.includes('.') ? `.${originalname.split('.').pop()}` : '';
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
+  }
+
   private assertSingleAssignment(input: { storeId?: string; warehouseId?: string }) {
     const hasStore = Boolean(input.storeId);
     const hasWarehouse = Boolean(input.warehouseId);
@@ -368,23 +373,36 @@ export class EmployedService {
 
     const actorUserId = this.getAuthUserIdOrThrow(user);
 
-    const uploadedPaths: string[] = [];
-    try {
-      const uploads = await Promise.all(
-        files.map(async (file) => {
-          const uploaded = await this.supabaseStorage.uploadFile(file, `employed/${employedId}`);
-          uploadedPaths.push(uploaded.url);
-          return {
-            url: uploaded.url,
-            originalName: file.originalname,
-            mimeType: file.mimetype,
-            size: file.size ?? file.buffer.length,
-          };
-        }),
-      );
+    const uploadedRecords: Array<{
+      url: string;
+      originalName: string;
+      mimeType: string;
+      size: number;
+    }> = [];
+    const failedDocuments: string[] = [];
 
+    for (const file of files) {
+      try {
+        const uploaded = await this.supabaseStorage.uploadEmployeeDocument(
+          file,
+          employedId,
+          this.buildEmployeeDocumentFileName(file.originalname),
+        );
+
+        uploadedRecords.push({
+          url: uploaded.url,
+          originalName: file.originalname,
+          mimeType: file.mimetype,
+          size: file.size ?? file.buffer.length,
+        });
+      } catch {
+        failedDocuments.push(file.originalname);
+      }
+    }
+
+    if (uploadedRecords.length > 0) {
       await this.prisma.employeeDocument.createMany({
-        data: uploads.map((u) => ({
+        data: uploadedRecords.map((u) => ({
           employedId,
           url: u.url,
           originalName: u.originalName,
@@ -393,43 +411,33 @@ export class EmployedService {
           updatedByUserId: actorUserId,
         })),
       });
-
-      const documents = await this.prisma.employeeDocument.findMany({
-        where: { employedId, status: DocumentStatus.ACTIVE },
-        select: {
-          id: true,
-          url: true,
-          originalName: true,
-          mimeType: true,
-          status: true,
-          size: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      return { employed: created, documents };
-    } catch (err) {
-      try {
-        await this.supabaseStorage.deletePaths(uploadedPaths, 'employee-docs');
-      } catch (e) {
-        console.error('Rollback: no se pudieron eliminar archivos subidos', e);
-      }
-
-      try {
-        await this.prisma.$transaction(async (prisma) => {
-          await prisma.employeeDocument.deleteMany({ where: { employedId } });
-          await prisma.storeEmployed.deleteMany({ where: { employedId } });
-          await prisma.warehouseEmployed.deleteMany({ where: { employedId } });
-          await prisma.employedHistory.deleteMany({ where: { employedId } });
-          await prisma.employed.delete({ where: { id: employedId } });
-        });
-      } catch (e) {
-        console.error('Rollback: no se pudo eliminar el empleado creado', e);
-      }
-
-      throw err;
     }
+
+    const documents = await this.prisma.employeeDocument.findMany({
+      where: { employedId, status: DocumentStatus.ACTIVE },
+      select: {
+        id: true,
+        url: true,
+        originalName: true,
+        mimeType: true,
+        status: true,
+        size: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (failedDocuments.length > 0) {
+      return {
+        employed: created,
+        documents,
+        warning:
+          'Empleado creado correctamente, pero uno o más documentos no pudieron guardarse. Intenta subirlos más tarde.',
+        failedDocuments,
+      };
+    }
+
+    return { employed: created, documents };
   }
 
   async update(
@@ -488,7 +496,6 @@ export class EmployedService {
     });
 
     if (!employed) throw new NotFoundException('Empleado no encontrado');
-
     return employed;
   }
 
@@ -519,6 +526,10 @@ export class EmployedService {
           where: { warehouse: { tenantId } },
           include: { warehouse: true },
         },
+        documents: {
+          where: { status: DocumentStatus.ACTIVE },
+          orderBy: { createdAt: 'desc' },
+        },
         employedHistories: {
           orderBy: { createdAt: 'desc' },
           include: {
@@ -535,7 +546,84 @@ export class EmployedService {
 
     if (!employed) throw new NotFoundException('Empleado no encontrado');
 
-    return employed;
+    const storeAssignment = employed.storeAssignments?.[0] ?? null;
+    const warehouseAssignment = employed.warehouseAssignments?.[0] ?? null;
+    const assignment = storeAssignment
+      ? {
+          type: 'STORE',
+          role: storeAssignment.role ?? null,
+          store: {
+            id: storeAssignment.store.id,
+            name: storeAssignment.store.name,
+          },
+          warehouse: null,
+          assignedAt: storeAssignment.assignedAt,
+        }
+      : warehouseAssignment
+      ? {
+          type: 'WAREHOUSE',
+          role: warehouseAssignment.role ?? null,
+          store: null,
+          warehouse: {
+            id: warehouseAssignment.warehouse.id,
+            name: warehouseAssignment.warehouse.name,
+          },
+          assignedAt: warehouseAssignment.assignedAt,
+        }
+      : null;
+
+    const filesBaseUrl = process.env.FILES_BASE_URL ?? process.env.APP_URL ?? 'http://localhost:3000';
+
+    return {
+      id: employed.id,
+      firstName: employed.firstName,
+      lastName: employed.lastName,
+      fullName: `${employed.firstName} ${employed.lastName}`.trim(),
+      documentNumber: employed.document,
+      phone: employed.phone,
+      email: employed.email,
+      position: employed.position,
+      status: employed.status,
+      userId: employed.userId ?? null,
+      assignment,
+      audit: {
+        createdAt: employed.createdAt,
+        updatedAt: employed.updatedAt,
+        deletedAt: employed.deletedAt,
+        createdBy: employed.createdByUser
+          ? {
+              id: employed.createdByUser.id,
+              name: employed.createdByUser.name,
+              email: employed.createdByUser.email,
+            }
+          : null,
+      },
+      documents: (employed.documents ?? []).map((doc: any) => ({
+        id: doc.id,
+        originalName: doc.originalName,
+        mimeType: doc.mimeType,
+        size: doc.size,
+        status: doc.status === DocumentStatus.ACTIVE ? 'UPLOADED' : doc.status,
+        uploadedAt: doc.createdAt,
+        links: {
+          view: `${filesBaseUrl}/files/employed/${doc.id}/view`,
+          download: `${filesBaseUrl}/files/employed/${doc.id}/download`,
+        },
+      })),
+      history: (employed.employedHistories ?? []).map((history: any) => ({
+        id: history.id,
+        hiredAt: history.hiredAt,
+        endedAt: history.endedAt,
+        reason: history.reason,
+        createdAt: history.createdAt,
+        createdBy: history.createdBy
+          ? {
+              id: history.createdBy.id,
+              name: history.createdBy.name,
+            }
+          : null,
+      })),
+    };
   }
 
   async list(query: ListEmployedDto, user: AuthUser) {
@@ -669,28 +757,45 @@ export class EmployedService {
 
     const actorUserId = this.getAuthUserIdOrThrow(user);
 
-    const uploads = await Promise.all(
-      files.map(async (file) => {
-        const uploaded = await this.supabaseStorage.uploadFile(file, `employed/${employedId}`);
-        return {
+    const uploadedRecords: Array<{
+      url: string;
+      originalName: string;
+      mimeType: string;
+      size: number;
+    }> = [];
+    const failedDocuments: string[] = [];
+
+    for (const file of files) {
+      try {
+        const uploaded = await this.supabaseStorage.uploadEmployeeDocument(
+          file,
+          employedId,
+          this.buildEmployeeDocumentFileName(file.originalname),
+        );
+
+        uploadedRecords.push({
           url: uploaded.url,
           originalName: file.originalname,
           mimeType: file.mimetype,
           size: file.size ?? file.buffer.length,
-        };
-      }),
-    );
+        });
+      } catch {
+        failedDocuments.push(file.originalname);
+      }
+    }
 
-    await this.prisma.employeeDocument.createMany({
-      data: uploads.map((upload) => ({
-        employedId,
-        url: upload.url,
-        originalName: upload.originalName,
-        mimeType: upload.mimeType,
-        size: upload.size,
-        updatedByUserId: actorUserId,
-      })),
-    });
+    if (uploadedRecords.length > 0) {
+      await this.prisma.employeeDocument.createMany({
+        data: uploadedRecords.map((upload) => ({
+          employedId,
+          url: upload.url,
+          originalName: upload.originalName,
+          mimeType: upload.mimeType,
+          size: upload.size,
+          updatedByUserId: actorUserId,
+        })),
+      });
+    }
 
     const documents = await this.prisma.employeeDocument.findMany({
       where: { employedId, status: DocumentStatus.ACTIVE },
@@ -706,10 +811,18 @@ export class EmployedService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return {
+    const response: any = {
       id: employedId,
       documents,
     };
+
+    if (failedDocuments.length > 0) {
+      response.warning =
+        'Uno o más documentos no pudieron guardarse correctamente. Intenta subirlos más tarde.';
+      response.failedDocuments = failedDocuments;
+    }
+
+    return response;
   }
 
   async terminate(employedId: string, reason: string | undefined, user: AuthUser) {
