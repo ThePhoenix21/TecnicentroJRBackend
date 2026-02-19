@@ -121,6 +121,19 @@ export class SupplyOrderController {
     return this.supplyOrderService.receive(id, dto, req.user);
   }
 
+  @Post(':id/close-partial')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.RECEIVE_SUPPLY_ORDER)
+  @ApiOperation({ summary: 'Cerrar orden de suministro como parcialmente recibida' })
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 10, windowSeconds: 60 }],
+  })
+  async closePartial(@Param('id') id: string, @Req() req: any) {
+    return this.supplyOrderService.closePartial(id, req.user);
+  }
+
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
   @Roles(Role.ADMIN, Role.USER)

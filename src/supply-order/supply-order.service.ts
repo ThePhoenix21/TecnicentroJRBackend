@@ -208,6 +208,93 @@ export class SupplyOrderService {
     return { success: true };
   }
 
+  async closePartial(orderId: string, user?: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+
+    const supplyOrder = await this.prisma.supplyOrder.findFirst({
+      where: { id: orderId, tenantId },
+      select: {
+        id: true,
+        status: true,
+        products: {
+          select: { productId: true, quantity: true },
+        },
+        warehouseId: true,
+        storeId: true,
+      },
+    });
+
+    if (!supplyOrder) {
+      throw new NotFoundException('Orden de suministro no encontrada');
+    }
+
+    if (supplyOrder.status !== SupplyOrderStatus.PARTIAL) {
+      throw new BadRequestException('Solo se pueden cerrar órdenes en estado PARCIAL');
+    }
+
+    const previousReceived = new Map<string, number>();
+
+    if (supplyOrder.warehouseId) {
+      const receptions = await this.prisma.warehouseReceptionProduct.findMany({
+        where: { warehouseReception: { supplyOrderId: orderId } },
+        select: { productId: true, quantity: true },
+      });
+
+      receptions.forEach((r) => {
+        previousReceived.set(r.productId, (previousReceived.get(r.productId) ?? 0) + r.quantity);
+      });
+    }
+
+    if (supplyOrder.storeId) {
+      const receptions = await this.prisma.storeReceptionProduct.findMany({
+        where: { storeReception: { supplyOrderId: orderId } },
+        select: { productId: true, quantity: true },
+      });
+
+      receptions.forEach((r) => {
+        previousReceived.set(r.productId, (previousReceived.get(r.productId) ?? 0) + r.quantity);
+      });
+    }
+
+    const pendingProducts = supplyOrder.products.filter((product) => {
+      const received = previousReceived.get(product.productId) ?? 0;
+      return received < product.quantity;
+    });
+
+    if (pendingProducts.length === 0) {
+      throw new BadRequestException('La orden ya está completamente recibida');
+    }
+
+    const pendingIds = pendingProducts.map((p) => p.productId);
+    const pendingNames = await this.prisma.product.findMany({
+      where: { id: { in: pendingIds } },
+      select: { id: true, name: true },
+    });
+    const pendingNameMap = new Map(pendingNames.map((p) => [p.id, p.name]));
+
+    const pendingDetails = pendingProducts.map((product) => {
+      const received = previousReceived.get(product.productId) ?? 0;
+      const remaining = Math.max(product.quantity - received, 0);
+      return {
+        productId: product.productId,
+        name: pendingNameMap.get(product.productId) ?? null,
+        ordered: product.quantity,
+        received,
+        remaining,
+      };
+    });
+
+    await this.prisma.supplyOrder.update({
+      where: { id: supplyOrder.id },
+      data: {
+        status: SupplyOrderStatus.PARTIALLY_RECEIVED,
+      },
+      select: { id: true },
+    });
+
+    return { success: true, pendingProducts: pendingDetails };
+  }
+
   async list(query: ListSupplyOrdersDto, user?: AuthUser): Promise<ListSupplyOrdersResponseDto> {
     const tenantId = this.getTenantIdOrThrow(user);
 
