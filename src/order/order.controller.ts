@@ -354,7 +354,10 @@ export class OrderController {
   @Roles(Role.USER, Role.ADMIN)
   @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   @ApiOperation({ summary: 'Listado paginado de órdenes (filtros combinables)' })
-  async list(@Req() req: Request & { user: any }, @Query() query: ListOrdersDto): Promise<ListOrdersResponseDto> {
+  async list(
+    @Req() req: Request & { user: any },
+    @Query(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) query: ListOrdersDto,
+  ): Promise<ListOrdersResponseDto> {
     const canSeeOrderDetails =
       req.user.role === 'ADMIN' || this.hasPermission(req.user, PERMISSIONS.DETAIL_ORDERS);
 
@@ -362,6 +365,12 @@ export class OrderController {
     if (req.user.role !== 'ADMIN') {
       this.assertHasAnyHistoryPermissionOrThrow(req.user);
     }
+
+    if (!query.storeId) {
+      throw new BadRequestException('storeId es requerido');
+    }
+
+    (query as any).pageSize = 12;
 
     if (!canSeeOrderDetails) {
       (query as any).sellerName = undefined;

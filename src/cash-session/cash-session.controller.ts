@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { RequireAnyPermissions, RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -160,9 +160,23 @@ export class CashSessionController {
   @Get('current/:storeId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_CASH)
+  @RequireAnyPermissions(PERMISSIONS.VIEW_CASH, PERMISSIONS.MANAGE_ORDERS)
   @ApiOperation({ summary: 'Obtener sesión de caja actual de una tienda' })
   findCurrentSessionByStore(@Param('storeId') storeId: string, @Req() req: any) {
+    const user = req.user;
+
+    const hasViewCash = this.hasPermission(user, PERMISSIONS.VIEW_CASH);
+    if (!hasViewCash && user?.role !== Role.ADMIN) {
+      const hasManageOrders = this.hasPermission(user, PERMISSIONS.MANAGE_ORDERS);
+      const hasOwnOrdersHistory = this.hasPermission(user, PERMISSIONS.VIEW_OWN_ORDERS_HISTORY);
+      const hasAllOrdersHistory = this.hasPermission(user, PERMISSIONS.VIEW_ALL_ORDERS_HISTORY);
+
+      const canUseOrdersPermissionPath = hasManageOrders && (hasOwnOrdersHistory || hasAllOrdersHistory);
+      if (!canUseOrdersPermissionPath) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
+      }
+    }
+
     return this.cashSessionService.findOpenSessionByStore(storeId, req.user);
   }
 
@@ -182,7 +196,7 @@ export class CashSessionController {
   @Get('store/:storeId/open')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
-  @RequirePermissions(PERMISSIONS.VIEW_CASH)
+  @RequireAnyPermissions(PERMISSIONS.VIEW_CASH, PERMISSIONS.MANAGE_ORDERS)
   @ApiOperation({ summary: 'Obtener sesión abierta actual de una tienda' })
   findOpenSessionByStore(@Param('storeId') storeId: string, @Req() req: any) {
     return this.cashSessionService.findOpenSessionByStore(storeId, req.user);

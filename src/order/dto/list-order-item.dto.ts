@@ -58,4 +58,7 @@ export class ListOrderItemDto {
 
   @ApiProperty({ type: [OrderListPaymentMethodDto] })
   refundPaymentMethods!: OrderListPaymentMethodDto[];
+
+  @ApiProperty({ example: true, description: 'Indica si la orden pertenece a la sesión de caja abierta actual.' })
+  isFromCurrentCashSession!: boolean;
 }

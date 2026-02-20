@@ -10,6 +10,7 @@ type AuthUser = {
   email: string;
   role: string;
   tenantId?: string;
+  permissions?: string[];
   stores?: string[];
 };
 
@@ -212,7 +213,7 @@ export class CashSessionService {
   private async assertCashSessionAccessWithOptions(
     cashSessionId: string,
     user: AuthUser,
-    options?: { allowAdmin?: boolean; requireOpen?: boolean },
+    options?: { allowAdmin?: boolean; requireOpen?: boolean; allowAllHistoryInStore?: boolean },
   ) {
     const tenantId = user?.tenantId;
 
@@ -247,6 +248,26 @@ export class CashSessionService {
 
     const allowAdmin = options?.allowAdmin ?? false;
     if (!(allowAdmin && user.role === 'ADMIN')) {
+      const allowAllHistoryInStore = options?.allowAllHistoryInStore ?? false;
+      const canViewAllHistory = user.permissions?.includes('VIEW_ALL_CASH_HISTORY') ?? false;
+
+      if (allowAllHistoryInStore && canViewAllHistory) {
+        // Permitir acceder a sesiones de otros usuarios, pero solo dentro de una tienda
+        // a la que el usuario tenga acceso (StoreUsers).
+        const storeId = cashSession.Store?.id;
+        if (!storeId) {
+          throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
+        }
+
+        const tokenStores = Array.isArray(user.stores) ? user.stores : [];
+        if (tokenStores.includes(storeId)) {
+          return cashSession;
+        }
+
+        await this.assertStoreAccess(storeId, user);
+        return cashSession;
+      }
+
       if (cashSession.UserId !== user.userId) {
         throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
       }
@@ -588,8 +609,11 @@ export class CashSessionService {
     }
   }
 
-  async getClosingReport(sessionId: string, user: AuthUser) {
-    await this.assertCashSessionAccessWithOptions(sessionId, user, { allowAdmin: user.role === 'ADMIN' });
+  async getClosingReport(sessionId: string, user: AuthUser, options?: { allowAllHistoryInStore?: boolean }) {
+    await this.assertCashSessionAccessWithOptions(sessionId, user, {
+      allowAdmin: user.role === 'ADMIN',
+      allowAllHistoryInStore: options?.allowAllHistoryInStore ?? false,
+    });
 
     const tenantId = user?.tenantId;
     if (!tenantId) {
@@ -818,7 +842,10 @@ export class CashSessionService {
     sessionId: string,
     user: AuthUser,
   ) {
-    await this.assertCashSessionAccessWithOptions(sessionId, user, { allowAdmin: user.role === 'ADMIN' });
+    await this.assertCashSessionAccessWithOptions(sessionId, user, {
+      allowAdmin: user.role === 'ADMIN',
+      allowAllHistoryInStore: true,
+    });
 
     const tenantId = user?.tenantId;
     if (!tenantId) {
@@ -913,7 +940,7 @@ export class CashSessionService {
       balanceActual,
     };
 
-    const closingReport = await this.getClosingReport(sessionId, user);
+    const closingReport = await this.getClosingReport(sessionId, user, { allowAllHistoryInStore: true });
 
     const printedByUser = user?.userId
       ? await this.prisma.user.findUnique({

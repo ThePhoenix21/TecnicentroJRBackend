@@ -730,6 +730,10 @@ export class OrderService {
       throw new ForbiddenException('Tenant no encontrado en el token');
     }
 
+    if (!query.storeId) {
+      throw new BadRequestException('storeId es requerido');
+    }
+
     const { page, pageSize, skip } = getPaginationParams({
       page: query.page,
       pageSize: query.pageSize,
@@ -742,39 +746,18 @@ export class OrderService {
       throw new BadRequestException('No se puede filtrar por onlyProducts y onlyServices al mismo tiempo');
     }
 
-    let cashSessionsId: string | undefined;
-    if (query.currentCash) {
-      if (!query.storeId) {
-        throw new BadRequestException('storeId es requerido cuando currentCash=true');
-      }
+    let currentOpenCashSessionId: string | undefined;
 
-      const store = await this.assertStoreAccess(query.storeId, user);
-
-      // Si se especifica userId, buscar sesión de ese usuario específico
-      const sessionWhere: any = {
-        StoreId: store.id,
+    await this.assertStoreAccess(query.storeId, user);
+    const currentSession = await this.prisma.cashSession.findFirst({
+      where: {
+        StoreId: query.storeId,
+        UserId: user.userId,
         status: SessionStatus.OPEN,
-      };
-
-      // Si se proporciona userId en query, buscar sesión de ese usuario
-      const queryUserId = (query as any)?.userId as string | undefined;
-      if (queryUserId) {
-        sessionWhere.UserId = queryUserId;
-      } else {
-        // Si no, buscar sesión del usuario autenticado
-        sessionWhere.UserId = user.userId;
-      }
-
-      const session = await this.prisma.cashSession.findFirst({
-        where: sessionWhere,
-        select: { id: true },
-      });
-
-      if (!session) {
-        throw new NotFoundException('No hay una sesión de caja abierta para la tienda indicada');
-      }
-      cashSessionsId = session.id;
-    }
+      },
+      select: { id: true },
+    });
+    currentOpenCashSessionId = currentSession?.id;
 
     const where: Prisma.OrderWhereInput = {
       cashSession: {
@@ -784,13 +767,22 @@ export class OrderService {
       },
     };
 
+    where.cashSession = {
+      ...(where.cashSession as any),
+      StoreId: query.storeId,
+    } as any;
+
     const queryUserId = (query as any)?.userId as string | undefined;
     if (queryUserId) {
       where.userId = queryUserId;
     }
 
-    if (cashSessionsId) {
-      where.cashSessionsId = cashSessionsId;
+    if (query.openCashOnly) {
+      if (!currentOpenCashSessionId) {
+        throw new NotFoundException('No hay una sesión de caja abierta para el usuario en la tienda indicada');
+      }
+
+      where.cashSessionsId = currentOpenCashSessionId;
     }
 
     if (query.status) {
@@ -845,6 +837,7 @@ export class OrderService {
         where,
         select: {
           id: true,
+          cashSessionsId: true,
           totalAmount: true,
           createdAt: true,
           status: true,
@@ -906,6 +899,7 @@ export class OrderService {
         createdAt: order.createdAt,
         clientName: order.client?.name ?? '',
         sellerName: order.user?.name ?? '',
+        isFromCurrentCashSession: !!(currentOpenCashSessionId && order.cashSessionsId === currentOpenCashSessionId),
         products: (order.orderProducts || []).map((op) => ({
           name: op.product?.product?.name ?? '',
           quantity: op.quantity,

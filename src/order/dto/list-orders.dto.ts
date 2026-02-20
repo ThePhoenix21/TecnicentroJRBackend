@@ -1,5 +1,5 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { SaleStatus } from '@prisma/client';
 import { BasePaginationDto } from '../../common/dto/base-pagination.dto';
@@ -22,13 +22,13 @@ export class ListOrdersDto extends BasePaginationDto {
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   onlyProducts?: boolean;
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   onlyServices?: boolean;
 
@@ -47,14 +47,13 @@ export class ListOrdersDto extends BasePaginationDto {
   @IsDateString()
   toDate?: string;
 
-  @ApiPropertyOptional({ example: true, description: 'Si es true, filtra por la sesión de caja abierta actual de la tienda (requiere storeId).' })
+  @ApiPropertyOptional({ example: true, description: 'Si es true, filtra por la sesión de caja abierta actual del usuario en la tienda indicada.' })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
-  currentCash?: boolean;
+  openCashOnly?: boolean;
 
-  @ApiPropertyOptional({ format: 'uuid', description: 'Requerido cuando currentCash=true.' })
-  @IsOptional()
+  @ApiProperty({ format: 'uuid', description: 'Tienda obligatoria para listar órdenes.' })
   @IsUUID()
   storeId?: string;
 }
