@@ -285,7 +285,7 @@ export class EmployedController {
 
   @Post(':id/recreate')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES, PERMISSIONS.RECREATE_EMPLOYEE)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 10, windowSeconds: 60 }],
