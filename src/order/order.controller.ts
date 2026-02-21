@@ -434,6 +434,7 @@ export class OrderController {
     return this.orderService.findMe(req.user.userId, req.user as any);
   }
 
+  //en desuso
   @Get('store/:storeId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)

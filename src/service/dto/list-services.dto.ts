@@ -1,5 +1,6 @@
 import { BasePaginationDto } from '../../common/dto/base-pagination.dto';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsDateString, IsEnum, IsOptional, IsBoolean, IsUUID } from 'class-validator';
 import { ServiceStatus } from '@prisma/client';
 
@@ -11,6 +12,7 @@ export class ListServicesDto extends BasePaginationDto {
 
   @ApiPropertyOptional({ description: 'Filtrar solo servicios de caja abierta (cashSession activa)', example: false })
   @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   openCashOnly?: boolean;
 
@@ -24,8 +26,7 @@ export class ListServicesDto extends BasePaginationDto {
   @IsDateString()
   toDate?: string;
 
-  @ApiPropertyOptional({ description: 'Tienda a consultar (requerido para usuarios con VIEW_ALL_SERVICES)', example: 'f1b7c2b8-7a75-4e85-8eab-a8535f2d9df0' })
-  @IsOptional()
+  @ApiProperty({ description: 'Tienda a consultar (requerida)', example: 'f1b7c2b8-7a75-4e85-8eab-a8535f2d9df0' })
   @IsUUID()
   storeId?: string;
 }

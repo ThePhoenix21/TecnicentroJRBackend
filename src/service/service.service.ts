@@ -72,7 +72,37 @@ export class ServiceService {
 
   async list(query: ListServicesDto, user: AuthUser): Promise<ListServicesResponseDto> {
     const tenantId = this.getTenantIdOrThrow(user);
-    const { canViewAll, effectiveStoreId } = this.resolveStoreScopeForServiceQueries(user, query.storeId);
+    if (!query.storeId) {
+      throw new BadRequestException('storeId es requerido');
+    }
+
+    const canViewAll = this.hasViewAllServices(user);
+    const requestedStoreId = query.storeId;
+
+    // Acceso explícito por tienda solicitada
+    if (user.role !== 'ADMIN') {
+      if (Array.isArray(user?.stores) && user.stores.length > 0 && !user.stores.includes(requestedStoreId)) {
+        throw new ForbiddenException('No tienes permisos para acceder a servicios de esa tienda');
+      }
+
+      if (!Array.isArray(user?.stores) || user.stores.length === 0) {
+        await this.assertStoreMembership(requestedStoreId, user);
+      }
+    } else if (Array.isArray(user?.stores) && user.stores.length > 0 && !user.stores.includes(requestedStoreId)) {
+      throw new ForbiddenException('No tienes permisos para acceder a servicios de esa tienda');
+    }
+
+    const currentOpenCashSession = await this.prisma.cashSession.findFirst({
+      where: {
+        StoreId: requestedStoreId,
+        UserId: user.userId,
+        status: 'OPEN',
+      },
+      orderBy: { openedAt: 'desc' },
+      select: { id: true },
+    });
+    const currentOpenCashSessionId = currentOpenCashSession?.id;
+
     const { page, pageSize, skip } = getPaginationParams({
       page: query.page,
       pageSize: query.pageSize,
@@ -85,7 +115,7 @@ export class ServiceService {
       order: {
         ...(!canViewAll ? { userId: user.userId } : {}),
         cashSession: {
-          ...(effectiveStoreId ? { StoreId: effectiveStoreId } : {}),
+          StoreId: requestedStoreId,
           Store: {
             tenantId,
             ...(canViewAll && user.role !== 'ADMIN'
@@ -98,9 +128,11 @@ export class ServiceService {
                 }
               : {}),
           },
-          ...(query.openCashOnly && {
-            status: 'OPEN',
-          }),
+          ...(query.openCashOnly
+            ? currentOpenCashSessionId
+              ? { id: currentOpenCashSessionId }
+              : { id: '__NO_OPEN_CASH_SESSION__' }
+            : {}),
         },
       },
       ...(query.status && { status: query.status }),
@@ -119,12 +151,14 @@ export class ServiceService {
       this.prisma.service.findMany({
         where,
         select: {
+          id: true,
           name: true,
           status: true,
           price: true,
           createdAt: true,
           order: {
             select: {
+              cashSessionsId: true,
               client: {
                 select: {
                   name: true,
@@ -141,11 +175,13 @@ export class ServiceService {
 
     return buildPaginatedResponse(
       services.map((service: any) => ({
+        serviceId: service.id,
         clientName: service.order?.client?.name ?? '',
         serviceName: service.name,
         status: service.status,
         price: this.toNumber(service.price),
         createdAt: service.createdAt,
+        isFromCurrentCash: !!(currentOpenCashSessionId && service.order?.cashSessionsId === currentOpenCashSessionId),
       })),
       total,
       page,

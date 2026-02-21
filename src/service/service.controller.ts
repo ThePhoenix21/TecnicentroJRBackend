@@ -15,7 +15,8 @@ import {
   UploadedFile,
   BadRequestException,
   ForbiddenException,
-  Req
+  Req,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ApiOperation } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -60,7 +61,10 @@ export class ServiceController {
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   @ApiOperation({ summary: 'Listado paginado de servicios' })
-  async list(@Req() req: any, @Query() query: ListServicesDto): Promise<ListServicesResponseDto> {
+  async list(
+    @Req() req: any,
+    @Query(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) query: ListServicesDto,
+  ): Promise<ListServicesResponseDto> {
     return this.serviceService.list(query, req.user);
   }
 
@@ -128,7 +132,7 @@ export class ServiceController {
   @Get('findOne/:id')
   @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({ summary: 'Obtener servicio por ID' })
-  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES, PERMISSIONS.DETAIL_SERVICES)
   async findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: any): Promise<Service> {
     return this.serviceService.findOne(id, req.user);
   }
@@ -197,7 +201,7 @@ export class ServiceController {
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES, PERMISSIONS.DETAIL_SERVICES)
   @ApiOperation({ summary: 'Detalle completo de servicio' })
   async getDetail(@Param('id', ParseUUIDPipe) id: string, @Req() req: any): Promise<ServiceDetailResponseDto> {
     return this.serviceService.getDetail(id, req.user);

@@ -21,4 +21,7 @@ export class ListServiceItemDto {
 
   @ApiProperty({ example: '2026-01-24T20:30:19.562Z' })
   createdAt!: Date;
+
+  @ApiPropertyOptional({ example: false, description: 'Indica si el servicio pertenece a la caja abierta actual de la tienda consultada.' })
+  isFromCurrentCash?: boolean;
 }
