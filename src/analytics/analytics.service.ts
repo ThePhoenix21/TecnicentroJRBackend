@@ -523,6 +523,7 @@ export class AnalyticsService {
 
     let incomeServices = 0;
     let incomeProducts = 0;
+    let incomeCashMovements = 0;
 
     const servicesByUser = new Map<string, { count: number; total: number }>();
     const servicesByName = new Map<string, { count: number; total: number; name: string }>();
@@ -602,6 +603,23 @@ export class AnalyticsService {
       }
     }
 
+    // Agregar ingresos de movimientos de caja manuales
+    const cashMovementIncomes = await this.prisma.cashMovement.findMany({
+      where: {
+        createdAt: { gte: range.from, lte: range.to },
+        type: MovementType.INCOME,
+        relatedOrderId: null,
+        CashSession: {
+          Store: this.buildStoreFilter(tenantId, storeId),
+        },
+      },
+      select: {
+        amount: true,
+      },
+    });
+
+    incomeCashMovements = cashMovementIncomes.reduce((sum, cm) => sum + this.toNumber(cm.amount), 0);
+
     const userIds = Array.from(new Set([...Array.from(servicesByUser.keys()), ...Array.from(productsByUser.keys())]));
 
     const users = userIds.length
@@ -671,12 +689,14 @@ export class AnalyticsService {
     const maxReasonableValue = 10000000000;
     const validatedIncomeServices = incomeServices > maxReasonableValue ? 0 : Number(incomeServices);
     const validatedIncomeProducts = incomeProducts > maxReasonableValue ? 0 : Number(incomeProducts);
+    const validatedIncomeCashMovements = incomeCashMovements > maxReasonableValue ? 0 : Number(incomeCashMovements);
 
     return {
       summary: {
         incomeProducts: hasProducts ? validatedIncomeProducts : 0,
         incomeServices: hasServices ? validatedIncomeServices : 0,
-        totalIncome: (hasProducts ? validatedIncomeProducts : 0) + (hasServices ? validatedIncomeServices : 0),
+        incomeCashMovements: validatedIncomeCashMovements,
+        totalIncome: (hasProducts ? validatedIncomeProducts : 0) + (hasServices ? validatedIncomeServices : 0) + validatedIncomeCashMovements,
       },
       rankings: {
         ...(includeNamedServices ? { TotalUsersServices: totalUsersServices } : { topUsersServices }),
@@ -922,6 +942,125 @@ export class AnalyticsService {
         to,
         compareFrom: compareFrom || null,
         compareTo: compareTo || null,
+        timeZone: timeZone || null,
+        storeId: storeId || null,
+      },
+    };
+  }
+
+  async getUserRankings(
+    user: AuthUser,
+    from: string,
+    to: string,
+    timeZone?: string,
+    storeId?: string,
+  ) {
+    const context = await this.resolveContext(user, from, to, timeZone, storeId, TenantFeature.CASH);
+    const features = context.features;
+
+    const hasServices = features.includes(TenantFeature.SERVICES);
+    const hasProducts = features.includes(TenantFeature.PRODUCTS);
+
+    // Ranking de usuarios por servicios
+    const servicesRanking = hasServices ? await this.prisma.order.groupBy({
+      by: ['userId'],
+      where: {
+        createdAt: { gte: context.range.from, lte: context.range.to },
+        status: 'COMPLETED',
+        cashSession: {
+          Store: this.buildStoreFilter(context.tenantId, context.storeId),
+        },
+        services: {
+          some: {
+            status: {
+              not: 'ANNULLATED', // Excluir servicios anulados
+            },
+          },
+        },
+      },
+      _sum: {
+        totalAmount: true,
+      },
+      _count: true, // Contar todas las filas del grupo
+    }) : [];
+
+    // Ranking de usuarios por productos
+    const productsRanking = hasProducts ? await this.prisma.order.groupBy({
+      by: ['userId'],
+      where: {
+        createdAt: { gte: context.range.from, lte: context.range.to },
+        status: 'COMPLETED',
+        cashSession: {
+          Store: this.buildStoreFilter(context.tenantId, context.storeId),
+        },
+        orderProducts: {
+          some: {}, // Tiene al menos un producto
+        },
+      },
+      _sum: {
+        totalAmount: true,
+      },
+      _count: true, // Contar todas las filas del grupo
+      orderBy: {
+        _sum: {
+          totalAmount: 'desc',
+        },
+      },
+      take: 10,
+    }) : [];
+
+    // Obtener información de usuarios
+    const userIds = Array.from(new Set([
+      ...servicesRanking.map(r => r.userId),
+      ...productsRanking.map(r => r.userId),
+    ]));
+
+    const users = userIds.length ? await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    }) : [];
+
+    const usersById = new Map(users.map(u => [u.id, u]));
+
+    // Formatear rankings
+    const formattedServicesRanking = servicesRanking.map(r => ({
+      userId: r.userId,
+      userName: usersById.get(r.userId)?.name || 'Usuario',
+      userEmail: usersById.get(r.userId)?.email || '',
+      ordersCount: r._count || 0,
+      totalAmount: this.toNumber(r._sum?.totalAmount),
+    }));
+
+    const formattedProductsRanking = productsRanking.map(r => ({
+      userId: r.userId,
+      userName: usersById.get(r.userId)?.name || 'Usuario',
+      userEmail: usersById.get(r.userId)?.email || '',
+      ordersCount: r._count || 0,
+      totalAmount: this.toNumber(r._sum?.totalAmount),
+    }));
+
+    return {
+      rankings: {
+        services: formattedServicesRanking,
+        products: formattedProductsRanking,
+      },
+      charts: {
+        servicesRanking: {
+          type: 'bar',
+          xKey: 'userName',
+          yKeys: ['totalAmount'],
+          series: formattedServicesRanking,
+        },
+        productsRanking: {
+          type: 'bar',
+          xKey: 'userName',
+          yKeys: ['totalAmount'],
+          series: formattedProductsRanking,
+        },
+      },
+      filters: {
+        from,
+        to,
         timeZone: timeZone || null,
         storeId: storeId || null,
       },

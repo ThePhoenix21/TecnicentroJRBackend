@@ -1,6 +1,7 @@
 export const PERMISSIONS = {
   // dashboard
   VIEW_DASHBOARD: 'VIEW_DASHBOARD',
+  VIEW_ANALYTICS: 'VIEW_ANALYTICS',
 
   // tiendas
   VIEW_STORES: 'VIEW_STORES',

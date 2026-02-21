@@ -646,11 +646,35 @@ export class DashboardService {
             quantity: 'desc',
           },
         },
-        take: 10,
+        take: 5,
       }),
     ]);
 
+    // Obtener servicios directamente de las órdenes
+    const servicesFromOrders = await this.prisma.service.findMany({
+      where: {
+        order: orderWhere,
+      },
+      select: {
+        name: true,
+      },
+    });
+
+    // Agrupar servicios por nombre directamente
+    const serviceCountMap = new Map<string, { name: string; count: number }>();
+    servicesFromOrders.forEach(service => {
+      const serviceName = service.name || 'Servicio';
+      const current = serviceCountMap.get(serviceName) || { name: serviceName, count: 0 };
+      current.count += 1;
+      serviceCountMap.set(serviceName, current);
+    });
+
+    const topServicesGrouped = Array.from(serviceCountMap.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
     const topProductIds = topProductsGrouped.map((x) => x.productId);
+
     const topProductsMeta = topProductIds.length
       ? await this.prisma.storeProduct.findMany({
           where: {
@@ -672,9 +696,14 @@ export class DashboardService {
       : [];
 
     const topProducts = topProductsGrouped.map((g) => ({
-      productId: g.productId,
+      productId: g.productId as string,
       name: topProductsMeta.find((m) => m.id === g.productId)?.product?.name || 'Producto',
       quantity: Number(g._sum.quantity || 0),
+    }));
+
+    const topServices = topServicesGrouped.map((s) => ({
+      name: s.name,
+      count: s.count,
     }));
 
     return {
@@ -708,6 +737,12 @@ export class DashboardService {
           xKey: 'name',
           yKeys: ['quantity'],
           series: topProducts,
+        },
+        topServices: {
+          type: 'bar',
+          xKey: 'name',
+          yKeys: ['count'],
+          series: topServices,
         },
       },
     };

@@ -2,7 +2,10 @@ import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 import { Role } from '../auth/enums/role.enum';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
@@ -12,7 +15,7 @@ import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 @ApiTags('Analytics')
 @ApiBearerAuth('JWT-auth')
 @Controller('analytics')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
@@ -21,6 +24,7 @@ export class AnalyticsController {
     keyType: 'user',
     rules: [{ limit: 60, windowSeconds: 3600 }],
   })
+  @RequirePermissions(PERMISSIONS.VIEW_ANALYTICS)
   @RequireTenantFeatures(TenantFeature.CASH)
   @ApiOperation({
     summary: 'Resumen analitico para dashboard con graficas',
@@ -51,6 +55,7 @@ export class AnalyticsController {
     keyType: 'user',
     rules: [{ limit: 60, windowSeconds: 3600 }],
   })
+  @RequirePermissions(PERMISSIONS.VIEW_ANALYTICS)
   @RequireTenantFeatures(TenantFeature.CASH)
   @ApiOperation({
     summary: 'Serie temporal de ingresos',
@@ -76,6 +81,7 @@ export class AnalyticsController {
     keyType: 'user',
     rules: [{ limit: 60, windowSeconds: 3600 }],
   })
+  @RequirePermissions(PERMISSIONS.VIEW_ANALYTICS)
   @RequireTenantFeatures(TenantFeature.CASH)
   @ApiOperation({
     summary: 'Ganancia neta (ingresos - egresos)',
@@ -107,6 +113,7 @@ export class AnalyticsController {
     keyType: 'user',
     rules: [{ limit: 60, windowSeconds: 3600 }],
   })
+  @RequirePermissions(PERMISSIONS.VIEW_ANALYTICS)
   @RequireTenantFeatures(TenantFeature.CASH)
   @ApiOperation({
     summary: 'Ingresos (productos/servicios) y rankings',
@@ -139,8 +146,9 @@ export class AnalyticsController {
     rules: [{ limit: 100, windowSeconds: 3600 }],
     cooldownSeconds: 600,
   })
+  @RequirePermissions(PERMISSIONS.VIEW_ANALYTICS)
   @RequireTenantFeatures(TenantFeature.CASH)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.USER)
   @ApiOperation({
     summary: 'Resumen de metodos de pago en un rango de fechas',
   })
@@ -160,11 +168,37 @@ export class AnalyticsController {
     return this.analyticsService.getPaymentMethodsSummary(req.user, from, to, timeZone, storeId);
   }
 
+  @Get('user-rankings')
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 60, windowSeconds: 3600 }],
+  })
+  @RequirePermissions(PERMISSIONS.VIEW_ANALYTICS)
+  @RequireTenantFeatures(TenantFeature.CASH)
+  @ApiOperation({ summary: 'Obtener ranking de usuarios por servicios y productos' })
+  @ApiQuery({ name: 'from', required: true, example: '2024-01-01' })
+  @ApiQuery({ name: 'to', required: true, example: '2024-01-31' })
+  @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
+  @ApiQuery({ name: 'storeId', required: false, example: 'uuid-de-tienda' })
+  @ApiResponse({ status: 200, description: 'Ranking de usuarios' })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes' })
+  async getUserRankings(
+    @Req() req: any,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('timeZone') timeZone?: string,
+    @Query('storeId') storeId?: string,
+  ) {
+    return this.analyticsService.getUserRankings(req.user, from, to, timeZone, storeId);
+  }
+
   @Get('expenses')
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 60, windowSeconds: 3600 }],
   })
+  @RequirePermissions(PERMISSIONS.VIEW_ANALYTICS)
   @RequireTenantFeatures(TenantFeature.CASH)
   @ApiOperation({
     summary: 'Egresos',
