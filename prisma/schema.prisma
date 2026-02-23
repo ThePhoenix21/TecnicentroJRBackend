@@ -49,12 +49,6 @@ model User {
   accessProfileId String?
   accessProfile   AccessProfile? @relation(fields: [accessProfileId], references: [id])
 
-<<<<<<< HEAD
-  orderHardDeleteAudits     OrderHardDeleteAudit[]
-
-  // auditoría de anulaciones
-  ordersCanceled Order[] @relation("OrderCanceledBy")
-=======
   clients                    Client[]
   orders                     Order[]
   products                   Product[]
@@ -104,7 +98,6 @@ model AccessProfile {
   updatedAt DateTime @updatedAt
 
   users User[]
->>>>>>> 8306ad0a6497549eb18602a8124a24afa1e8089b
 }
 
 model Product {
@@ -1059,27 +1052,6 @@ model ApiMetric {
   @@index([tenantId])
 }
 
- model OrderHardDeleteAudit {
-   id                String   @id @default(uuid())
-   tenantId           String
-
-   executedByUserId   String
-   executedByUser     User     @relation(fields: [executedByUserId], references: [id], onDelete: Restrict)
-   executedByEmail    String
-
-   fromDate           DateTime
-   toDate             DateTime
-
-   deletedOrdersCount Int
-
-   ipAddress          String?
-   reason             String?
-
-   createdAt          DateTime @default(now())
-
-   @@index([tenantId, createdAt])
- }
-
 //===================SECCIÓN DE ENUMS===================
 
 enum CurrencyCode {
@@ -1125,12 +1097,6 @@ enum TenantFeature {
   INVENTORY
   CLIENTS
   CONFIG
-<<<<<<< HEAD
-  HARD_DELETE_SALES_HISTORY
-}
-=======
->>>>>>> 8306ad0a6497549eb18602a8124a24afa1e8089b
-
   HARD_DELETE_SALES_HISTORY
 }
 
