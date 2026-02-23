@@ -19,23 +19,23 @@ model RefreshToken {
 }
 
 model User {
-  id                        String     @id @default(uuid())
-  email                     String     @unique
+  id                        String         @id @default(uuid())
+  email                     String         @unique
   password                  String
   name                      String
   birthdate                 DateTime?
-  language                  String?    @default("indeterminado")
-  timezone                  String?    @default("UTC")
-  phone                     String?    @default("sin_telefono")
-  username                  String     @unique @default("default_username")
-  status                    UserStatus @default(ACTIVE)
-  role                      Role       @default(USER)
-  permissions               String[]   @default([]) // Permisos granulares
+  language                  String?        @default("indeterminado")
+  timezone                  String?        @default("UTC")
+  phone                     String?        @default("sin_telefono")
+  username                  String         @unique @default("default_username")
+  status                    UserStatus     @default(ACTIVE)
+  role                      Role           @default(USER)
+  permissions               String[]       @default([]) // Permisos granulares
   lastLoginAt               DateTime?
   lastLoginIp               String?
-  createdAt                 DateTime   @default(now())
-  updatedAt                 DateTime   @default(now()) @updatedAt
-  verified                  Boolean    @default(false)
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @default(now()) @updatedAt
+  verified                  Boolean        @default(false)
   verifyToken               String?
   verifyTokenExpires        DateTime?
   avatarUrl                 String?
@@ -43,138 +43,69 @@ model User {
   passwordResetToken        String?
   passwordResetTokenExpires DateTime?
 
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+  tenantId                  String?
+  tenant                    Tenant?        @relation(fields: [tenantId], references: [id])
 
-  accessProfileId String?
-  accessProfile   AccessProfile? @relation(fields: [accessProfileId], references: [id])
+  clients                   Client[]
+  orders                    Order[]
+  products                  Product[]
+  refreshTokens             RefreshToken[]
+  cashSessions              CashSession[]
+  cashMovements             CashMovement[]
+  storeUsers                StoreUsers[]
+  stores                    Store[]
+  storeProducts             StoreProduct[]
+  inventoryMovements        InventoryMovement[]
+  inventorySessions         InventoryCountSession[]
 
-  clients                    Client[]
-  orders                     Order[]
-  products                   Product[]
-  refreshTokens              RefreshToken[]
-  cashSessions               CashSession[]
-  cashMovements              CashMovement[]
-  storeUsers                 StoreUsers[]
-  stores                     Store[]
-  storeProducts              StoreProduct[]
-  inventoryMovements         InventoryMovement[]
-  inventorySessions          InventoryCountSession[]
-  storeReceptionsCreated     StoreReception[]
-  warehouseReceptionsCreated WarehouseReception[]
-  quotationsCreated          Quotation[]
-  storeServicesCreated       StoreService[]
-  servicesDefinitionsCreated ServiceDefinition[]
-  orderHardDeleteAudits      OrderHardDeleteAudit[]
+  orderHardDeleteAudits     OrderHardDeleteAudit[]
 
-  supportTicketsCreated               SupportTicket[] @relation("SupportTicketCreatedBy")
-  warehousesCreated                   Warehouse[]     @relation("WarehouseCreatedBy")
-  supplyOrders                        SupplyOrder[]   @relation("SupplyOrderCreatedBy")
-  provider                            Provider[]      @relation("ProviderCreatedBy")
-  employed                            Employed?       @relation("EmployedUser")
-  employedCreated                     Employed[]      @relation("EmployedCreatedBy")
-  employedHistoriesCreated            EmployedHistory[] @relation("EmployedHistoryCreatedBy")
-  employedHistoriesUpdated            EmployedHistory[] @relation("EmployedUpdatedBy")
-  ordersCanceled                      Order[]         @relation("OrderCanceledBy")
-  employeeDocumentsUpdated            EmployeeDocument[] @relation("EmployeeDocumentUpdatedBy")
-}
-
-////===================PERFILES DE ACCESO===================
-
-model AccessProfile {
-  id       String @id @default(uuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  name        String
-  description String?
-
-  // Lista de permisos (keys: VIEW_INVENTORY, MANAGE_PRODUCTS, etc)
-  permissions String[]
-
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  users User[]
+  // auditoría de anulaciones
+  ordersCanceled Order[] @relation("OrderCanceledBy")
 }
 
 model Product {
   id          String   @id @default(uuid())
   name        String
-  description String?
-  basePrice   Decimal? // precio de venta sugerido
-  buyCost     Decimal? // costo de adquisición del producto
+  description String?  
+  basePrice   Float?   // precio de venta sugerido
+  buyCost     Float?   // costo de adquisición del producto
   isDeleted   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  createdById String? // si quieres registrar quién lo creó
+  createdById String?  // si quieres registrar quién lo creó
   createdBy   User?    @relation(fields: [createdById], references: [id])
 
-  storeProducts       StoreProduct[]
-  supplyOrderProducts SupplyOrderProduct[]
-  providerProducts    ProviderProduct[]
-  warehouseProducts   WarehouseProduct[]
-  warehouseReceptions WarehouseReceptionProduct[]
-  storeReceptions     StoreReceptionProduct[]
+  storeProducts StoreProduct[]
 }
-
-//=================== Product Batches ===================
-
-model ProductBatch {
-  id String @id @default(uuid())
-
-  warehouseProductId String?
-  warehouseProduct   WarehouseProduct? @relation(fields: [warehouseProductId], references: [id])
-
-  storeProductId String?
-  storeProduct   StoreProduct? @relation(fields: [storeProductId], references: [id])
-
-  quantity Int
-
-  productionDate DateTime?
-  expirationDate DateTime?
-
-  receivedAt DateTime @default(now())
-
-  createdAt DateTime @default(now())
-}
-
-//=================== Store Products ===================
 
 model StoreProduct {
-  id             String   @id @default(uuid())
-  price          Decimal // precio que esta tienda aplica
-  stock          Int      @default(0) // unidades disponibles en esta tienda
-  stockThreshold Int      @default(1) // alerta de stock mínimo
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  deletedAt      DateTime?
+  id            String   @id @default(uuid())
+  price         Float    // precio que esta tienda aplica
+  stock         Int      @default(0) // unidades disponibles en esta tienda
+  stockThreshold Int     @default(1) // alerta de stock mínimo
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   storeId String
-  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store   Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
-
-  orderProducts       OrderProduct[]
-  inventoryMovements  InventoryMovement[]
-  inventoryCountItems InventoryCountItem[]
-  productBatches      ProductBatch[]
+  orderProducts OrderProduct[]
+  inventoryMovements     InventoryMovement[]
+  inventoryCountItems    InventoryCountItem[]
 }
 
 model OrderProduct {
-  id        String       @id @default(uuid())
-  quantity  Int          @default(1)
-  price     Decimal
-  buycost   Decimal      @default(0)
+  id        String  @id @default(uuid())
+  quantity  Int     @default(1)
+  price     Float
+  buycost   Float   @default(0)
   productId String
   orderId   String
   order     Order        @relation(fields: [orderId], references: [id])
@@ -191,866 +122,272 @@ model Client {
   dni       String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  deletedAt DateTime?
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
-
-  orders Order[]
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, dni])
   @@unique([tenantId, email])
   @@unique([tenantId, ruc])
+
+  orders    Order[]
 }
 
 model Order {
-  id              String     @id @default(uuid())
-  orderNumber     String     @unique
-  totalAmount     Decimal
-  status          SaleStatus @default(PENDING)
-  isPriceModified Boolean    @default(false)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @default(now()) @updatedAt
+  id            String         @id @default(uuid())
+  orderNumber   String         @unique @default("ORD-0000")
+  totalAmount   Float
+  status        SaleStatus     @default(PENDING)
+  isPriceModified Boolean       @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @default(now()) @updatedAt
+  
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  clientId String
-  client   Client @relation(fields: [clientId], references: [id])
+  clientId      String
+  client        Client         @relation(fields: [clientId], references: [id])
 
   cashSessionsId String?
-  cashSession    CashSession? @relation(fields: [cashSessionsId], references: [id])
+  cashSession    CashSession?    @relation(fields: [cashSessionsId], references: [id])
 
-  cashMovements      CashMovement[]
+  cashMovements CashMovement[]
   inventoryMovements InventoryMovement[]
-  orderProducts      OrderProduct[]
-  services           Service[]
-  paymentMethods     PaymentMethod[]
+  orderProducts OrderProduct[]
+  services      Service[]
+  paymentMethods PaymentMethod[]
 
   // auditoría de anulaciones
-  canceledAt   DateTime?
-  canceledById String?
-  canceledBy   User?     @relation("OrderCanceledBy", fields: [canceledById], references: [id])
+  canceledAt     DateTime?
+  canceledById   String?
+  canceledBy     User?       @relation("OrderCanceledBy", fields: [canceledById], references: [id])
 }
-
-//===================SERVICIOS===================
 
 model Service {
-  id                            String        @id @default(uuid())
-  type                          ServiceType   @default(MISELANEOUS)
-  status                        ServiceStatus @default(IN_PROGRESS)
-  name                          String
-  description                   String
-  photoUrls                     String[]      @default([])
-  price                         Decimal
-  createdAt                     DateTime      @default(now())
-  updatedAt                     DateTime      @updatedAt
-
-  storeServiceId                String?
-  storeService                  StoreService? @relation(fields: [storeServiceId], references: [id])
-
-  serviceCategoryId             String?
-  serviceCategory               ServiceCategory? @relation(fields: [serviceCategoryId], references: [id])
-
-  orderId                       String
-  order                         Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-}
-
-//===================SERVICIOS PERSONALIZADOS===================
-
-model StoreService {
-  id          String      @id @default(uuid())
+  id          String        @id @default(uuid())
+  type        ServiceType   @default(REPAIR)
+  status      ServiceStatus @default(IN_PROGRESS)
   name        String
-  description String?
-  price       Decimal
-  type        ServiceType
+  description String
+  photoUrls   String[]      @default([])
+  price       Float
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  isActive  Boolean   @default(true)
-  deletedAt DateTime?
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  createdById String
-  createdBy   User   @relation(fields: [createdById], references: [id])
-
-  storeId String
-  store   Store  @relation(fields: [storeId], references: [id])
-
-  ServiceDefinitionId String
-  ServiceDefinition   ServiceDefinition @relation(fields: [ServiceDefinitionId], references: [id])
-
-  ServiceCategoryId String?
-  ServiceCategory   ServiceCategory? @relation(fields: [ServiceCategoryId], references: [id])
-
-  services Service[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  orderId     String
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
-
-//===================CATEGORIAS DE SERVICIOS===================
-
-model ServiceCategory {
-  id   String @id @default(uuid())
-  name String
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  isActive Boolean @default(true)
-
-  services      Service[]
-  storeServices StoreService[]
-
-  createdAt DateTime @default(now())
-}
-
-//===================DEFINICION DE SERVICIOS===================
-
-model ServiceDefinition {
-  id          String  @id @default(uuid())
-  name        String
-  description String?
-  basePrice   Decimal
-
-  isActive  Boolean   @default(true)
-  deletedAt DateTime?
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  createdById String
-  createdBy   User   @relation(fields: [createdById], references: [id])
-
-  StoreService StoreService[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-//===================PAGOS===================
 
 model Payment {
-  id     String      @id @default(uuid())
-  type   PaymentType @default(EFECTIVO)
-  amount Decimal
+  id        String            @id @default(uuid())
+  type      PaymentType       @default(EFECTIVO)
+  amount    Float
 
   sourceType PaymentSourceType
   sourceId   String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
 }
 
 model PaymentMethod {
-  id     String      @id @default(uuid())
-  type   PaymentType @default(EFECTIVO)
-  amount Decimal
+  id        String      @id @default(uuid())
+  type      PaymentType @default(EFECTIVO)
+  amount    Float
 
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id])
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 }
 
 model CashSession {
-  id             String        @id @default(uuid())
-  openedAt       DateTime      @default(now())
-  closedAt       DateTime?
-  openedById     String
-  closedById     String?
-  status         SessionStatus @default(OPEN)
-  openingAmount  Decimal
-  declaredAmount Decimal       @default(0)
-  closingAmount  Decimal?
+  id              String   @id @default(uuid())
+  openedAt        DateTime @default(now())
+  closedAt        DateTime?
+  openedById      String
+  closedById      String?
+  status          SessionStatus @default(OPEN)
+  openingAmount   Float
+  declaredAmount  Float    @default(0)
+  closingAmount   Float?
 
-  StoreId String
-  Store   Store  @relation(fields: [StoreId], references: [id])
+  StoreId         String
+  Store           Store         @relation(fields: [StoreId], references: [id])
 
-  UserId String
-  User   User   @relation(fields: [UserId], references: [id])
+  UserId          String
+  User            User          @relation(fields: [UserId], references: [id])
 
   // relaciones
-  cashMovements CashMovement[]
-  orders        Order[]
+  cashMovements       CashMovement[]
+  orders              Order[]
 }
 
 model CashMovement {
-  id          String       @id @default(uuid())
-  sessionId   String
-  type        MovementType
-  amount      Decimal
-  payment     PaymentType?
-  description String?
-  createdAt   DateTime     @default(now())
+  id            String      @id @default(uuid())
+  sessionId     String
+  type          MovementType
+  amount        Float
+  payment       PaymentType?
+  description   String?
+  createdAt     DateTime    @default(now())
 
-  relatedOrderId String?
-  order          Order?  @relation(fields: [relatedOrderId], references: [id])
+  relatedOrderId  String?
+  order           Order?       @relation(fields: [relatedOrderId], references: [id])
 
   CashSessionId String
   CashSession   CashSession @relation(fields: [CashSessionId], references: [id])
 
-  UserId String
-  User   User   @relation(fields: [UserId], references: [id])
+  UserId        String
+  User          User        @relation(fields: [UserId], references: [id])
 }
-
-enum MovementType {
-  INCOME
-  EXPENSE
-}
-
-enum PaymentType {
-  EFECTIVO
-  TARJETA
-  TRANSFERENCIA
-  YAPE
-  PLIN
-  DATAPHONE
-  BIZUM
-  OTRO
-}
-
-//===================SECCIÓN DE TIENDAS===================
 
 model Store {
-  id      String  @id @default(uuid())
-  name    String
-  address String?
-  phone   String?
+  id        String      @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   createdById String?
-  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy   User? @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+  tenantId    String?
+  tenant      Tenant? @relation(fields: [tenantId], references: [id])
 
-  cashSessions      CashSession[]
-  storeUsers        StoreUsers[]
-  storeProducts     StoreProduct[]
-  inventorySessions InventoryCountSession[]
-  storeEmployees    StoreEmployed[]
-  warehouseStores   WarehouseStore[]
-  storeReceptions   StoreReception[]
-  supplyOrders      SupplyOrder[]
-  storeServices     StoreService[]
-}
-
-//===================RECEPCIONES DE TIENDA=======================
-
-model StoreReception {
-  id String @id @default(uuid())
-
-  storeId String
-  store   Store  @relation(fields: [storeId], references: [id])
-
-  supplyOrderId String?
-  supplyOrder   SupplyOrder? @relation(fields: [supplyOrderId], references: [id])
-
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
-
-  receivedAt DateTime @default(now())
-  reference  String?
-  notes      String?
-
-  createdById String
-  createdBy   User   @relation(fields: [createdById], references: [id])
-
-  products StoreReceptionProduct[]
-
-  createdAt DateTime @default(now())
+  cashSessions            CashSession[]
+  storeUsers              StoreUsers[]
+  storeProducts           StoreProduct[]
+  inventorySessions       InventoryCountSession[]
 }
 
 model StoreUsers {
-  id String @id @default(uuid())
+  id        String      @id @default(uuid())  
+  
+  storeId   String
+  store     Store       @relation(fields: [storeId], references: [id])
 
-  storeId String
-  store   Store  @relation(fields: [storeId], references: [id])
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-}
-
-//=================== STORE RECEPTION PRODUCTS ===================
-
-model StoreReceptionProduct {
-  id String @id @default(uuid())
-
-  storeReceptionId String
-  storeReception   StoreReception @relation(fields: [storeReceptionId], references: [id])
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-
-  quantity Int
-
-  createdAt DateTime @default(now())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
 }
 
 //===================SECCIÓN DE EMPRESA===================
 
 model Tenant {
-  id             String          @id @default(uuid())
-  name           String
-  ruc            String?
-  logoUrl        String?
-  status         TenantStatus    @default(ACTIVE)
-  plan           TenantPlan      @default(FREE)
-  features       TenantFeature[]
-  defaultService ServiceType?    @default(MISELANEOUS)
-  currency       CurrencyCode?   @default(PEN)
-  createdAt      DateTime        @default(now())
+  id        String   @id @default(uuid())
+  name      String
+  ruc       String?
+  status    TenantStatus @default(ACTIVE)
+  plan      TenantPlan    @default(FREE)
+  features  TenantFeature[]
+  defaultService ServiceType? @default(REPAIR)
+  currency  CurrencyCode? @default(PEN)  
+  createdAt DateTime @default(now())
 
-  stores     Store[]
-  warehouses Warehouse[]
-
-  users   User[]
-  clients Client[]
-
-  storeProducts       StoreProduct[]
-  warehouseProducts   WarehouseProduct[]
-  inventoryMovements  InventoryMovement[]
-  supplyOrders        SupplyOrder[]
-  warehouseReceptions WarehouseReception[]
-  storeReceptions     StoreReception[]
-  accessProfiles      AccessProfile[]
-  storeServices       StoreService[]
-  serviceCategories   ServiceCategory[]
-  serviceDefinitions  ServiceDefinition[]
+  stores    Store[]
+  users     User[]
+  clients   Client[]
 }
 
 //===================SECCIÓN DE INVENTARIO===================
 
 model InventoryMovement {
-  id          String                @id @default(uuid())
+  id          String      @id @default(uuid())
   type        InventoryMovementType
   quantity    Int
   description String?
-  date        DateTime              @default(now())
+  date        DateTime    @default(now())
 
   // relación con StoreProduct (producto en una tienda específica)
   storeProductId String
   storeProduct   StoreProduct @relation(fields: [storeProductId], references: [id])
 
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
-
   // usuario que realizó el movimiento
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User @relation(fields: [userId], references: [id])
 
-  orderId String?
-  order   Order?  @relation(fields: [orderId], references: [id])
+  orderId     String?
+  order       Order?      @relation(fields: [orderId], references: [id])
 }
 
 model InventoryCountSession {
-  id          String    @id @default(uuid())
+  id          String      @id @default(uuid())
   name        String
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime    @default(now())
   finalizedAt DateTime?
   storeId     String
-  store       Store     @relation(fields: [storeId], references: [id])
+  store       Store       @relation(fields: [storeId], references: [id])
 
   createdById String
-  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdBy   User @relation(fields: [createdById], references: [id])
 
-  items InventoryCountItem[]
+  items       InventoryCountItem[]
 }
 
 model InventoryCountItem {
-  id            String   @id @default(uuid())
-  expectedStock Int // lo que el sistema dice que deberia haber
-  physicalStock Int // lo que el trabajador conto
-  difference    Int // physical - expected
-  createdAt     DateTime @default(now())
-
-  sessionId String
-  session   InventoryCountSession @relation(fields: [sessionId], references: [id])
-
-  storeProductId String
-  storeProduct   StoreProduct @relation(fields: [storeProductId], references: [id])
-}
-
-//===================WAREHOUSE===================
-
-model Warehouse {
-  id      String  @id @default(uuid())
-  name    String
-  address String?
-  phone   String?
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  createdById String?
-  createdBy   User?   @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
-
-  warehouseEmployees  WarehouseEmployed[]
-  warehouseStores     WarehouseStore[]
-  warehouseProducts   WarehouseProduct[]
-  warehouseReceptions WarehouseReception[]
-  supplyOrders        SupplyOrder[]
-}
-
-//===================WAREHOUSE RECEPTION===================
-
-model WarehouseReceptionProduct {
-  id String @id @default(uuid())
-
-  warehouseReceptionId String
-  warehouseReception   WarehouseReception @relation(fields: [warehouseReceptionId], references: [id])
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-
-  quantity Int
-
-  createdAt DateTime @default(now())
-}
-
-//===================EMPLOYED===================
-
-model Employed {
-  id                                String @id @default(uuid())
-
-  firstName                         String
-  lastName                          String
-
-  document                          String?
-  phone                             String?
-  email                             String?
-
-  position                          String?
-  status                            EmployedStatus @default(ACTIVE)
-  
-  //soft delete
-  deletedAt                         DateTime?
-
-  // acceso al sistema (opcional)
-  userId                            String? @unique
-  user                              User?   @relation("EmployedUser", fields: [userId], references: [id])
-
-  // documentos
-  documents                         EmployeeDocument[]
-
-  // auditoria
-  createdByUserId                   String
-  createdByUser                     User   @relation("EmployedCreatedBy", fields: [createdByUserId], references: [id])
-
-  // relaciones de historia
-  employedHistories                 EmployedHistory[]
-
-  createdAt                         DateTime @default(now())
-  updatedAt                         DateTime @updatedAt
-
-  warehouseAssignments              WarehouseEmployed[]
-  storeAssignments                  StoreEmployed[]
-
-  @@unique([createdByUserId, document])
-}
-
-enum EmployedStatus {
-  ACTIVE
-  INACTIVE
-  SUSPENDED
-}
-
-//===================EMPLOYED DOCUMENTS===================
-
-model EmployeeDocument {
-  id                             String @id @default(uuid())
-  url                            String
-  originalName                   String
-  mimeType                       String
-  status                         DocumentStatus @default(ACTIVE)
-  size                           Int
-
-  employedId                     String
-  employed                       Employed @relation(fields: [employedId], references: [id])
-
-  updatedByUserId                String?
-  updatedByUser                  User?   @relation("EmployeeDocumentUpdatedBy", fields: [updatedByUserId], references: [id])
-
-  createdAt                      DateTime @default(now())
-}
-
-enum DocumentStatus {
-  ACTIVE
-  INACTIVE
-  DELETED
-}
-
-//===================EMPLOYED HISTORY===================
-
-model EmployedHistory {
-  id String @id @default(uuid())
-
-  employedId String
-  employed   Employed @relation(fields: [employedId], references: [id])
-
-  hiredAt DateTime
-  endedAt DateTime?
-
-  reason String? // renuncia, despido, reingreso, etc
-
-  updatedByUserId String?
-  updatedByUser   User?   @relation("EmployedUpdatedBy", fields: [updatedByUserId], references: [id])
-
-  createdById String
-  createdBy   User   @relation("EmployedHistoryCreatedBy", fields: [createdById], references: [id])
-
-  createdAt DateTime @default(now())
-}
-
-//===================COTIZACIONES===================
-
-model Quotation {
-  id        String          @id @default(uuid())
-  code      String          @unique
-  status    QuotationStatus @default(DRAFT)
-  notes     String?
-  subtotal  Decimal
-  tax       Decimal         @default(0)
-  total     Decimal
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-
-  items QuotationItem[]
-}
-
-enum QuotationStatus {
-  DRAFT
-  SENT
-  ACCEPTED
-  REJECTED
-  EXPIRED
-}
-
-//===================COTIZACIONES ITEM===================
-
-model QuotationItem {
-  id          String    @id @default(uuid())
-  quotationId String
-  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-
-  type QuotationItemType // PRODUCT | SERVICE
-
-  name        String
-  description String?
-  quantity    Int     @default(1)
-
-  unitPrice Decimal
-  subtotal  Decimal
-
-  buycost   Decimal  @default(0) // solo aplica a productos
-  photoUrls String[] @default([])
-
-  // referencias historicas (opcional)
-  productId String?
-  serviceId String?
-}
-
-enum QuotationItemType {
-  PRODUCT
-  SERVICE
-}
-
-//===================AUDITORIA DE BORRADO EN MASIVO===================
-
-model OrderHardDeleteAudit {
-  id                String   @id @default(uuid())
-  tenantId           String
-
-  executedByUserId   String
-  executedByUser     User     @relation(fields: [executedByUserId], references: [id], onDelete: Restrict)
-  executedByEmail    String
-
-  fromDate           DateTime
-  toDate             DateTime
-
-  deletedOrdersCount Int
-
-  ipAddress          String?
-  reason             String?
-
+  id                 String   @id @default(uuid())
+  expectedStock      Int      // lo que el sistema dice que deberia haber
+  physicalStock      Int      // lo que el trabajador conto
+  difference         Int      // physical - expected
   createdAt          DateTime @default(now())
 
-  @@index([tenantId, createdAt])
-}
-
-//===================SUPPORT===================
-
-model SupportTicket {
-  id      String @id @default(uuid())
-  subject String
-  message String
-
-  status   SupportStatus   @default(OPEN)
-  priority SupportPriority @default(NORMAL)
-
-  createdByUserId String?
-  createdByUser   User?   @relation("SupportTicketCreatedBy", fields: [createdByUserId], references: [id])
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  closedAt  DateTime?
-}
-
-enum SupportStatus {
-  OPEN
-  IN_PROGRESS
-  CANCELLED
-  REFUSED
-  COMPLETED
-}
-
-enum SupportPriority {
-  LOW
-  NORMAL
-  HIGH
-}
-
-//===================PROVEEDORES=======================
-
-model Provider {
-  id      String  @id @default(uuid())
-  name    String
-  ruc     String?
-  phone   String?
-  email   String?
-  address String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
-
-  createdById String
-  createdBy   User   @relation("ProviderCreatedBy", fields: [createdById], references: [id])
-
-  supplyOrders     SupplyOrder[]
-  providerProducts ProviderProduct[]
-
-  @@unique([createdById, ruc])
-}
-
-//===================ORDENES DE SUMINISTRO=======================
-
-model SupplyOrder {
-  id          String            @id @default(uuid())
-  code        String
-  sequence    Int?
-  status      SupplyOrderStatus @default(PENDING)
-
-  description String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  providerId String
-  provider   Provider @relation(fields: [providerId], references: [id])
-
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
-
-  createdById String
-  createdBy   User   @relation("SupplyOrderCreatedBy", fields: [createdById], references: [id])
-
-  warehouseId String?
-  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
-
-  storeId String?
-  store   Store?  @relation(fields: [storeId], references: [id])
-
-  // productos de la orden
-  products SupplyOrderProduct[]
-
-  warehouseReceptions WarehouseReception[]
-  storeReceptions     StoreReception[]
-
-  @@unique([createdById, code])
-  @@unique([tenantId, providerId, sequence])
-}
-
-enum SupplyOrderStatus {
-  ISSUED // Emitida
-  PENDING // Pendiente
-  PARTIAL // Parcial
-  PARTIALLY_RECEIVED // Parcialmente Recibida
-  RECEIVED // Recibida
-  DELIVERED // Entregada (no se esta usando)
-  COMPLETED // Completada (no se esta usando)
-  ANNULLATED // Anulada
-}
-
-//===================PRODUCTOS DEL ALMACEN=======================
-
-model WarehouseProduct {
-  id String @id @default(uuid())
-
-  warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
-
-  stock          Int @default(0)
-  stockThreshold Int @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  productBatches ProductBatch[]
-
-  @@unique([warehouseId, productId])
-}
-
-//===================RECEPCIONES DE ALMACÉN=======================
-
-model WarehouseReception {
-  id String @id @default(uuid())
-
-  warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-
-  supplyOrderId String?
-  supplyOrder   SupplyOrder? @relation(fields: [supplyOrderId], references: [id])
-
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
-
-  receivedAt DateTime @default(now())
-  reference  String? // guia, factura, remito, etc
-  notes      String?
-
-  createdById String
-  createdBy   User   @relation(fields: [createdById], references: [id])
-
-  products WarehouseReceptionProduct[]
-
-  createdAt DateTime @default(now())
-}
-
-//===================PRODUCTOS DE LA ORDEN=======================
-
-model SupplyOrderProduct {
-  id String @id @default(uuid())
-
-  supplyOrderId String
-  supplyOrder   SupplyOrder @relation(fields: [supplyOrderId], references: [id])
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-
-  quantity Int
-  note     String?
-
-  @@unique([supplyOrderId, productId])
-}
-
-//===================PRODUCTOS DEL PROVEEDOR=======================
-
-model ProviderProduct {
-  id String @id @default(uuid())
-
-  providerId String
-  provider   Provider @relation(fields: [providerId], references: [id])
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-
-  buyCost Decimal?
-
-  @@unique([providerId, productId])
-}
-
-//===================EMPLEADOS DEL ALMACEN=======================
-
-model WarehouseEmployed {
-  id String @id @default(uuid())
-
-  warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-
-  employedId String
-  employed   Employed @relation(fields: [employedId], references: [id])
-
-  role       String?
-  assignedAt DateTime @default(now())
-
-  @@unique([warehouseId, employedId])
-}
-
-model WarehouseStore {
-  id String @id @default(uuid())
-
-  warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-
-  storeId String
-  store   Store  @relation(fields: [storeId], references: [id])
-
-  priority  Int?
-  createdAt DateTime @default(now())
-
-  @@unique([warehouseId, storeId])
-}
-
-model StoreEmployed {
-  id String @id @default(uuid())
-
-  employedId String
-  employed   Employed @relation(fields: [employedId], references: [id])
-
-  storeId String
-  store   Store  @relation(fields: [storeId], references: [id])
-
-  role       String?
-  assignedAt DateTime @default(now())
-
-  @@unique([employedId, storeId])
+  sessionId          String
+  session            InventoryCountSession @relation(fields: [sessionId], references: [id])
+
+  storeProductId     String
+  storeProduct       StoreProduct @relation(fields: [storeProductId], references: [id])
 }
 
 //===================SECCIÓN DE METRICAS===================
 
 model ApiMetric {
-  id String @id @default(uuid())
+  id               String   @id @default(uuid())
 
-  intervalStart   DateTime // inicio del intervalo (ej. minuto)
-  intervalMinutes Int      @default(1)
+  intervalStart    DateTime // inicio del intervalo (ej. minuto)
+  intervalMinutes  Int      @default(1)
 
-  endpoint String // ruta normalizada: /orders/:id
-  method   String // GET, POST, etc
+  endpoint         String   // ruta normalizada: /orders/:id
+  method           String   // GET, POST, etc
 
-  requestsCount Int
-  errorsCount   Int
-  avgLatencyMs  Decimal?
+  requestsCount    Int
+  errorsCount      Int
+  avgLatencyMs     Float?
 
-  tenantId String? // relacion logica, no FK
+  tenantId         String?  // relacion logica, no FK
 
-  createdAt DateTime @default(now())
+  createdAt        DateTime @default(now())
 
   @@index([intervalStart])
   @@index([endpoint])
   @@index([tenantId])
 }
+
+ model OrderHardDeleteAudit {
+   id                String   @id @default(uuid())
+   tenantId           String
+
+   executedByUserId   String
+   executedByUser     User     @relation(fields: [executedByUserId], references: [id], onDelete: Restrict)
+   executedByEmail    String
+
+   fromDate           DateTime
+   toDate             DateTime
+
+   deletedOrdersCount Int
+
+   ipAddress          String?
+   reason             String?
+
+   createdAt          DateTime @default(now())
+
+   @@index([tenantId, createdAt])
+ }
 
 //===================SECCIÓN DE ENUMS===================
 
@@ -1061,11 +398,11 @@ enum CurrencyCode {
 }
 
 enum InventoryMovementType {
-  INCOMING // Compras / Ingresos
-  OUTGOING // Mermas / Salidas manuales
-  SALE // Salida por venta automática
-  RETURN // Devolución de cliente
-  ADJUST // Ajuste por inventario físico
+  INCOMING      // Compras / Ingresos
+  OUTGOING      // Mermas / Salidas manuales
+  SALE          // Salida por venta automática
+  RETURN        // Devolución de cliente
+  ADJUST        // Ajuste por inventario físico
 }
 
 enum TenantStatus {
@@ -1097,8 +434,18 @@ enum TenantFeature {
   INVENTORY
   CLIENTS
   CONFIG
-
   HARD_DELETE_SALES_HISTORY
+}
+
+enum PaymentType {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  YAPE
+  PLIN
+  DATAPHONE
+  BIZUM
+  OTRO
 }
 
 enum PaymentSourceType {
@@ -1111,10 +458,14 @@ enum SessionStatus {
   CLOSED
 }
 
+enum MovementType {
+  INCOME
+  EXPENSE
+}
+
 enum SaleStatus {
   COMPLETED
-  PAID
-  CANCELLED //anulado
+  CANCELLED
   PENDING
 }
 
