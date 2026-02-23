@@ -350,8 +350,8 @@ export class AuthService {
       }
     }
 
-    // Si es ADMIN y no se enviaron permisos, asignar todos por defecto
-    const finalPermissions = permissions.length > 0 ? permissions : ALL_PERMISSIONS;
+    // Este método registra un ADMIN: siempre debe quedar con TODOS los permisos
+    const finalPermissions = ALL_PERMISSIONS;
 
     // Hashear la contraseña
     const hashedPassword = await bcrypt.hash(password, 10);
