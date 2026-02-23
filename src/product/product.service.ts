@@ -3,6 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CatalogProduct } from './entities/catalog-product.entity';
+import { StoreProductStockDto } from './dto/store-product-stock.dto';
+import { AuthService } from '../auth/auth.service';
+import { AdminCredentialsDto } from './dto/admin-credentials.dto';
 
 type AuthUser = {
   userId: string;
@@ -13,7 +16,10 @@ type AuthUser = {
 
 @Injectable()
 export class ProductService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private authService: AuthService,
+  ) {}
 
   private getTenantIdOrUndefined(user?: AuthUser): string | undefined {
     return user?.tenantId;
@@ -66,6 +72,42 @@ export class ProductService {
     return (await Promise.all(products.map((p) => this.attachCreatedByForTenant(p, tenantId)))) as unknown as CatalogProduct[];
   }
 
+  async lookup(user?: AuthUser, search?: string): Promise<Array<{ id: string; name: string }>> {
+    const tenantId = this.getTenantIdOrUndefined(user);
+
+    const whereCondition: any = {
+      isDeleted: false,
+    };
+
+    // Si hay tenant, filtrar por productos creados por usuarios del tenant
+    if (tenantId) {
+      whereCondition.createdBy = {
+        tenantId,
+      };
+    }
+
+    // Si hay búsqueda, filtrar por nombre que contenga el término (case insensitive)
+    if (search) {
+      whereCondition.name = {
+        contains: search,
+        mode: 'insensitive',
+      };
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: whereCondition,
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: 'asc',
+      }
+    });
+
+    return products;
+  }
+
   async findOne(id: string, user?: AuthUser): Promise<CatalogProduct> {
     const tenantId = this.getTenantIdOrUndefined(user);
 
@@ -104,8 +146,22 @@ export class ProductService {
     return withCreatedBy as unknown as CatalogProduct;
   }
 
-  async remove(id: string, user?: AuthUser): Promise<CatalogProduct> {
+  async remove(id: string, credentials: AdminCredentialsDto, user?: AuthUser): Promise<CatalogProduct> {
     const tenantId = this.getTenantIdOrUndefined(user);
+
+    if (!tenantId) {
+      throw new ForbiddenException('TenantId no encontrado en el token');
+    }
+
+    const authUser = await this.authService.validateAnyUser(credentials.email, credentials.password);
+
+    if (authUser.role !== 'ADMIN') {
+      throw new ForbiddenException('Solo un administrador puede eliminar productos del catálogo');
+    }
+
+    if (authUser.tenantId !== tenantId) {
+      throw new ForbiddenException('No tiene permisos para eliminar productos de otro tenant');
+    }
 
     // Verificar que el producto existe y no está ya eliminado
     const product = await this.prisma.product.findUnique({
@@ -120,13 +176,80 @@ export class ProductService {
       throw new NotFoundException(`Producto del catálogo con ID ${id} ya está eliminado`);
     }
 
-    // Soft delete: marcar como eliminado en lugar de borrar físicamente
-    const updatedProduct = await this.prisma.product.update({
-      where: { id },
-      data: { isDeleted: true },
+    const now = new Date();
+
+    const updatedProduct = await this.prisma.$transaction(async (prisma) => {
+      // 1) Soft delete del producto de catálogo
+      const updated = await prisma.product.update({
+        where: { id },
+        data: { isDeleted: true },
+      });
+
+      // 2) “Borrar de todas las tiendas” => soft delete de todos los StoreProduct de ese producto
+      await prisma.storeProduct.updateMany({
+        where: {
+          productId: id,
+          deletedAt: null,
+          store: {
+            tenantId,
+          },
+        } as any,
+        data: { deletedAt: now } as any,
+      } as any);
+
+      return updated;
     });
 
     const withCreatedBy = await this.attachCreatedByForTenant(updatedProduct, tenantId);
     return withCreatedBy as unknown as CatalogProduct;
+  }
+
+  async getStoreStock(user: AuthUser | undefined, storeId: string): Promise<StoreProductStockDto[]> {
+    const tenantId = this.getTenantIdOrUndefined(user);
+
+    if (!tenantId) {
+      throw new ForbiddenException('TenantId no encontrado en el token');
+    }
+
+    const store = await this.prisma.store.findFirst({
+      where: { id: storeId, tenantId },
+      select: { id: true },
+    });
+
+    if (!store) {
+      throw new ForbiddenException('No tienes acceso a esta tienda');
+    }
+
+    const storeProducts = await this.prisma.storeProduct.findMany({
+      where: {
+        storeId,
+        store: { tenantId },
+        deletedAt: null,
+        product: { isDeleted: false },
+      },
+      select: {
+        id: true,
+        productId: true,
+        stock: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        product: {
+          name: 'asc',
+        },
+      },
+    } as any);
+
+    return (storeProducts as any[]).map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      name: item.product.name,
+      stock: item.stock,
+    }));
   }
 }

@@ -125,6 +125,7 @@ export class StoreService {
           const storeProductsData = allProducts.map(product => ({
             productId: product.id,
             storeId: newStore.id,
+            tenantId: adminUser.tenantId,
             stock: 0,
             price: product.basePrice || 0,
             userId: adminUser.id,
@@ -159,10 +160,59 @@ export class StoreService {
     }
   }
 
-  findAll(tenantId: string) {
+  async findAll(tenantId: string) {
     return this.prisma.store.findMany({
       where: { tenantId },
     }).then((stores) => Promise.all(stores.map((s) => this.attachCreatedByForTenant(s, tenantId))));
+  }
+
+  findAllSimple(tenantId: string) {
+    return this.prisma.store.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  }
+
+  async lookup(tenantId: string) {
+    return this.prisma.store.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  }
+
+  async getTenantStoresInfo(tenantId: string) {
+    return this.prisma.store.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        createdAt: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
   }
 
   async findOne(id: string, user: AuthUser) {

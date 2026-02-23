@@ -103,18 +103,135 @@ export class MailService {
     }
   }
 
-  async sendCustomEmail(to: string, subject: string, html: string) {
+  async sendCustomEmail(to: string, subject: string, html: string, attachments?: any[]) {
     try {
       await this.transporter.sendMail({
         from: this.defaultFrom,
         to,
         subject,
         html,
+        attachments,
       });
       this.logger.log(`Correo personalizado enviado a ${to}`);
     } catch (error) {
       this.logger.error('Error al enviar correo personalizado:', error);
       throw new Error('No se pudo enviar el correo');
+    }
+  }
+
+  async sendSupplyOrderApprovalEmail(to: string, orderCode: string, htmlContent: string) {
+    try {
+      const subject = `Orden de Suministro Aprobada - ${orderCode}`;
+      
+      const emailHtml = `
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Aprobación de Orden de Suministro</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 20px;
+                }
+                .header {
+                    background-color: #007bff;
+                    color: white;
+                    padding: 20px;
+                    text-align: center;
+                    border-radius: 5px 5px 0 0;
+                }
+                .content {
+                    background-color: #f9f9f9;
+                    padding: 30px;
+                    border-radius: 0 0 5px 5px;
+                }
+                .order-info {
+                    background-color: white;
+                    padding: 20px;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                    border-left: 4px solid #007bff;
+                }
+                .footer {
+                    text-align: center;
+                    margin-top: 30px;
+                    padding-top: 20px;
+                    border-top: 1px solid #ddd;
+                    font-size: 12px;
+                    color: #666;
+                }
+                .button {
+                    display: inline-block;
+                    background-color: #007bff;
+                    color: white;
+                    padding: 12px 24px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Orden de Suministro Aprobada</h1>
+            </div>
+            
+            <div class="content">
+                <p>Estimado proveedor,</p>
+                
+                <p>Le informamos que su orden de suministro ha sido aprobada y está lista para ser procesada.</p>
+                
+                <div class="order-info">
+                    <h3>Datos de la Orden</h3>
+                    <p><strong>Código:</strong> ${orderCode}</p>
+                    <p><strong>Estado:</strong> Aprobada</p>
+                    <p><strong>Fecha de aprobación:</strong> ${new Date().toLocaleDateString('es-DO')}</p>
+                </div>
+                
+                <p>Adjunto encontrará el documento PDF con todos los detalles de la orden aprobada.</p>
+                
+                <p>Por favor, revise los detalles y proceda con la preparación de los productos según lo acordado.</p>
+                
+                <p>Si tiene alguna pregunta o necesita información adicional, no dude en contactarnos.</p>
+                
+                <p>Atentamente,<br>
+                El equipo de Gestión</p>
+            </div>
+            
+            <div class="footer">
+                <p>Este es un mensaje automático generado por el Sistema de Gestión</p>
+                <p>© ${new Date().getFullYear()} Todos los derechos reservados</p>
+            </div>
+        </body>
+        </html>
+      `;
+
+      const attachments = [
+        {
+          filename: `orden-suministro-${orderCode}.html`,
+          content: htmlContent,
+          contentType: 'text/html',
+        }
+      ];
+
+      await this.transporter.sendMail({
+        from: this.defaultFrom,
+        to,
+        subject,
+        html: emailHtml,
+        attachments,
+      });
+
+      this.logger.log(`Correo de aprobación de orden enviado a ${to}`);
+    } catch (error) {
+      this.logger.error('Error al enviar correo de aprobación de orden:', error);
+      throw new Error('No se pudo enviar el correo de aprobación de orden');
     }
   }
 }

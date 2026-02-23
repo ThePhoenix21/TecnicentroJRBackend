@@ -24,6 +24,11 @@ import { TenantFeaturesGuard } from './tenant/guards/tenant-features.guard';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ApiMetricsModule } from './common/api-metrics/api-metrics.module';
 import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.interceptor';
+import { EmployedModule } from './employed/employed.module';
+import { ProviderModule } from './provider/provider.module';
+import { WarehouseModule } from './warehouse/warehouse.module';
+import { SupportModule } from './support/support.module';
+import { SupplyOrderModule } from './supply-order/supply-order.module';
 
 @Module({
   imports: [
@@ -56,6 +61,11 @@ import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.intercep
     TenantModule,
     AnalyticsModule,
     ApiMetricsModule,
+    EmployedModule,
+    ProviderModule,
+    WarehouseModule,
+    SupportModule,
+    SupplyOrderModule,
   ],
   controllers: [],
   providers: [

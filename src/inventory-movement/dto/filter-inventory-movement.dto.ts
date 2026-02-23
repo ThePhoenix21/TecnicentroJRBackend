@@ -1,24 +1,37 @@
-import { IsOptional, IsUUID, IsDateString, IsString } from 'class-validator';
+import { IsOptional, IsUUID, IsDateString, IsString, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { InventoryMovementType } from '@prisma/client';
+import { BasePaginationDto } from '../../common/dto/base-pagination.dto';
 
-export class FilterInventoryMovementDto {
-  @ApiPropertyOptional({ description: 'Filtrar por ID de tienda' })
+export class FilterInventoryMovementDto extends BasePaginationDto {
+  @ApiPropertyOptional({ description: 'Nombre de producto (coincidencia parcial)' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'Filtrar por tipo de movimiento', enum: InventoryMovementType })
+  @IsOptional()
+  @IsEnum(InventoryMovementType)
+  type?: InventoryMovementType;
+
+  @ApiPropertyOptional({ description: 'Filtrar por usuario (ID)' })
   @IsOptional()
   @IsUUID()
-  storeId?: string;
+  userId?: string;
 
-  @ApiPropertyOptional({ description: 'Filtrar por ID de StoreProduct' })
+  @ApiPropertyOptional({ description: 'Búsqueda parcial por nombre de usuario', example: 'roge' })
   @IsOptional()
-  @IsUUID()
-  storeProductId?: string;
+  @IsString()
+  userName?: string;
 
   @ApiPropertyOptional({ description: 'Fecha inicio (ISO 8601)' })
   @IsOptional()
   @IsDateString()
-  startDate?: string;
+  fromDate?: string;
 
   @ApiPropertyOptional({ description: 'Fecha fin (ISO 8601)' })
   @IsOptional()
   @IsDateString()
-  endDate?: string;
+  toDate?: string;
+
 }

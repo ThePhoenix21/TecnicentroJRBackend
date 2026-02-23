@@ -16,6 +16,7 @@ type AuthUser = {
   email: string;
   role: string;
   tenantId?: string;
+  permissions?: string[];
 };
 
 @Injectable()
@@ -35,7 +36,17 @@ export class UsersService {
     private assertSelfOrAdmin(targetUserId: string, user?: AuthUser) {
         if (!user) return;
         if (user.role !== 'ADMIN' && user.userId !== targetUserId) {
-            throw new UnauthorizedException('No tienes permisos para acceder a este usuario');
+            // Si es USER y no es el mismo usuario, verificar si tiene permiso VIEW_USERS
+            if (user.role === 'USER') {
+                const userPermissions = user.permissions || [];
+                const hasViewUsersPermission = userPermissions.includes('VIEW_USERS');
+                
+                if (!hasViewUsersPermission) {
+                    throw new UnauthorizedException('No tienes permisos para acceder a este usuario');
+                }
+            } else {
+                throw new UnauthorizedException('No tienes permisos para acceder a este usuario');
+            }
         }
     }
 
@@ -247,6 +258,171 @@ export class UsersService {
         return result;
     }
 
+    async createFromEmployed(
+        input: {
+            employedId: string;
+            role: Role;
+            storeId?: string;
+            password: string;
+            permissions?: string[];
+        },
+        authUser?: AuthUser,
+    ) {
+        const tenantId = this.getTenantIdOrThrow(authUser);
+
+        const employed = await this.prisma.employed.findFirst({
+            where: {
+                id: input.employedId,
+                deletedAt: null,
+                OR: [
+                    { createdByUser: { tenantId } },
+                    { storeAssignments: { some: { store: { tenantId } } } },
+                    { warehouseAssignments: { some: { warehouse: { tenantId } } } },
+                ],
+            },
+            select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true,
+                userId: true,
+            },
+        });
+
+        if (!employed) {
+            throw new NotFoundException('Empleado no encontrado');
+        }
+
+        if (employed.userId) {
+            throw new BadRequestException('El empleado ya tiene un usuario asociado');
+        }
+
+        if (!employed.email) {
+            throw new BadRequestException('El empleado no tiene correo registrado');
+        }
+
+        const employedEmail = employed.email;
+
+        if (input.role === Role.USER && !input.storeId) {
+            throw new BadRequestException('storeId es obligatorio para usuarios con rol USER');
+        }
+
+        if (input.storeId) {
+            const store = await this.prisma.store.findFirst({
+                where: { id: input.storeId, tenantId },
+                select: { id: true },
+            });
+            if (!store) {
+                throw new NotFoundException('La tienda especificada no existe o no pertenece al tenant');
+            }
+        }
+
+        const firstName = employed.firstName?.trim().split(' ')[0] ?? '';
+        const lastName = employed.lastName?.trim().split(' ')[0] ?? '';
+        if (!firstName || !lastName) {
+            throw new BadRequestException('El empleado debe tener nombres y apellidos válidos');
+        }
+
+        const name = `${firstName}_${lastName}`;
+        const username = `${firstName.slice(0, 2)}${lastName.slice(0, 2)}`.toLowerCase();
+
+        const existing = await this.prisma.user.findFirst({
+            where: {
+                OR: [
+                    { email: employedEmail },
+                    { username },
+                    ...(employed.phone ? [{ phone: employed.phone }] : []),
+                ],
+            },
+        });
+
+        if (existing) {
+            if (existing.email === employedEmail) {
+                throw new BadRequestException('El correo electrónico ya está registrado');
+            }
+            if (existing.username === username) {
+                throw new BadRequestException('El nombre de usuario ya está en uso');
+            }
+            if (employed.phone && existing.phone === employed.phone) {
+                throw new BadRequestException('El número de teléfono ya está registrado');
+            }
+        }
+
+        const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[*@!#%&?])[A-Za-z\d*@!#%&?]{6,}$/;
+        if (!passwordRegex.test(input.password)) {
+            throw new BadRequestException(
+                'La contraseña debe tener al menos una mayúscula, un número y un caracter especial (*,@,!,#,%,&,?)',
+            );
+        }
+
+        if (input.permissions && input.permissions.length > 0) {
+            const invalid = input.permissions.filter((p) => !ALL_PERMISSIONS.includes(p));
+            if (invalid.length > 0) {
+                throw new BadRequestException(
+                    `Permisos inválidos: ${invalid.join(', ')}. Revise el catálogo de permisos disponibles.`,
+                );
+            }
+        }
+
+        const hashedPassword = await bcrypt.hash(input.password, 10);
+        const verifyToken = this.generateToken();
+        const verifyTokenExpires = new Date();
+        verifyTokenExpires.setHours(verifyTokenExpires.getHours() + 24);
+
+        const result = await this.prisma.$transaction(async (tx) => {
+            const newUser = await tx.user.create({
+                data: {
+                    email: employedEmail,
+                    password: hashedPassword,
+                    name,
+                    username,
+                    phone: employed.phone || 'sin_telefono',
+                    language: 'indeterminado',
+                    timezone: 'UTC',
+                    role: input.role,
+                    tenantId,
+                    verifyToken,
+                    verifyTokenExpires,
+                    verified: true,
+                    permissions: input.permissions || [],
+                    lastLoginAt: new Date(),
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                    username: true,
+                    phone: true,
+                    role: true,
+                    permissions: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    lastLoginAt: true,
+                    verified: true,
+                },
+            });
+
+            if (input.storeId) {
+                await tx.storeUsers.create({
+                    data: {
+                        storeId: input.storeId,
+                        userId: newUser.id,
+                    },
+                });
+            }
+
+            await tx.employed.update({
+                where: { id: employed.id },
+                data: { userId: newUser.id },
+            });
+
+            return newUser;
+        });
+
+        return result;
+    }
+
     private generateToken(): string {
         return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     }
@@ -278,11 +454,50 @@ export class UsersService {
         });
     }
 
+    async remove(id: string, user?: AuthUser) {
+        const tenantId = this.getTenantIdOrThrow(user);
+
+        const existing = await this.prisma.user.findFirst({ where: { id, tenantId }, select: { id: true } });
+        if (!existing) {
+            this.logger.warn(`Intento de eliminar usuario inexistente ID ${id}`);
+            return null;
+        }
+
+        return this.prisma.user.update({
+            where: { id },
+            data: { status: 'DELETED' },
+        });
+    }
+
+    async lookup(user?: AuthUser) {
+        const tenantId = this.getTenantIdOrThrow(user);
+
+        return this.prisma.user.findMany({
+            where: {
+                tenantId,
+                status: { not: 'DELETED' },
+            },
+            select: {
+                id: true,
+                name: true,
+            },
+            orderBy: { name: 'asc' },
+        });
+    }
+
     async findByEmail(email: string) {
         if (!email) {
             throw new BadRequestException('El correo electrónico es requerido');
         }
-        return this.prisma.user.findUnique({ where: { email } });
+        const normalizedEmail = String(email).trim();
+        return this.prisma.user.findFirst({
+            where: {
+                email: {
+                    equals: normalizedEmail,
+                    mode: 'insensitive',
+                },
+            },
+        });
     }
 
     async findById(id: string, authUser?: AuthUser) {

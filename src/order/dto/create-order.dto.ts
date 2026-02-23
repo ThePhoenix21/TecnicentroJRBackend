@@ -93,7 +93,7 @@ export class ServiceDto {
   @Min(0)
   price: number;
 
-  @ApiProperty({ enum: ServiceType, example: 'SERVICIO' })
+  @ApiProperty({ enum: ServiceType, example: 'MISELANEOUS' })
   @IsEnum(ServiceType)
   type: ServiceType;
 

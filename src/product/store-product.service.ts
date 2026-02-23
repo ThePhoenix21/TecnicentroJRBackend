@@ -6,6 +6,10 @@ import { StoreProduct } from './entities/store-product.entity';
 import { ProductService } from './product.service';
 import { CreateCatalogProductDto } from './dto/create-catalog-product.dto';
 import { InventoryMovementType } from '@prisma/client';
+import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
+import { ListStoreProductsDto } from './dto/list-store-products.dto';
+import { ListStoreProductsResponseDto } from './dto/list-store-products-response.dto';
+import { StoreProductDetailDto } from './dto/store-product-detail.dto';
 
 @Injectable()
 export class StoreProductService {
@@ -13,6 +17,214 @@ export class StoreProductService {
     private prisma: PrismaService,
     private productService: ProductService
   ) {}
+
+  private toNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
+  }
+
+  async lookup(
+    user: { tenantId?: string; userId: string; role: string },
+    search?: string,
+    storeId?: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    if (storeId) {
+      const store = await this.prisma.store.findFirst({
+        where: {
+          id: storeId,
+          tenantId,
+          ...(user.role !== 'ADMIN'
+            ? {
+                storeUsers: {
+                  some: {
+                    userId: user.userId,
+                  },
+                },
+              }
+            : {}),
+        },
+        select: { id: true },
+      });
+
+      if (!store) {
+        throw new ForbiddenException('No tiene permisos para ver productos de esta tienda');
+      }
+    }
+
+    const where: any = {
+      tenantId,
+      deletedAt: null,
+      product: {
+        isDeleted: false,
+      },
+      store: {
+        tenantId,
+        ...(user.role !== 'ADMIN'
+          ? {
+              storeUsers: {
+                some: {
+                  userId: user.userId,
+                },
+              },
+            }
+          : {}),
+      },
+    };
+
+    if (storeId) {
+      where.storeId = storeId;
+    }
+
+    if (search) {
+      where.product = {
+        ...(where.product ?? {}),
+        name: {
+          contains: search,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    const rows = await this.prisma.storeProduct.findMany({
+      where,
+      select: {
+        id: true,
+        product: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        product: {
+          name: 'asc',
+        },
+      },
+      take: 200,
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.product?.name ?? 'Producto sin nombre',
+    }));
+  }
+
+  async list(filterDto: ListStoreProductsDto, user: { tenantId?: string; userId: string; role: string }): Promise<ListStoreProductsResponseDto> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    const storeId = filterDto.storeId;
+    if (!storeId) {
+      throw new BadRequestException('storeId es requerido');
+    }
+
+    const store = await this.prisma.store.findFirst({
+      where: {
+        id: storeId,
+        tenantId,
+        ...(user.role !== 'ADMIN'
+          ? {
+              storeUsers: {
+                some: {
+                  userId: user.userId,
+                },
+              },
+            }
+          : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!store) {
+      throw new ForbiddenException('No tiene permisos para ver productos de esta tienda');
+    }
+
+    const { page, pageSize, skip } = getPaginationParams({
+      page: filterDto.page,
+      pageSize: filterDto.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
+    });
+
+    const inStockParam = filterDto.inStock as unknown;
+    const inStock =
+      inStockParam === true ||
+      inStockParam === 'true' ||
+      inStockParam === 1 ||
+      inStockParam === '1';
+
+    const where: any = {
+      storeId,
+      store: { tenantId },
+      tenantId,
+      deletedAt: null,
+      product: {
+        isDeleted: false,
+      },
+    };
+
+    if (inStock) {
+      where.stock = {
+        gt: 0,
+      };
+    }
+
+    if (filterDto.name) {
+      where.product = {
+        ...(where.product ?? {}),
+        name: {
+          contains: filterDto.name,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    const [total, storeProducts] = await Promise.all([
+      this.prisma.storeProduct.count({ where }),
+      this.prisma.storeProduct.findMany({
+        where,
+        select: {
+          id: true,
+          price: true,
+          stock: true,
+          product: {
+            select: {
+              name: true,
+              buyCost: true,
+              basePrice: true,
+            },
+          },
+        },
+        orderBy: {
+          product: {
+            name: 'asc',
+          },
+        },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    const items = storeProducts.map((sp) => ({
+      id: sp.id,
+      name: sp.product?.name ?? 'Producto sin nombre',
+      price: this.toNumber(sp.price),
+      stock: sp.stock,
+      buyCost: sp.product?.buyCost ? this.toNumber(sp.product.buyCost) : null,
+      basePrice: sp.product?.basePrice ? this.toNumber(sp.product.basePrice) : null,
+    }));
+
+    return buildPaginatedResponse(items, total, page, pageSize);
+  }
 
   async create(userId: string, tenantId: string, createStoreProductDto: CreateStoreProductDto): Promise<StoreProduct[]> {
     if (!userId) {
@@ -25,6 +237,7 @@ export class StoreProductService {
 
     try {
       let productId: string;
+      let catalogBasePrice = this.toNumber(createStoreProductDto.basePrice ?? 0);
 
       // Caso 1: Crear nuevo producto en el catálogo
       if (createStoreProductDto.createNewProduct) {
@@ -37,13 +250,14 @@ export class StoreProductService {
         const createCatalogProductDto: CreateCatalogProductDto = {
           name: createStoreProductDto.name,
           description: createStoreProductDto.description,
-          basePrice: createStoreProductDto.basePrice,
-          buyCost: createStoreProductDto.buyCost,
+          basePrice: this.toNumber(createStoreProductDto.basePrice),
+          buyCost: this.toNumber(createStoreProductDto.buyCost),
           createdById: userId
         };
 
         const newProduct = await this.productService.create(createCatalogProductDto);
         productId = newProduct.id;
+        catalogBasePrice = this.toNumber(newProduct.basePrice ?? catalogBasePrice);
       } 
       // Caso 2: Usar producto existente del catálogo
       else {
@@ -60,7 +274,12 @@ export class StoreProductService {
           throw new NotFoundException(`Producto del catálogo con ID ${createStoreProductDto.productId} no encontrado`);
         }
 
+        if (catalogProduct.isDeleted) {
+          throw new NotFoundException(`Producto del catálogo con ID ${createStoreProductDto.productId} no encontrado`);
+        }
+
         productId = createStoreProductDto.productId;
+        catalogBasePrice = this.toNumber(catalogProduct.basePrice ?? catalogBasePrice);
       }
 
       // Verificar que la tienda exista
@@ -98,10 +317,11 @@ export class StoreProductService {
       const existingStoreProducts = await this.prisma.storeProduct.findMany({
         where: {
           productId: productId,
+          deletedAt: null,
           store: {
             tenantId,
           },
-        },
+        } as any,
         select: { storeId: true }
       });
 
@@ -115,16 +335,18 @@ export class StoreProductService {
       }
 
       // Determinar el precio para la tienda origen (si no se envía, usar 0)
-      const originPrice = createStoreProductDto.price ?? 0;
+      const originPrice = this.toNumber(createStoreProductDto.price ?? catalogBasePrice);
+      const priceForOtherStores = catalogBasePrice;
 
       // Crear los StoreProducts en todas las tiendas necesarias
       const storeProductsToCreate = storesToCreate.map(store => ({
         productId: productId,
         storeId: store.id,
         userId: userId,
+        tenantId,
         price: store.id === createStoreProductDto.storeId 
           ? originPrice
-          : 0, // Precio 0 para otras tiendas
+          : priceForOtherStores, // Precio base para otras tiendas
         stock: store.id === createStoreProductDto.storeId 
           ? createStoreProductDto.stock 
           : 0, // Stock 0 para otras tiendas
@@ -192,10 +414,19 @@ export class StoreProductService {
     }
     
     // Construir where clause para búsqueda
-    let whereCondition: any = { storeId, store: { tenantId } };
+    let whereCondition: any = {
+      storeId,
+      store: { tenantId },
+      tenantId,
+      deletedAt: null,
+      product: {
+        isDeleted: false,
+      },
+    };
     
     if (search) {
       whereCondition.product = {
+        ...(whereCondition.product ?? {}),
         name: {
           contains: search,
           mode: 'insensitive' // Búsqueda case-insensitive
@@ -205,12 +436,12 @@ export class StoreProductService {
     
     // Obtener el total de productos para paginación
     const total = await this.prisma.storeProduct.count({
-      where: whereCondition
-    });
+      where: whereCondition as any
+    } as any);
 
     // Obtener los productos con paginación
     const storeProducts = await this.prisma.storeProduct.findMany({
-      where: whereCondition,
+      where: whereCondition as any,
       include: {
         product: {
           select: {
@@ -242,7 +473,81 @@ export class StoreProductService {
       },
       skip,
       take: limit
+    } as any);
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data: storeProducts,
+      total,
+      page,
+      limit,
+      totalPages
+    };
+  }
+
+  async findByStoreSimple(tenantId: string, storeId: string, page: number = 1, limit: number = 20, search: string = ''): Promise<any> {
+    const skip = (page - 1) * limit;
+
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: { tenantId: true },
     });
+
+    if (!store) {
+      throw new NotFoundException(`Tienda con ID ${storeId} no encontrada`);
+    }
+
+    if (!store.tenantId || store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tiene permisos para ver productos de esta tienda');
+    }
+    
+    // Construir where clause para búsqueda
+    let whereCondition: any = {
+      storeId,
+      store: { tenantId },
+      deletedAt: null,
+      tenantId,
+      product: {
+        isDeleted: false,
+      },
+    };
+    
+    if (search) {
+      whereCondition.product = {
+        ...(whereCondition.product ?? {}),
+        name: {
+          contains: search,
+          mode: 'insensitive' // Búsqueda case-insensitive
+        }
+      };
+    }
+    
+    // Obtener el total de productos para paginación
+    const total = await this.prisma.storeProduct.count({
+      where: whereCondition as any
+    } as any);
+
+    // Obtener los productos con paginación (solo campos básicos)
+    const storeProducts = await this.prisma.storeProduct.findMany({
+      where: whereCondition as any,
+      select: {
+        id: true,
+        price: true,
+        stock: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      skip,
+      take: limit
+    } as any);
 
     const totalPages = Math.ceil(total / limit);
 
@@ -260,9 +565,15 @@ export class StoreProductService {
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
       include: {
+        tenant: { select: { id: true } },
         store: {
           select: {
             tenantId: true,
+          },
+        },
+        product: {
+          select: {
+            isDeleted: true,
           },
         },
       },
@@ -272,12 +583,20 @@ export class StoreProductService {
       throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
 
-    if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId) {
-      throw new ForbiddenException('No tienes permiso para actualizar este producto');
+    if ((storeProduct as any).deletedAt) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
+    }
+
+    if (storeProduct.product?.isDeleted) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
 
     // Si no es admin y no se permite saltar la restricción de propietario,
     // verificar que el producto pertenece al usuario
+    if (!storeProduct.tenantId || storeProduct.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permiso para actualizar este producto');
+    }
+
     if (!isAdmin && !bypassOwnership && storeProduct.userId !== userId) {
       throw new ForbiddenException('No tienes permiso para actualizar este producto');
     }
@@ -344,7 +663,13 @@ export class StoreProductService {
 
   async findByUser(tenantId: string, userId: string): Promise<StoreProduct[]> {
     return this.prisma.storeProduct.findMany({
-      where: { userId: userId, store: { tenantId } },
+      where: {
+        userId: userId,
+        deletedAt: null,
+        tenantId,
+        store: { tenantId },
+        product: { isDeleted: false },
+      } as any,
       orderBy: { createdAt: 'desc' },
       include: {
         product: {
@@ -377,7 +702,13 @@ export class StoreProductService {
 
   async findOne(tenantId: string, id: string): Promise<StoreProduct> {
     const storeProduct = await this.prisma.storeProduct.findFirst({
-      where: { id, store: { tenantId } },
+      where: {
+        id,
+        deletedAt: null,
+        tenantId,
+        store: { tenantId },
+        product: { isDeleted: false },
+      } as any,
       include: {
         product: {
           select: {
@@ -413,6 +744,32 @@ export class StoreProductService {
     return storeProduct as unknown as StoreProduct;
   }
 
+  async findOneDetail(tenantId: string, id: string): Promise<StoreProductDetailDto> {
+    const storeProduct = await this.findOne(tenantId, id);
+
+    return {
+      id: storeProduct.id,
+      price: this.toNumber(storeProduct.price),
+      stock: storeProduct.stock,
+      stockThreshold: storeProduct.stockThreshold ? this.toNumber(storeProduct.stockThreshold) : 0,
+      product: {
+        id: storeProduct.product?.id ?? '',
+        name: storeProduct.product?.name ?? 'Producto sin nombre',
+        description: storeProduct.product?.description ?? null,
+        basePrice: storeProduct.product?.basePrice ? this.toNumber(storeProduct.product.basePrice) : null,
+        buyCost: storeProduct.product?.buyCost ? this.toNumber(storeProduct.product.buyCost) : null,
+      },
+      store: {
+        name: storeProduct.store?.name ?? '',
+        address: storeProduct.store?.address ?? null,
+        phone: storeProduct.store?.phone ?? null,
+      },
+      user: {
+        name: storeProduct.user?.name ?? null,
+      },
+    };
+  }
+
   async update(
     userId: string,
     tenantId: string,
@@ -420,6 +777,10 @@ export class StoreProductService {
     updateData: UpdateStoreProductDto,
     isAdmin: boolean = false,
     bypassOwnership: boolean = false,
+    options?: {
+      allowCatalogFields?: boolean;
+      allowCatalogPriceFields?: boolean;
+    },
   ): Promise<StoreProduct> {
     console.log('=== DEBUG UPDATE STORE PRODUCT ===');
     console.log('userId:', userId);
@@ -432,6 +793,7 @@ export class StoreProductService {
       where: { id },
       include: {
         product: true,
+        tenant: { select: { id: true } },
         store: {
           select: {
             tenantId: true,
@@ -461,17 +823,16 @@ export class StoreProductService {
       console.log('Agregando price a storeProductFields:', updateData.price);
       storeProductFields.price = updateData.price;
     }
-    if (updateData.stock !== undefined) {
-      console.log('Agregando stock a storeProductFields:', updateData.stock);
-      storeProductFields.stock = updateData.stock;
-    }
+
     if (updateData.stockThreshold !== undefined) {
       console.log('Agregando stockThreshold a storeProductFields:', updateData.stockThreshold);
       storeProductFields.stockThreshold = updateData.stockThreshold;
     }
 
-    // Campos que solo los administradores pueden modificar (Product)
-    if (isAdmin) {
+    const allowCatalogFields = options?.allowCatalogFields || isAdmin;
+    const allowCatalogPrices = options?.allowCatalogPriceFields || isAdmin;
+
+    if (allowCatalogFields) {
       if (updateData.name !== undefined) {
         console.log('Agregando name a productFields:', updateData.name);
         productFields.name = updateData.name;
@@ -480,13 +841,16 @@ export class StoreProductService {
         console.log('Agregando description a productFields:', updateData.description);
         productFields.description = updateData.description;
       }
+    }
+
+    if (allowCatalogPrices) {
       if (updateData.buyCost !== undefined) {
         console.log('Agregando buyCost a productFields:', updateData.buyCost);
         productFields.buyCost = updateData.buyCost;
       }
       if (updateData.basePrice !== undefined) {
         console.log('Agregando basePrice a productFields:', updateData.basePrice);
-        productFields.basePrice = updateData.basePrice;
+        productFields.basePrice = this.toNumber(updateData.basePrice);
       }
     }
 
@@ -494,16 +858,23 @@ export class StoreProductService {
     console.log('productFields finales:', JSON.stringify(productFields, null, 2));
 
     // Validar que un usuario normal no intente modificar campos de administrador
-    if (!isAdmin) {
-      const adminFields = ['name', 'description', 'buyCost', 'basePrice'];
-      const attemptedAdminFields = adminFields.filter(field => updateData[field] !== undefined);
-      if (attemptedAdminFields.length > 0) {
-        throw new ForbiddenException(`Solo los administradores pueden modificar los campos: ${attemptedAdminFields.join(', ')}`);
+    if (!allowCatalogFields || !allowCatalogPrices) {
+      const forbiddenFields: string[] = [];
+      if (!allowCatalogFields) {
+        if (updateData.name !== undefined) forbiddenFields.push('name');
+        if (updateData.description !== undefined) forbiddenFields.push('description');
+      }
+      if (!allowCatalogPrices) {
+        if (updateData.buyCost !== undefined) forbiddenFields.push('buyCost');
+        if (updateData.basePrice !== undefined) forbiddenFields.push('basePrice');
+      }
+      if (forbiddenFields.length > 0) {
+        throw new ForbiddenException(`No tienes permisos para modificar los campos: ${forbiddenFields.join(', ')}`);
       }
     }
 
-    // Actualizar el producto del catálogo si hay cambios y es administrador
-    if (Object.keys(productFields).length > 0 && isAdmin) {
+    // Actualizar el producto del catálogo si hay cambios permitidos
+    if (Object.keys(productFields).length > 0) {
       await this.prisma.product.update({
         where: { id: storeProduct.productId },
         data: productFields
@@ -512,97 +883,36 @@ export class StoreProductService {
 
     // Actualizar el StoreProduct si hay cambios
     if (Object.keys(storeProductFields).length > 0) {
-      // Si se está actualizando el stock, necesitamos registrar el movimiento
-      if (storeProductFields.stock !== undefined && storeProductFields.stock !== storeProduct.stock) {
-        const difference = storeProductFields.stock - storeProduct.stock;
-        
-        return this.prisma.$transaction(async (prisma) => {
-          // 1. Crear movimiento de inventario (ADJUST)
-          await prisma.inventoryMovement.create({
-            data: {
-              storeProductId: id,
-              type: InventoryMovementType.ADJUST,
-              quantity: Math.abs(difference), // Guardar cantidad absoluta, el tipo define lógica pero ADJUST es especial
-              // NOTA: En InventoryMovementService asumimos que ADJUST sumaba si era positivo.
-              // Para ser consistentes con el historial, si es negativo (reducción), deberíamos usar OUTGOING o ADJUST con nota?
-              // Vamos a usar ADJUST y poner la diferencia real en description o manejarlo.
-              // O mejor: Si la diferencia es negativa, usamos quantity positivo y tipo ADJUST? 
-              // En el esquema, quantity es Int. Si guardamos negativo, ¿qué pasa?
-              // Revisando InventoryMovementService, para tipos INCOMING/OUTGOING usaba la cantidad positiva y aplicaba signo al stock.
-              // Aquí el stock YA lo estamos forzando al valor nuevo. El movimiento es solo registro histórico.
-              // Guardaremos la cantidad absoluta y en description aclaramos si fue aumento o disminución.
-              // O mejor aún: Usar el quantity con signo si el modelo lo permite? El DTO validaba Min(1).
-              // Asumiremos que InventoryMovement guarda cantidad POSITIVA de movimiento.
-              description: `Ajuste manual desde edición de producto (Stock: ${storeProduct.stock} -> ${storeProductFields.stock})`,
-              userId: userId
-            }
-          });
-
-          // 2. Actualizar el producto
-          return prisma.storeProduct.update({
-            where: { id },
-            data: storeProductFields,
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  description: true,
-                  basePrice: true,
-                  buyCost: true,
-                },
-              },
-              store: {
-                select: {
-                  id: true,
-                  name: true,
-                  address: true,
-                  phone: true,
-                },
-              },
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-          });
-        });
-      } else {
-        // Actualización normal sin cambio de stock (o transacción simple)
-        return this.prisma.storeProduct.update({
-          where: { id },
-          data: storeProductFields,
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                description: true,
-                basePrice: true,
-                buyCost: true,
-              },
-            },
-            store: {
-              select: {
-                id: true,
-                name: true,
-                address: true,
-                phone: true,
-              },
-            },
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
+      return this.prisma.storeProduct.update({
+        where: { id },
+        data: storeProductFields,
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              basePrice: true,
+              buyCost: true,
             },
           },
-        });
-      }
+          store: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
     }
 
     // Si no hay cambios en StoreProduct pero sí en Product, retornar el producto actualizado
@@ -687,6 +997,12 @@ export class StoreProductService {
     const storeProduct = await this.prisma.storeProduct.findUnique({
       where: { id },
       include: {
+        product: {
+          select: {
+            isDeleted: true,
+          },
+        },
+        tenant: { select: { id: true } },
         store: {
           select: {
             tenantId: true,
@@ -699,14 +1015,27 @@ export class StoreProductService {
       throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
     }
 
+    if (!storeProduct.store?.tenantId || storeProduct.store.tenantId !== tenantId || !storeProduct.tenantId || storeProduct.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permiso para eliminar este producto');
+    }
+
+    if ((storeProduct as any).deletedAt) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
+    }
+
+    if (storeProduct.product?.isDeleted) {
+      throw new NotFoundException(`Producto en tienda con ID ${id} no encontrado`);
+    }
+
     // Si no es admin, verificar que el producto pertenece al usuario
     if (!isAdmin && storeProduct.userId !== userId) {
       throw new ForbiddenException('No tienes permiso para eliminar este producto');
     }
 
-    // Eliminar el StoreProduct
-    await this.prisma.storeProduct.delete({
+    // Soft delete (solo para esa tienda)
+    await this.prisma.storeProduct.update({
       where: { id },
+      data: { deletedAt: new Date() } as any,
     });
   }
 }

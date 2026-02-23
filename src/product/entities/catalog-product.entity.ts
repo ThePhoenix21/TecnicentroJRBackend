@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Product as PrismaProduct, User } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/binary';
 
 export class CatalogProduct implements PrismaProduct {
   @ApiProperty({ description: 'ID único del producto', example: '123e4567-e89b-12d3-a456-426614174000' })
@@ -12,10 +13,10 @@ export class CatalogProduct implements PrismaProduct {
   description: string | null;
 
   @ApiProperty({ description: 'Precio de venta sugerido (base)', example: 29.99, nullable: true })
-  basePrice: number | null;
+  basePrice: Decimal | null;
 
   @ApiProperty({ description: 'Costo de adquisición del producto (referencia)', example: 20.50, nullable: true })
-  buyCost: number | null;
+  buyCost: Decimal | null;
 
   @ApiProperty({ description: 'Indica si el producto está eliminado (soft delete)', example: false })
   isDeleted: boolean;

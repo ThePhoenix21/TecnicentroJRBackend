@@ -5,9 +5,9 @@ import { ServiceStatus, ServiceType } from '@prisma/client';
 export class CreateServiceDto {
   @ApiProperty({ 
     enum: ServiceType, 
-    default: ServiceType.REPAIR,
+    default: ServiceType.MISELANEOUS,
     description: 'Tipo de servicio',
-    example: 'REPAIR'
+    example: 'MISELANEOUS'
   })
   @IsEnum(ServiceType, { message: 'Tipo de servicio no válido' })
   type: ServiceType;

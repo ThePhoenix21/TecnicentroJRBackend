@@ -4,14 +4,19 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import * as bcrypt from 'bcrypt';
 import { Role, TenantFeature, TenantPlan, TenantStatus, UserStatus } from '@prisma/client';
 import { ALL_PERMISSIONS } from '../auth/permissions';
+import { SupabaseStorageService } from '../common/utility/supabase-storage.util';
+import type { Express } from 'express';
 
 @Injectable()
 export class TenantService {
   private readonly logger = new Logger(TenantService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly supabaseStorage: SupabaseStorageService,
+  ) {}
 
-  async create(createTenantDto: CreateTenantDto) {
+  async create(createTenantDto: CreateTenantDto, logo?: Express.Multer.File) {
     const {
       name,
       ruc,
@@ -152,6 +157,25 @@ export class TenantService {
       });
 
       this.logger.log(`Tenant creado exitosamente: ${result.tenant.id}`);
+      if (logo) {
+        const folder = `tenants/${result.tenant.id}/images`;
+        const upload = await this.supabaseStorage.uploadFile(
+          {
+            buffer: logo.buffer,
+            originalname: logo.originalname,
+            mimetype: logo.mimetype,
+          },
+          folder,
+        );
+
+        const updatedTenant = await this.prisma.tenant.update({
+          where: { id: result.tenant.id },
+          data: { logoUrl: upload.url },
+        });
+
+        return { ...result, tenant: updatedTenant };
+      }
+
       return result;
     } catch (error) {
       this.logger.error(`Error al crear tenant: ${error.message}`, error.stack);
@@ -209,5 +233,42 @@ export class TenantService {
         tenantId,
       },
     });
+  }
+
+  async updateLogo(tenantId: string, logo: Express.Multer.File) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, logoUrl: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant no encontrado');
+    }
+
+    const folder = `tenants/${tenantId}/images`;
+    const upload = await this.supabaseStorage.uploadFile(
+      {
+        buffer: logo.buffer,
+        originalname: logo.originalname,
+        mimetype: logo.mimetype,
+      },
+      folder,
+    );
+
+    if (tenant.logoUrl) {
+      await this.supabaseStorage.deleteFiles([tenant.logoUrl]).catch((error) =>
+        this.logger.warn(`No se pudo eliminar el logo anterior del tenant ${tenantId}: ${error?.message || error}`),
+      );
+    }
+
+    const updatedTenant = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { logoUrl: upload.url },
+    });
+
+    return {
+      message: 'Logo actualizado exitosamente',
+      tenant: updatedTenant,
+    };
   }
 }

@@ -75,12 +75,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         this.logger.warn(`Mismatch de tenantId en token para usuario ${user.email}`);
         throw new UnauthorizedException('Tenant inválido');
       }
+
+      const mergedPermissions = Array.from(
+        new Set([...(payload.permissions || []), ...((user.permissions as any) || [])]),
+      ).filter((p): p is string => typeof p === 'string' && p.length > 0);
       
       return { 
         userId: payload.sub, 
         email: payload.email, 
         role: payload.role as Role,
-        permissions: user.permissions || [], 
+        permissions: mergedPermissions,
         stores: payload.stores || [],
         tenantId: (payload.tenantId ?? user.tenantId) ?? undefined,
         tenantName: payload.tenantName,

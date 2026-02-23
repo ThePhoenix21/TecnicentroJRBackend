@@ -1,11 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Decimal } from '@prisma/client/runtime/binary';
 
 export class StoreProduct {
   @ApiProperty({ description: 'ID único del producto en tienda', example: '123e4567-e89b-12d3-a456-426614174000' })
   id: string;
 
   @ApiProperty({ description: 'Precio de venta del producto en esta tienda', example: 29.99 })
-  price: number;
+  price: Decimal;
 
   @ApiProperty({ description: 'Cantidad en inventario para esta tienda', example: 50 })
   stock: number;
@@ -27,8 +28,8 @@ export class StoreProduct {
     id: string;
     name: string;
     description: string | null;
-    basePrice: number | null;
-    buyCost: number | null;
+    basePrice: Decimal | null;
+    buyCost: Decimal | null;
   };
 
   @ApiProperty({ description: 'ID de la tienda', example: '789e0123-e45b-67c8-a901-426614174000' })

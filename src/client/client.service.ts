@@ -8,13 +8,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
-import { Client, Prisma } from '@prisma/client';
-
-type FindAllParams = {
-  tenantId?: string;
-  page?: number;
-  limit?: number;
-};
+import { Client, Prisma, SaleStatus } from '@prisma/client';
+import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
+import { ListClientsDto } from './dto/list-clients.dto';
+import { ListClientsResponseDto } from './dto/list-clients-response.dto';
 
 @Injectable()
 export class ClientService {
@@ -53,38 +50,129 @@ export class ClientService {
     }
   }
 
-  async findAll({ tenantId, page = 1, limit = 10 }: FindAllParams = {}) {
-    const skip = (page - 1) * limit;
-
+  async list(query: ListClientsDto, tenantId?: string): Promise<ListClientsResponseDto> {
     if (!tenantId) {
       throw new BadRequestException('TenantId no encontrado en el token');
     }
-    
+
+    const { page, pageSize, skip } = getPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
+    });
+
+    const where: any = {
+      tenantId,
+      deletedAt: null,
+      ...(query.name ? { name: { contains: query.name, mode: 'insensitive' } } : {}),
+      ...(query.phone ? { phone: { contains: query.phone, mode: 'insensitive' } } : {}),
+      ...(query.dni ? { dni: { contains: query.dni, mode: 'insensitive' } } : {}),
+      ...(query.fromDate || query.toDate
+        ? {
+            createdAt: {
+              ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+              ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+            },
+          }
+        : {}),
+    };
+
     const [total, clients] = await Promise.all([
-      this.prisma.client.count({
-        where: {
-          tenantId,
-        },
-      }),
+      this.prisma.client.count({ where: where as any }),
       this.prisma.client.findMany({
-        where: {
-          tenantId,
+        where: where as any,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          dni: true,
+          createdAt: true,
         },
-        skip,
-        take: limit,
         orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
       }),
     ]);
 
-    return {
-      data: clients,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+    const clientIds = clients.map((c) => c.id);
+    const [salesCounts, cancelledCounts] = await Promise.all([
+      this.prisma.order.groupBy({
+        by: ['clientId'],
+        where: {
+          clientId: { in: clientIds },
+          client: { tenantId },
+          status: { not: SaleStatus.CANCELLED },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.order.groupBy({
+        by: ['clientId'],
+        where: {
+          clientId: { in: clientIds },
+          client: { tenantId },
+          status: SaleStatus.CANCELLED,
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const salesMap = new Map(salesCounts.map((i) => [i.clientId, i._count._all]));
+    const cancelledMap = new Map(cancelledCounts.map((i) => [i.clientId, i._count._all]));
+
+    return buildPaginatedResponse(
+      clients.map((c) => ({
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        phone: c.phone,
+        dni: c.dni,
+        createdAt: c.createdAt,
+        salesCount: salesMap.get(c.id) ?? 0,
+        cancelledCount: cancelledMap.get(c.id) ?? 0,
+      })),
+      total,
+      page,
+      pageSize,
+    );
+  }
+
+  async lookupName(tenantId?: string) {
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.prisma.client.findMany({
+      where: { tenantId, deletedAt: null, name: { not: null } } as any,
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async lookupPhone(tenantId?: string) {
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.prisma.client.findMany({
+      where: { tenantId, deletedAt: null, phone: { not: null } } as any,
+      select: { id: true, phone: true },
+      orderBy: { phone: 'asc' },
+    });
+  }
+
+  async lookupDni(tenantId?: string) {
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    return this.prisma.client.findMany({
+      where: { tenantId, deletedAt: null } as any,
+      select: { id: true, dni: true },
+      orderBy: { dni: 'asc' },
+    });
   }
 
   async findOne(id: string, tenantId?: string): Promise<Client> {
@@ -93,7 +181,7 @@ export class ClientService {
     }
 
     const client = await this.prisma.client.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId, deletedAt: null } as any,
     });
 
     if (!client) {
@@ -103,13 +191,145 @@ export class ClientService {
     return client;
   }
 
+  async getFull(id: string, tenantId?: string) {
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    const client = await this.prisma.client.findFirst({
+      where: { id, tenantId, deletedAt: null } as any,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        address: true,
+        dni: true,
+        createdAt: true,
+        userId: true,
+        user: {
+          select: {
+            name: true,
+            role: true,
+          },
+        },
+        orders: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            orderNumber: true,
+            status: true,
+            totalAmount: true,
+            createdAt: true,
+            orderProducts: {
+              select: {
+                quantity: true,
+                price: true,
+                product: {
+                  select: {
+                    product: {
+                      select: {
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            services: {
+              select: {
+                name: true,
+                price: true,
+              },
+            },
+            paymentMethods: {
+              select: {
+                type: true,
+                amount: true,
+              },
+            },
+            cashSession: {
+              select: {
+                openedAt: true,
+                closedAt: true,
+                Store: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!client) {
+      throw new NotFoundException(`Cliente con ID "${id}" no encontrado`);
+    }
+
+    const fullClient = client as any;
+
+    const decimalToNumber = (value: any) => {
+      if (value === null || value === undefined) return value;
+      return typeof value === 'number' ? value : Number(value);
+    };
+
+    return {
+      userId: fullClient.userId,
+      id: fullClient.id,
+      name: fullClient.name,
+      email: fullClient.email,
+      phone: fullClient.phone,
+      address: fullClient.address,
+      dni: fullClient.dni,
+      createdAt: fullClient.createdAt,
+      createdBy: {
+        name: fullClient.user?.name,
+        role: fullClient.user?.role,
+      },
+      orders: (fullClient.orders || []).map((o: any) => ({
+        orderNumber: o.orderNumber,
+        status: o.status,
+        total: decimalToNumber(o.totalAmount),
+        date: o.createdAt,
+        items: [
+          ...(o.orderProducts || []).map((p: any) => ({
+            name: p.product?.product?.name,
+            quantity: p.quantity,
+            price: decimalToNumber(p.price),
+          })),
+          ...(o.services || []).map((s: any) => ({
+            name: s.name,
+            quantity: 1,
+            price: decimalToNumber(s.price),
+          })),
+        ],
+        payments: (o.paymentMethods || []).map((pm: any) => ({
+          type: pm.type,
+          amount: decimalToNumber(pm.amount),
+        })),
+        cashSession: o.cashSession
+          ? {
+              store: o.cashSession.Store?.name,
+              openedAt: o.cashSession.openedAt,
+              closedAt: o.cashSession.closedAt,
+            }
+          : null,
+      })),
+    };
+  }
+
   async update(id: string, updateClientDto: UpdateClientDto, tenantId?: string): Promise<Client> {
     try {
+      if (updateClientDto.dni !== undefined) {
+        throw new BadRequestException('No se puede actualizar el DNI del cliente');
+      }
+
       // Verificar si el cliente existe
       const existingClient = await this.findOne(id, tenantId);
       
       // Verificar si los nuevos datos entran en conflicto con otros clientes
-      if (updateClientDto.email || updateClientDto.ruc || updateClientDto.dni) {
+      if (updateClientDto.email || updateClientDto.ruc) {
         await this.checkExistingClient(updateClientDto, id, (existingClient as any).tenantId);
       }
 
@@ -128,19 +348,7 @@ export class ClientService {
   }
 
   async remove(id: string, tenantId?: string): Promise<void> {
-    try {
-      await this.findOne(id, tenantId);
-      await this.prisma.client.delete({
-        where: { id },
-      });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2025') {
-          throw new NotFoundException(`Cliente con ID "${id}" no encontrado`);
-        }
-      }
-      throw error;
-    }
+    throw new BadRequestException('Hard delete deshabilitado. Use el endpoint de soft delete.');
   }
 
   async search(query: string, tenantId?: string) {
@@ -159,6 +367,7 @@ export class ClientService {
       SELECT * FROM "Client" 
       WHERE 
         "tenantId" = ${tenantId}
+        AND "deletedAt" IS NULL
         AND (
           LOWER("name") LIKE LOWER(${searchTerm}) OR
           LOWER("email") LIKE LOWER(${searchTerm}) OR
@@ -177,7 +386,22 @@ export class ClientService {
     }
 
     return await this.prisma.client.findFirst({
-      where: { tenantId, dni },
+      where: { tenantId, dni, deletedAt: null } as any,
+    });
+  }
+
+  async softDelete(id: string, tenantId?: string): Promise<Client> {
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    await this.findOne(id, tenantId);
+
+    return this.prisma.client.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+      } as any,
     });
   }
 

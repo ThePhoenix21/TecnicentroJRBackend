@@ -92,7 +92,7 @@ export class AuthService {
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
-      select: { id: true, name: true, features: true, currency: true } as any,
+      select: { id: true, name: true, features: true, currency: true, logoUrl: true } as any,
     });
 
     if (!tenant) {
@@ -308,9 +308,17 @@ export class AuthService {
     timezone: string = 'UTC',
     permissions: string[] = [] // Nuevo parámetro opcional
   ) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
     // Verificar si el correo ya existe
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email },
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        email: {
+          equals: normalizedEmail,
+          mode: 'insensitive',
+        },
+      },
+      select: { id: true },
     });
 
     if (existingUser) {
@@ -327,7 +335,7 @@ export class AuthService {
     }
 
     // Validar el formato del correo electrónico
-    const isEmailValid = await this.emailValidator.isEmailValid(email);
+    const isEmailValid = await this.emailValidator.isEmailValid(normalizedEmail);
     if (!isEmailValid) {
       throw new BadRequestException('El correo electrónico no es válido o el dominio no existe');
     }
@@ -342,8 +350,8 @@ export class AuthService {
       }
     }
 
-    // Si es ADMIN y no se enviaron permisos, asignar todos por defecto
-    const finalPermissions = permissions.length > 0 ? permissions : ALL_PERMISSIONS;
+    // Este método registra un ADMIN: siempre debe quedar con TODOS los permisos
+    const finalPermissions = ALL_PERMISSIONS;
 
     // Hashear la contraseña
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -356,7 +364,7 @@ export class AuthService {
     try {
       // Crear usuario
       const userData: Prisma.UserCreateInput = {
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         name,
         username,
@@ -502,7 +510,7 @@ export class AuthService {
   async login(user: any, ipAddress?: string, res?: Response) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
-      select: { id: true, name: true, features: true, currency: true } as any,
+      select: { id: true, name: true, features: true, currency: true, logoUrl: true } as any,
     });
 
     if (!tenant) {
@@ -553,6 +561,7 @@ export class AuthService {
       tenantName: tenant.name,
       tenantFeatures: tenant.features || [],
       tenantCurrency: (tenant as any).currency ?? 'PEN',
+      tenantLogoUrl: (tenant as any).logoUrl ?? null,
       permissions: user.permissions || [], // Incluir permisos en el token
       stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
     };
@@ -682,7 +691,7 @@ export class AuthService {
 
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { id: true, name: true, features: true, currency: true } as any,
+        select: { id: true, name: true, features: true, currency: true, logoUrl: true } as any,
       });
 
       if (!tenant) {
@@ -698,6 +707,7 @@ export class AuthService {
         tenantName: tenant.name,
         tenantFeatures: tenant.features || [],
         tenantCurrency: (tenant as any).currency ?? 'PEN',
+        tenantLogoUrl: (tenant as any).logoUrl ?? null,
         permissions: user.permissions || [],
         stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
       };

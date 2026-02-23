@@ -2,13 +2,16 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ConflictExc
 import { CreateCashSessionDto } from './dto/create-cash-session.dto';
 import { UpdateCashSessionDto } from './dto/update-cash-session.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { User, SessionStatus } from '@prisma/client';
+import { MovementType, PaymentType, User, SessionStatus } from '@prisma/client';
+import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
 
 type AuthUser = {
   userId: string;
   email: string;
   role: string;
   tenantId?: string;
+  permissions?: string[];
+  stores?: string[];
 };
 
 @Injectable()
@@ -16,6 +19,151 @@ export class CashSessionService {
   private readonly logger = new Logger(CashSessionService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private toNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
+  }
+
+  async listClosedSessionsByStore(
+    storeId: string,
+    filters: { from?: string; to?: string; openedByName?: string; page?: number; pageSize?: number; userId?: string },
+    user: AuthUser,
+  ) {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    await this.assertStoreAccess(storeId, user);
+
+    const { page, pageSize, skip } = getPaginationParams({
+      page: filters.page,
+      pageSize: filters.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 50,
+    });
+
+    const where: any = {
+      StoreId: storeId,
+      status: SessionStatus.CLOSED,
+    };
+
+    if (filters?.from || filters?.to) {
+      where.closedAt = {
+        ...(filters.from ? { gte: new Date(filters.from) } : {}),
+        ...(filters.to ? { lte: new Date(filters.to) } : {}),
+      };
+    }
+
+    if (filters?.openedByName && filters.openedByName.trim().length > 0) {
+      where.User = {
+        name: {
+          contains: filters.openedByName.trim(),
+          mode: 'insensitive',
+        },
+      };
+    } else if (filters?.userId) {
+      where.UserId = filters.userId;
+    }
+
+    // Get total count for pagination
+    const total = await this.prisma.cashSession.count({
+      where,
+    });
+
+    const sessions = await this.prisma.cashSession.findMany({
+      where,
+      select: {
+        id: true,
+        openedAt: true,
+        closedAt: true,
+        status: true,
+        closingAmount: true,
+        declaredAmount: true,
+        User: { select: { name: true } },
+        closedById: true,
+      },
+      orderBy: { closedAt: 'desc' },
+      skip,
+      take: pageSize,
+    });
+
+    const closerIds = Array.from(
+      new Set(
+        (sessions || [])
+          .map((s) => s.closedById)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    );
+
+    const closers = closerIds.length
+      ? await this.prisma.user.findMany({
+          where: {
+            id: { in: closerIds },
+            tenantId,
+          },
+          select: { id: true, name: true },
+        })
+      : [];
+
+    const closerById = new Map(closers.map((u) => [u.id, u.name] as const));
+
+    const data = (sessions || []).map((s) => ({
+      id: s.id,
+      openedAt: s.openedAt,
+      closedAt: s.closedAt,
+      openedByName: s.User?.name ?? null,
+      closedByName: s.closedById ? (closerById.get(s.closedById) ?? null) : null,
+      status: s.status,
+      closingAmount: s.closingAmount,
+      declaredAmount: s.declaredAmount,
+    }));
+
+    return buildPaginatedResponse(data, total, page, pageSize);
+  }
+
+  async findOneForClose(id: string, user: AuthUser) {
+    await this.assertCashSessionAccessWithOptions(id, user, { allowAdmin: user.role === 'ADMIN' });
+
+    return this.prisma.cashSession.findUnique({
+      where: { id },
+      include: {
+        Store: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+          },
+        },
+        User: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            username: true,
+          },
+        },
+        cashMovements: {
+          include: {
+            User: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+  }
 
   private async assertStoreAccess(storeId: string, user: AuthUser) {
     const tenantId = user?.tenantId;
@@ -59,6 +207,14 @@ export class CashSessionService {
   }
 
   private async assertCashSessionAccess(cashSessionId: string, user: AuthUser) {
+    return this.assertCashSessionAccessWithOptions(cashSessionId, user);
+  }
+
+  private async assertCashSessionAccessWithOptions(
+    cashSessionId: string,
+    user: AuthUser,
+    options?: { allowAdmin?: boolean; requireOpen?: boolean; allowAllHistoryInStore?: boolean },
+  ) {
     const tenantId = user?.tenantId;
 
     if (!tenantId) {
@@ -85,16 +241,34 @@ export class CashSessionService {
       throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
     }
 
-    if (user.role !== 'ADMIN') {
-      const storeUser = await this.prisma.storeUsers.findFirst({
-        where: {
-          storeId: cashSession.StoreId,
-          userId: user.userId,
-        },
-        select: { id: true },
-      });
+    const requireOpen = options?.requireOpen ?? false;
+    if (requireOpen && cashSession.status !== SessionStatus.OPEN) {
+      throw new BadRequestException('La sesión de caja está cerrada');
+    }
 
-      if (!storeUser) {
+    const allowAdmin = options?.allowAdmin ?? false;
+    if (!(allowAdmin && user.role === 'ADMIN')) {
+      const allowAllHistoryInStore = options?.allowAllHistoryInStore ?? false;
+      const canViewAllHistory = user.permissions?.includes('VIEW_ALL_CASH_HISTORY') ?? false;
+
+      if (allowAllHistoryInStore && canViewAllHistory) {
+        // Permitir acceder a sesiones de otros usuarios, pero solo dentro de una tienda
+        // a la que el usuario tenga acceso (StoreUsers).
+        const storeId = cashSession.Store?.id;
+        if (!storeId) {
+          throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
+        }
+
+        const tokenStores = Array.isArray(user.stores) ? user.stores : [];
+        if (tokenStores.includes(storeId)) {
+          return cashSession;
+        }
+
+        await this.assertStoreAccess(storeId, user);
+        return cashSession;
+      }
+
+      if (cashSession.UserId !== user.userId) {
         throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
       }
     }
@@ -103,10 +277,6 @@ export class CashSessionService {
   }
 
   async create(createCashSessionDto: CreateCashSessionDto, user: AuthUser) {
-    console.log('Usuario recibido en servicio:', user);
-    console.log('ID del usuario:', user?.userId);
-    console.log('Email del usuario:', user?.email);
-    
     const { storeId, openingAmount = 0.00 } = createCashSessionDto;
     
     this.logger.log(`Iniciando creación de sesión de caja para usuario: ${user.email} en tienda: ${storeId}`);
@@ -124,25 +294,29 @@ export class CashSessionService {
         where: {
           UserId: user.userId,
           status: SessionStatus.OPEN
-        }
+        },
+        select: {
+          id: true,
+          Store: {
+            select: {
+              name: true,
+            },
+          },
+        },
       });
 
       if (existingUserOpenSession) {
-        this.logger.warn(`Usuario ${user.email} ya tiene una sesión abierta: ${existingUserOpenSession.id}`);
-        throw new ConflictException('Ya tienes una sesión de caja abierta. Ciérrala antes de abrir otra.');
-      }
+        const openStoreName = existingUserOpenSession.Store?.name;
+        this.logger.warn(
+          `Usuario ${user.email} ya tiene una sesión abierta: ${existingUserOpenSession.id}${openStoreName ? ` en tienda ${openStoreName}` : ''}`,
+        );
 
-      // 4. Validar que no haya una sesión abierta para esa tienda
-      const existingStoreOpenSession = await this.prisma.cashSession.findFirst({
-        where: {
-          StoreId: storeId,
-          status: SessionStatus.OPEN
-        }
-      });
-
-      if (existingStoreOpenSession) {
-        this.logger.warn(`Ya existe una sesión abierta para la tienda ${storeId}: ${existingStoreOpenSession.id}`);
-        throw new ConflictException('Ya hay una sesión de caja abierta para esta tienda');
+        throw new ConflictException({
+          message: openStoreName
+            ? `Ya tienes una sesión de caja abierta en la tienda ${openStoreName}. Ciérrala antes de abrir otra.`
+            : 'Ya tienes una sesión de caja abierta. Ciérrala antes de abrir otra.',
+          storeName: openStoreName ?? null,
+        });
       }
 
       // 5. Crear la sesión de caja
@@ -233,7 +407,7 @@ export class CashSessionService {
   }
 
   async findOne(id: string, user: AuthUser) {
-    await this.assertCashSessionAccess(id, user);
+    await this.assertCashSessionAccessWithOptions(id, user);
 
     return this.prisma.cashSession.findUnique({
       where: { id },
@@ -273,7 +447,7 @@ export class CashSessionService {
   }
 
   async update(id: string, updateCashSessionDto: UpdateCashSessionDto, user: AuthUser) {
-    await this.assertCashSessionAccess(id, user);
+    await this.assertCashSessionAccessWithOptions(id, user);
 
     return this.prisma.cashSession.update({
       where: { id },
@@ -300,7 +474,7 @@ export class CashSessionService {
   }
 
   async remove(id: string, user: AuthUser) {
-    await this.assertCashSessionAccess(id, user);
+    await this.assertCashSessionAccessWithOptions(id, user);
 
     return this.prisma.cashSession.delete({
       where: { id }
@@ -362,6 +536,7 @@ export class CashSessionService {
     const session = await this.prisma.cashSession.findFirst({
       where: {
         StoreId: storeId,
+        UserId: user.userId,
         status: SessionStatus.OPEN,
       },
       include: {
@@ -389,7 +564,7 @@ export class CashSessionService {
 
   // Método para cerrar una sesión de caja
   async close(id: string, closedById: string, closingAmount: number, declaredAmount: number, user: AuthUser) {
-    await this.assertCashSessionAccess(id, user);
+    await this.assertCashSessionAccessWithOptions(id, user, { allowAdmin: user.role === 'ADMIN', requireOpen: true });
 
     this.logger.log(`Iniciando cierre de sesión de caja: ${id} - Usuario: ${closedById} - Monto de cierre: ${closingAmount} - Monto declarado: ${declaredAmount}`);
 
@@ -434,8 +609,11 @@ export class CashSessionService {
     }
   }
 
-  async getClosingReport(sessionId: string, user: AuthUser) {
-    await this.assertCashSessionAccess(sessionId, user);
+  async getClosingReport(sessionId: string, user: AuthUser, options?: { allowAllHistoryInStore?: boolean }) {
+    await this.assertCashSessionAccessWithOptions(sessionId, user, {
+      allowAdmin: user.role === 'ADMIN',
+      allowAllHistoryInStore: options?.allowAllHistoryInStore ?? false,
+    });
 
     const tenantId = user?.tenantId;
     if (!tenantId) {
@@ -478,19 +656,35 @@ export class CashSessionService {
         },
       },
       include: {
-        paymentMethods: true,
+        paymentMethods: {
+          select: {
+            id: true,
+            type: true,
+            amount: true,
+            createdAt: true,
+          },
+        },
         orderProducts: {
-          include: {
+          select: {
+            quantity: true,
+            price: true,
             product: {
-              include: {
-                product: true,
+              select: {
+                product: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
           },
         },
         services: {
-          include: {
-            order: true,
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            status: true,
           },
         },
       },
@@ -506,12 +700,32 @@ export class CashSessionService {
     const items: any[] = [];
 
     for (const order of orders) {
+      const isOrderCanceled = order.status === 'CANCELLED';
       const orderNumberShort = order.orderNumber.slice(-4);
 
       const orderPayments = paymentsByOrderId.get(order.id) || [];
       const orderPaymentMethods = orderPayments.length > 0
         ? [...new Set(orderPayments.map((p) => p.type))].join(', ')
         : 'SIN PAGO';
+
+      const orderTotalLineAmount = [...order.orderProducts, ...order.services].reduce((sum, item: any) => {
+        const amount = 'quantity' in item
+          ? this.toNumber(item.price) * item.quantity
+          : this.toNumber(item.price);
+        return sum + amount;
+      }, 0);
+
+      const totalPaymentAmount = orderPayments.reduce((sum, payment) => sum + this.toNumber(payment.amount), 0);
+
+      const buildPaymentBreakdown = (lineAmount: number) => {
+        if (!totalPaymentAmount || totalPaymentAmount <= 0) {
+          return [];
+        }
+        return orderPayments.map((payment) => ({
+          method: payment.type,
+          amount: (this.toNumber(payment.amount) * lineAmount) / totalPaymentAmount,
+        }));
+      };
 
       // Procesar Productos
       for (const op of order.orderProducts) {
@@ -522,13 +736,18 @@ export class CashSessionService {
         if (order.status === 'COMPLETED') statusShort = 'COM';
         if (order.status === 'CANCELLED') statusShort = 'ANU';
 
+        const lineAmount = this.toNumber(op.price) * op.quantity;
+        const paymentBreakdown = buildPaymentBreakdown(lineAmount);
+
         items.push({
           orderNumber: orderNumberShort,
           quantity: op.quantity,
           description: op.product.product.name,
           paymentMethod: paymentMethods,
-          price: op.price * op.quantity,
+          paymentBreakdown,
+          price: lineAmount,
           status: statusShort,
+          isCanceled: isOrderCanceled,
         });
       }
 
@@ -537,7 +756,8 @@ export class CashSessionService {
         const paymentMethods = orderPaymentMethods;
 
         // En nuevo esquema, el pago está a nivel de orden: mostramos el precio del servicio
-        const price = svc.price;
+        const lineAmount = this.toNumber(svc.price);
+        const paymentBreakdown = buildPaymentBreakdown(lineAmount);
 
         let statusShort = 'PEN';
         if (
@@ -555,8 +775,10 @@ export class CashSessionService {
           quantity: 1, // Servicios siempre 1
           description: svc.name,
           paymentMethod: paymentMethods,
-          price: price,
+          paymentBreakdown,
+          price: lineAmount,
           status: statusShort,
+          isCanceled: isOrderCanceled || svc.status === 'ANNULLATED',
         });
       }
     }
@@ -568,7 +790,7 @@ export class CashSessionService {
       methods.forEach((p) => {
         const type = p.type;
         const amount = p.amount;
-        paymentSummary[type] = (paymentSummary[type] || 0) + amount;
+        paymentSummary[type] = (paymentSummary[type] || 0) + this.toNumber(amount);
       });
     }
 
@@ -587,6 +809,7 @@ export class CashSessionService {
         id: true,
         amount: true,
         description: true,
+        payment: true,
         createdAt: true,
       },
     });
@@ -599,7 +822,7 @@ export class CashSessionService {
       openingAmount: session.openingAmount,
       closingAmount: session.closingAmount,
       declaredAmount: session.declaredAmount,
-      difference: (session.declaredAmount || 0) - (session.closingAmount || 0),
+      difference: this.toNumber(session.declaredAmount || 0) - this.toNumber(session.closingAmount || 0),
       storeName: session.Store.name,
       storeAddress: session.Store.address,
       storePhone: session.Store.phone,
@@ -609,8 +832,228 @@ export class CashSessionService {
       expenses: expenses.map((e) => ({
         description: e.description,
         amount: e.amount,
+        paymentMethod: e.payment ?? PaymentType.EFECTIVO,
         time: e.createdAt,
       })),
+    };
+  }
+
+  async getClosingPrintData(
+    sessionId: string,
+    user: AuthUser,
+  ) {
+    await this.assertCashSessionAccessWithOptions(sessionId, user, {
+      allowAdmin: user.role === 'ADMIN',
+      allowAllHistoryInStore: true,
+    });
+
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const session = await this.prisma.cashSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        status: true,
+        openingAmount: true,
+        Store: {
+          select: {
+            tenantId: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Sesión de caja no encontrada');
+    }
+
+    if (!session.Store?.tenantId || session.Store.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a esta sesión de caja');
+    }
+
+    if (session.status !== SessionStatus.CLOSED) {
+      throw new BadRequestException('La sesión de caja debe estar cerrada para imprimir el reporte');
+    }
+
+    const cashMovements = await this.prisma.cashMovement.findMany({
+      where: {
+        CashSessionId: sessionId,
+        CashSession: {
+          Store: {
+            tenantId,
+          },
+        },
+      },
+      select: {
+        id: true,
+        sessionId: true,
+        type: true,
+        amount: true,
+        payment: true,
+        description: true,
+        createdAt: true,
+        relatedOrderId: true,
+        CashSessionId: true,
+        UserId: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const manualMovements = cashMovements
+      .filter((movement) => !movement.relatedOrderId)
+      .map((movement) => ({
+        type: movement.type === MovementType.INCOME ? 'IN' : 'OUT',
+        description:
+          movement.description ||
+          (movement.type === MovementType.INCOME ? 'Ingreso manual' : 'Salida manual'),
+        amount: this.toNumber(movement.amount),
+      }));
+
+    const incomeMovements = cashMovements.filter((m) => m.type === MovementType.INCOME);
+    const expenseMovements = cashMovements.filter((m) => m.type === MovementType.EXPENSE);
+
+    const totalIngresosAll = incomeMovements.reduce((sum, m) => sum + this.toNumber(m.amount), 0);
+    const totalSalidasAll = expenseMovements.reduce((sum, m) => sum + this.toNumber(m.amount), 0);
+
+    const cashOnlyMovements = cashMovements.filter(
+      (m) => (m.payment ?? PaymentType.EFECTIVO) === PaymentType.EFECTIVO,
+    );
+
+    const totalIngresosCash = cashOnlyMovements
+      .filter((m) => m.type === MovementType.INCOME)
+      .reduce((sum, m) => sum + this.toNumber(m.amount), 0);
+
+    const totalSalidasCash = cashOnlyMovements
+      .filter((m) => m.type === MovementType.EXPENSE)
+      .reduce((sum, m) => sum + this.toNumber(m.amount), 0);
+
+    const openingAmount = this.toNumber(session.openingAmount);
+    const balanceActual = openingAmount + totalIngresosCash - totalSalidasCash;
+
+    const cashBalance = {
+      openingAmount: session.openingAmount,
+      totalIngresos: totalIngresosCash,
+      totalSalidas: totalSalidasCash,
+      balanceActual,
+    };
+
+    const closingReport = await this.getClosingReport(sessionId, user, { allowAllHistoryInStore: true });
+
+    const printedByUser = user?.userId
+      ? await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true },
+        })
+      : null;
+
+    const store = {
+      name: closingReport.storeName ?? null,
+      address: closingReport.storeAddress ?? null,
+      phone: closingReport.storePhone ?? null,
+    };
+
+    const sessionInfo = {
+      openedAt: closingReport.openedAt,
+      closedAt: closingReport.closedAt,
+      openedBy: closingReport.openedBy,
+      closedBy: closingReport.closedBy,
+    };
+
+    const balance = {
+      openingAmount: this.toNumber(closingReport.openingAmount ?? cashBalance.openingAmount ?? 0),
+      totalIngresos: totalIngresosAll,
+      totalSalidas: totalSalidasAll,
+      closingAmount: this.toNumber(closingReport.closingAmount ?? 0),
+      declaredAmount: this.toNumber(closingReport.declaredAmount ?? 0),
+      difference: this.toNumber(closingReport.difference ?? 0),
+    };
+
+    const paymentSummary = { ...(closingReport.paymentSummary ?? {}) };
+
+    const orders: Array<{
+      orderNumber: string;
+      description: string;
+      amount: number;
+      paymentMethod: string | null;
+      isCanceled: boolean;
+    }> = [];
+
+    for (const order of closingReport.orders ?? []) {
+      const baseAmount = this.toNumber(order.price ?? order.amount ?? 0);
+      const baseEntry = {
+        orderNumber: order.orderNumber,
+        description: order.description,
+        isCanceled: !!order.isCanceled,
+      };
+
+      if (Array.isArray(order.paymentBreakdown) && order.paymentBreakdown.length > 0) {
+        order.paymentBreakdown.forEach((part) => {
+          orders.push({
+            ...baseEntry,
+            amount: this.toNumber(part.amount),
+            paymentMethod: part.method,
+          });
+        });
+      } else {
+        const hasPayment = order.paymentMethod && order.paymentMethod !== 'SIN PAGO';
+        orders.push({
+          ...baseEntry,
+          amount: hasPayment ? baseAmount : 0,
+          paymentMethod: hasPayment ? order.paymentMethod : 'NINGUNO',
+        });
+      }
+    }
+
+    const manualIncomeMovements = cashMovements.filter(
+      (movement) => !movement.relatedOrderId && movement.type === MovementType.INCOME,
+    );
+
+    manualIncomeMovements.forEach((movement) => {
+        orders.push({
+          orderNumber: 'MANUAL',
+          description: movement.description || 'Ingreso manual',
+          amount: this.toNumber(movement.amount),
+          paymentMethod: movement.payment ?? PaymentType.EFECTIVO,
+          isCanceled: false,
+        });
+      });
+
+    const ordersFiltered = orders.filter((o) => this.toNumber(o.amount) > 0);
+
+    const expenses = (closingReport.expenses ?? []).map((expense) => ({
+      description: expense.description,
+      amount: this.toNumber(expense.amount ?? 0),
+      paymentMethod: expense.paymentMethod ?? PaymentType.EFECTIVO,
+    }));
+
+    manualIncomeMovements.forEach((movement) => {
+      const paymentType = movement.payment ?? PaymentType.EFECTIVO;
+      const amount = this.toNumber(movement.amount);
+      paymentSummary[paymentType] = (paymentSummary[paymentType] || 0) + amount;
+    });
+
+    const expenseSummary: Record<string, number> = {};
+    cashMovements
+      .filter((movement) => movement.type === MovementType.EXPENSE)
+      .forEach((movement) => {
+        const paymentType = movement.payment ?? PaymentType.EFECTIVO;
+        const amount = this.toNumber(movement.amount);
+        expenseSummary[paymentType] = (expenseSummary[paymentType] || 0) + amount;
+      });
+
+    return {
+      store,
+      session: sessionInfo,
+      balance,
+      paymentSummary,
+      expenseSummary,
+      orders: ordersFiltered,
+      expenses,
+      printedBy: printedByUser?.name ?? null,
+      printedAt: closingReport.printedAt,
     };
   }
 }

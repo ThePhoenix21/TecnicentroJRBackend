@@ -2,10 +2,16 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException,
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompleteOrderDto } from './dto/complete-order.dto';
+import { PayOrderPaymentsDto } from './dto/pay-order-payments.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
 import { Order } from './entities/order.entity';
-import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType, ServiceType as PrismaServiceType, TenantFeature } from '@prisma/client';
+import { Prisma, SaleStatus, SessionStatus, PaymentType, ServiceStatus, InventoryMovementType, MovementType, ServiceType as PrismaServiceType, TenantFeature } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { CashMovementService } from '../cash-movement/cash-movement.service';
+import { getPaginationParams, buildPaginatedResponse } from '../common/pagination/pagination.helper';
+import { ListOrdersDto } from './dto/list-orders.dto';
+import { ListOrdersResponseDto } from './dto/list-orders-response.dto';
+import { BasePaginationDto } from '../common/dto/base-pagination.dto';
 
 type AuthUser = {
   userId: string;
@@ -37,20 +43,15 @@ export class OrderService {
     return `${s.slice(0, 4)}***${s.slice(-4)}`;
   }
 
+  private toNumber(value: Prisma.Decimal | number | null | undefined): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    return value.toNumber();
+  }
+
   private normalizeServiceType(type: unknown): PrismaServiceType {
-    if (type === 'OTHER') {
-      return PrismaServiceType.MISELANEOUS;
-    }
-
-    if (
-      type === PrismaServiceType.REPAIR ||
-      type === PrismaServiceType.MISELANEOUS ||
-      type === PrismaServiceType.WARRANTY
-    ) {
-      return type as PrismaServiceType;
-    }
-
-    throw new BadRequestException(`Tipo de servicio inválido: ${String(type)}`);
+    // Siempre forzar MISELANEOUS independientemente de lo que se envíe
+    return PrismaServiceType.MISELANEOUS;
   }
 
   private async assertStoreAccess(storeId: string, user: AuthUser) {
@@ -245,16 +246,21 @@ export class OrderService {
       const isFilledString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
       if (clientIdToUse) {
-        const existingClientById = await prisma.client.findUnique({
+        const existingClientById = (await prisma.client.findUnique({
           where: { id: clientIdToUse },
           select: {
             id: true,
             tenantId: true,
-          },
-        });
+            deletedAt: true,
+          } as any,
+        })) as any;
 
         if (!existingClientById) {
           throw new NotFoundException('Cliente no encontrado');
+        }
+
+        if (existingClientById.deletedAt) {
+          throw new BadRequestException('El cliente está eliminado. Use DNI para reactivarlo o seleccione otro cliente.');
         }
 
         if (existingClientById.tenantId !== user.tenantId) {
@@ -321,17 +327,25 @@ export class OrderService {
           }
         }
 
-        const existingClientByDni = await prisma.client.findFirst({
+        const existingClientByDni = (await prisma.client.findFirst({
           where: {
             tenantId: user.tenantId,
             dni,
           },
           select: {
             id: true,
-          },
-        });
+            deletedAt: true,
+          } as any,
+        })) as any;
 
         if (existingClientByDni) {
+          if (existingClientByDni.deletedAt) {
+            await prisma.client.update({
+              where: { id: existingClientByDni.id },
+              data: { deletedAt: null } as any,
+            });
+          }
+
           const updateData: Prisma.ClientUpdateInput = {};
           if (isFilledString(clientInfo.name)) updateData.name = clientInfo.name.trim();
           if (isFilledString(clientInfo.email)) updateData.email = clientInfo.email.trim();
@@ -437,9 +451,10 @@ export class OrderService {
         
         const { quantity, price } = productData;
         
-        if (storeProduct.stock < quantity) {
-          throw new BadRequestException(`No hay suficiente stock para el producto: ${storeProduct.product?.name || storeProduct.id}`);
-        }
+        // Permitir stock negativo (vender incluso con stock 0)
+        // if (storeProduct.stock < quantity) {
+        //   throw new BadRequestException(`No hay suficiente stock para el producto: ${storeProduct.product?.name || storeProduct.id}`);
+        // }
         
         // Si no se proporcionó un precio personalizado, usar el precio del StoreProduct
         const finalPrice: number = price !== undefined ? price : (storeProduct.price || 0);
@@ -473,26 +488,48 @@ export class OrderService {
         totalAmount += servicesData.reduce((sum, service) => sum + service.price, 0);
       }
 
-      if (isServicesOnlyOrder && isFastServiceTenant) {
-        const totalServicesAmount = servicesData.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
-        const totalPaid = (paymentMethods || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-
-        if (Math.abs(totalPaid - totalServicesAmount) > 0.00001) {
-          throw new BadRequestException(
-            `El tenant tiene FASTSERVICE habilitado: el total pagado (${totalPaid}) debe ser igual al total de los servicios (${totalServicesAmount})`,
-          );
-        }
+      // 4. Calcular total de pagos para determinar estado
+      let totalPayments = 0;
+      
+      // Sumar pagos a nivel de orden
+      totalPayments += (paymentMethods || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      
+      // Sumar pagos específicos de productos
+      if (products) {
+        totalPayments += products.reduce((sum, p) => {
+          if (p.payments && Array.isArray(p.payments)) {
+            return sum + p.payments.reduce((productSum, payment) => productSum + (Number(payment.amount) || 0), 0);
+          }
+          return sum;
+        }, 0);
+      }
+      
+      // Sumar adelantos de servicios
+      if (services) {
+        totalPayments += services.reduce((sum, s) => {
+          if (s.payments && Array.isArray(s.payments)) {
+            return sum + s.payments.reduce((serviceSum, payment) => serviceSum + (Number(payment.amount) || 0), 0);
+          }
+          return sum;
+        }, 0);
       }
 
-      // 4. Determinar el estado de la orden
-      // Si hay servicios, el estado es PENDING, de lo contrario es COMPLETED
-      const orderStatus = (isServicesOnlyOrder && isFastServiceTenant)
-        ? SaleStatus.COMPLETED
-        : (createOrderDto.services && createOrderDto.services.length > 0 
-          ? SaleStatus.PENDING 
-          : SaleStatus.COMPLETED);
+      // 5. Determinar el estado de la orden basado en pagos
+      let orderStatus: SaleStatus;
+      if (totalPayments >= totalAmount) {
+        // Si es solo servicios y está pagado completamente → PAID
+        // Si tiene productos y está pagado completamente → COMPLETED
+        orderStatus = isServicesOnlyOrder ? SaleStatus.PAID : SaleStatus.COMPLETED;
+      } else {
+        orderStatus = SaleStatus.PENDING;
+      }
 
-      // 5. Calcular número de tienda según orden de creación
+      // Para FASTSERVICE: si es solo servicios y está pagado completamente, se marca como COMPLETED
+      if (isServicesOnlyOrder && isFastServiceTenant && orderStatus === SaleStatus.PAID) {
+        orderStatus = SaleStatus.COMPLETED;
+      }
+
+      // 6. Calcular número de tienda según orden de creación
       // Se obtienen todas las tiendas ordenadas por createdAt y se busca el índice de la tienda de la sesión
       const stores = await prisma.store.findMany({
         where: {
@@ -505,10 +542,12 @@ export class OrderService {
       const storeIndex = stores.findIndex((s) => s.id === cashSession.StoreId);
       const storeNumber = storeIndex >= 0 ? storeIndex + 1 : 1; // 1 para primera tienda, 2 para segunda, etc.
 
-      // 6. Generar número de orden con prefijo 001/002/... usando storeNumber
+      // 7. Generar número de orden con prefijo 001/002/... usando storeNumber
       const orderNumber = await this.generateOrderNumber(storeNumber);
 
-      // 7. Crear la orden
+      const paymentMethodsFiltered = (paymentMethods || []).filter((pm) => this.toNumber(pm.amount as any) > 0);
+
+      // 8. Crear la orden
       const orderData: Prisma.OrderCreateInput = {
         orderNumber,
         totalAmount,
@@ -530,8 +569,8 @@ export class OrderService {
           create: servicesData
         },
         paymentMethods: {
-          create: (paymentMethods || []).map((pm) => ({
-            type: pm.type as any,
+          create: paymentMethodsFiltered.map((pm) => ({
+            type: pm.type as PaymentType,
             amount: pm.amount,
           })),
         },
@@ -546,7 +585,7 @@ export class OrderService {
         },
       });
 
-      // 7. Actualizar el stock de los productos en tienda y registrar movimientos
+      // 8. Actualizar el stock de los productos en tienda y registrar movimientos
       await Promise.all(
         existingStoreProducts.map(storeProduct => {
           const productData = productMap.get(storeProduct.id);
@@ -584,30 +623,32 @@ export class OrderService {
         productsDto: products,
         servicesDto: services,
         clientIdToUse,
-        paymentMethodsDto: paymentMethods,
+        paymentMethodsDto: paymentMethodsFiltered,
+        clientInfo: clientInfo,
       };
     }).then(async (result) => {
       // 8. Crear pagos y movimientos de caja FUERA de la transacción
-      const { order, clientIdToUse, paymentMethodsDto } = result;
+      const { order, clientIdToUse, paymentMethodsDto, clientInfo } = result;
 
       this.logger.log(`Procesando pagos de orden: order=${this.mask(order.id)}`);
 
-      const cashPayments = (paymentMethodsDto || []).filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
-      if (cashPayments.length > 0) {
-        this.logger.log(`Creando movimientos de caja (efectivo): order=${this.mask(order.id)} count=${cashPayments.length}`);
+      const movementsToCreate = (paymentMethodsDto || []).filter((pm) => this.toNumber(pm.amount as any) > 0);
+      if (movementsToCreate.length > 0) {
+        this.logger.log(`Creando movimientos de caja (pagos): order=${this.mask(order.id)} count=${movementsToCreate.length}`);
 
-        for (const cashPayment of cashPayments) {
+        for (const payment of movementsToCreate) {
           try {
             await this.cashMovementService.createFromOrder({
               cashSessionId: cashSessionId,
-              amount: cashPayment.amount,
+              amount: payment.amount,
+              payment: payment.type as PaymentType,
               orderId: order.id,
               clientId: clientIdToUse,
-              clientName: clientInfo?.name,
-              clientEmail: clientInfo?.email
-            }, false, userIdToUse);
+              clientName: order.client?.name || undefined,
+              clientEmail: order.client?.email || undefined
+            }, false, user);
           } catch (error) {
-            this.logger.error(`Error al crear movimiento de caja: order=${this.mask(order.id)} amount=${cashPayment.amount} msg=${error.message}`);
+            this.logger.error(`Error al crear movimiento de caja: order=${this.mask(order.id)} amount=${payment.amount} msg=${error.message}`);
           }
         }
       }
@@ -638,13 +679,319 @@ export class OrderService {
           },
         },
       },
-      include: {
-        orderProducts: true,
-        services: true,
-        client: true,
+      select: {
+        id: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        orderProducts: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
+            product: {
+              select: {
+                id: true,
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        services: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            status: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     }) as unknown as Promise<Order[]>;
+  }
+
+  async list(query: ListOrdersDto, user: AuthUser): Promise<ListOrdersResponseDto> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    if (!query.storeId) {
+      throw new BadRequestException('storeId es requerido');
+    }
+
+    const { page, pageSize, skip } = getPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
+      defaultPage: 1,
+      defaultPageSize: 12,
+      maxPageSize: 100,
+    });
+
+    if (query.onlyProducts && query.onlyServices) {
+      throw new BadRequestException('No se puede filtrar por onlyProducts y onlyServices al mismo tiempo');
+    }
+
+    let currentOpenCashSessionId: string | undefined;
+
+    await this.assertStoreAccess(query.storeId, user);
+    const currentSession = await this.prisma.cashSession.findFirst({
+      where: {
+        StoreId: query.storeId,
+        UserId: user.userId,
+        status: SessionStatus.OPEN,
+      },
+      select: { id: true },
+    });
+    currentOpenCashSessionId = currentSession?.id;
+
+    const where: Prisma.OrderWhereInput = {
+      cashSession: {
+        Store: {
+          tenantId,
+        },
+      },
+    };
+
+    where.cashSession = {
+      ...(where.cashSession as any),
+      StoreId: query.storeId,
+    } as any;
+
+    const queryUserId = (query as any)?.userId as string | undefined;
+    if (queryUserId) {
+      where.userId = queryUserId;
+    }
+
+    if (query.openCashOnly) {
+      if (!currentOpenCashSessionId) {
+        throw new NotFoundException('No hay una sesión de caja abierta para el usuario en la tienda indicada');
+      }
+
+      where.cashSessionsId = currentOpenCashSessionId;
+    }
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.fromDate || query.toDate) {
+      where.createdAt = {
+        ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+        ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+      };
+    }
+
+    if (query.clientName) {
+      where.client = {
+        ...(where.client as any),
+        name: {
+          contains: query.clientName,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (query.sellerName) {
+      where.user = {
+        ...(where.user as any),
+        name: {
+          contains: query.sellerName,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (query.onlyProducts) {
+      where.orderProducts = { some: {} };
+    }
+
+    if (query.onlyServices) {
+      where.services = { some: {} };
+    }
+
+    if (query.orderNumber) {
+      where.orderNumber = {
+        contains: query.orderNumber,
+        mode: 'insensitive',
+      };
+    }
+
+    const [total, orders] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({
+        where,
+        select: {
+          id: true,
+          cashSessionsId: true,
+          totalAmount: true,
+          createdAt: true,
+          status: true,
+          client: {
+            select: {
+              name: true,
+            },
+          },
+          user: {
+            select: {
+              name: true,
+            },
+          },
+          orderProducts: {
+            select: {
+              quantity: true,
+              price: true,
+              product: {
+                select: {
+                  product: {
+                    select: { name: true },
+                  },
+                },
+              },
+            },
+          },
+          services: {
+            select: {
+              name: true,
+              price: true,
+            },
+          },
+          paymentMethods: {
+            select: {
+              type: true,
+              amount: true,
+              createdAt: true,
+            },
+          },
+          cashMovements: {
+            where: { type: MovementType.EXPENSE },
+            select: {
+              payment: true,
+              amount: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    return buildPaginatedResponse(
+      orders.map((order) => ({
+        total: (order.totalAmount as any)?.toNumber ? (order.totalAmount as any).toNumber() : Number(order.totalAmount ?? 0),
+        id: order.id,
+        createdAt: order.createdAt,
+        clientName: order.client?.name ?? '',
+        sellerName: order.user?.name ?? '',
+        isFromCurrentCashSession: !!(currentOpenCashSessionId && order.cashSessionsId === currentOpenCashSessionId),
+        products: (order.orderProducts || []).map((op) => ({
+          name: op.product?.product?.name ?? '',
+          quantity: op.quantity,
+          price: (op.price as any)?.toNumber ? (op.price as any).toNumber().toString() : String(op.price ?? 0),
+        })),
+        services: (order.services || []).map((s) => ({
+          name: s.name ?? '',
+          price: (s.price as any)?.toNumber ? (s.price as any).toNumber() : Number(s.price ?? 0),
+        })),
+        status: order.status,
+        paymentMethods: (order.paymentMethods || [])
+          .slice()
+          .sort((a: any, b: any) => {
+            const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return aTime - bTime;
+          })
+          .slice(0, 3)
+          .map((pm) => ({
+            type: pm.type,
+            amount: (pm.amount as any)?.toNumber ? (pm.amount as any).toNumber() : Number(pm.amount ?? 0),
+          })),
+        refundPaymentMethods: (order.cashMovements || [])
+          .slice()
+          .sort((a: any, b: any) => {
+            const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return aTime - bTime;
+          })
+          .map((movement) => ({
+            type: movement.payment || PaymentType.EFECTIVO,
+            amount: (movement.amount as any)?.toNumber
+              ? (movement.amount as any).toNumber()
+              : Number(movement.amount ?? 0),
+          })),
+      })),
+      total,
+      page,
+      pageSize,
+    );
+  }
+
+  async lookupOrderNumbers(
+    query: { search?: string; storeId?: string; fromDate?: string; toDate?: string; limit?: number },
+    user: AuthUser,
+  ): Promise<string[]> {
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant no encontrado en el token');
+    }
+
+    const take = Math.min(Math.max(Number(query.limit ?? 50), 1), 200);
+
+    const where: Prisma.OrderWhereInput = {
+      cashSession: {
+        Store: {
+          tenantId,
+        },
+      },
+    };
+
+    if (query.storeId) {
+      await this.assertStoreAccess(query.storeId, user);
+      where.cashSession = {
+        ...(where.cashSession as any),
+        StoreId: query.storeId,
+      } as any;
+    }
+
+    if (query.fromDate || query.toDate) {
+      where.createdAt = {
+        ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}),
+        ...(query.toDate ? { lte: new Date(query.toDate) } : {}),
+      };
+    }
+
+    if (query.search) {
+      where.orderNumber = {
+        contains: query.search,
+        mode: 'insensitive',
+      };
+    }
+
+    const rows = await this.prisma.order.findMany({
+      where,
+      select: { orderNumber: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      distinct: ['orderNumber'],
+      take,
+    });
+
+    return rows.map((r) => r.orderNumber);
   }
 
   async findAll(user: AuthUser): Promise<Order[]> {
@@ -661,10 +1008,46 @@ export class OrderService {
           },
         },
       },
-      include: {
-        orderProducts: true,
-        services: true,
-        client: true,
+      select: {
+        id: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        orderProducts: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
+            product: {
+              select: {
+                id: true,
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        services: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            status: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
         user: {
           select: {
             id: true,
@@ -677,26 +1060,207 @@ export class OrderService {
     }) as unknown as Promise<Order[]>;
   }
 
-  async findByStore(storeId: string, user: AuthUser): Promise<Order[]> {
+  async findByStore(storeId: string, user: AuthUser, pagination?: BasePaginationDto & { 
+  currentCash?: boolean;
+  clientName?: string;
+  sellerName?: string;
+  orderNumber?: string;
+  status?: string;
+}): Promise<any> {
     await this.assertStoreAccess(storeId, user);
 
+    let cashSessionsId: string | undefined;
+    if (pagination?.currentCash) {
+      const store = await this.assertStoreAccess(storeId, user);
+
+      // Si se especifica userId, buscar sesión de ese usuario específico
+      const sessionWhere: any = {
+        StoreId: store.id,
+        status: SessionStatus.OPEN,
+      };
+
+      // Si se proporciona userId en query, buscar sesión de ese usuario
+      const queryUserId = (pagination as any)?.userId as string | undefined;
+      if (queryUserId) {
+        sessionWhere.UserId = queryUserId;
+      } else {
+        // Si no, buscar sesión del usuario autenticado
+        sessionWhere.UserId = user.userId;
+      }
+
+      const session = await this.prisma.cashSession.findFirst({
+        where: sessionWhere,
+        select: { id: true },
+      });
+
+      if (!session) {
+        throw new NotFoundException('No hay una sesión de caja abierta para la tienda indicada');
+      }
+      cashSessionsId = session.id;
+    }
+
+    // Construir el where base
+    const baseWhere = {
+      cashSession: {
+        StoreId: storeId
+      }
+    };
+
+    // Si no es ADMIN, verificar si se debe filtrar por userId
+    let whereClause: any;
+    if (user.role === 'ADMIN') {
+      whereClause = baseWhere;
+    } else {
+      // Verificar si el controller envió un userId específico
+      const queryUserId = (pagination as any)?.userId as string | undefined;
+      if (queryUserId) {
+        // Si el controller envió userId, usar ese (para filtrar por órdenes propias)
+        whereClause = {
+          ...baseWhere,
+          userId: queryUserId
+        };
+      } else {
+        // Si no, no filtrar por userId (para VIEW_ALL_ORDERS_HISTORY)
+        whereClause = baseWhere;
+      }
+    }
+
+    // Aplicar filtro de cashSession si es necesario
+    let finalWhere: any = cashSessionsId 
+      ? { ...whereClause, cashSessionsId }
+      : whereClause;
+
+    // Agregar filtros dinámicos
+    if (pagination?.clientName) {
+      finalWhere.client = {
+        name: {
+          contains: pagination.clientName,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (pagination?.sellerName) {
+      finalWhere.user = {
+        name: {
+          contains: pagination.sellerName,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (pagination?.orderNumber) {
+      finalWhere.orderNumber = {
+        contains: pagination.orderNumber,
+        mode: 'insensitive',
+      };
+    }
+
+    if (pagination?.status) {
+      finalWhere.status = pagination.status;
+    }
+
+    // Si se proporciona paginación, usarla
+    if (pagination) {
+      const { page, pageSize, skip } = getPaginationParams({
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        defaultPage: 1,
+        defaultPageSize: 12,
+        maxPageSize: 100,
+      });
+
+      const [total, orders] = await Promise.all([
+        this.prisma.order.count({ where: finalWhere }),
+        this.prisma.order.findMany({
+          where: finalWhere,
+          select: {
+            id: true,
+            totalAmount: true,
+            createdAt: true,
+            status: true,
+            client: {
+              select: {
+                name: true,
+              },
+            },
+            user: {
+              select: {
+                name: true,
+              },
+            },
+            orderProducts: {
+              select: {
+                quantity: true,
+                price: true,
+                product: {
+                  select: {
+                    product: {
+                      select: { name: true },
+                    },
+                  },
+                },
+              },
+            },
+            services: {
+              select: {
+                name: true,
+                price: true,
+                status: true,
+              },
+            },
+            paymentMethods: {
+              select: {
+                type: true,
+                amount: true,
+                createdAt: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: pageSize,
+        }),
+      ]);
+
+      return buildPaginatedResponse(orders, total, page, pageSize);
+    }
+
+    // Si no hay paginación, comportamiento original
     return this.prisma.order.findMany({
-      where: {
-        cashSession: {
-          StoreId: storeId
-        }
-      },
-      include: {
+      where: finalWhere,
+      select: {
+        id: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
         orderProducts: {
-          include: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
             product: {
-              include: {
-                product: true, // Incluir el producto del catálogo
+              select: {
+                id: true,
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
               },
             },
           },
         },
-        services: true,
+        services: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            status: true,
+          },
+        },
         paymentMethods: {
           select: {
             id: true,
@@ -705,18 +1269,31 @@ export class OrderService {
             createdAt: true,
           },
         },
-        client: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
         cashSession: {
-          include: {
-            Store: true
-          }
+          select: {
+            id: true,
+            Store: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
         },
         user: {
           select: {
             id: true,
             email: true,
             name: true,
-          }
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -755,7 +1332,13 @@ export class OrderService {
     return order as unknown as Order;
   }
 
-  async cancelOrder(id: string, userId: string, userRole: string, authenticatedUser?: AuthUser): Promise<Order> {
+  async cancelOrder(
+    id: string,
+    userId: string,
+    userRole: string,
+    authenticatedUser?: AuthUser,
+    dto?: CancelOrderDto,
+  ): Promise<Order> {
     return this.prisma.$transaction(async (prisma) => {
       // 1. Verificar que la orden existe
       const order = await prisma.order.findUnique({
@@ -832,41 +1415,49 @@ export class OrderService {
         throw new BadRequestException('La orden ya está anulada');
       }
 
-      // 4. Filtrar pagos en EFECTIVO (PaymentMethod) y crear movimientos de caja
-      const cashPayments = (order.paymentMethods || []).filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
+      // 4. Reembolso SOLO si se envía paymentMethods en el body (no se asume monto ni método)
+      const refundPaymentMethods = (dto?.paymentMethods || []).filter((pm) => (pm?.amount || 0) > 0);
 
-      this.logger.log(`Reembolso (efectivo) - pagos encontrados: order=${this.mask(order.id)} count=${cashPayments.length}`);
+      this.logger.log(
+        `Reembolso (manual) - métodos enviados: order=${this.mask(order.id)} count=${refundPaymentMethods.length}`,
+      );
 
-      if (cashPayments.length > 0 && order.cashSession) {
+      if (refundPaymentMethods.length > 0 && order.cashSession) {
         // Verificar que la sesión de caja esté abierta
         if (order.cashSession.status !== SessionStatus.OPEN) {
-          this.logger.warn(`Sesión de caja cerrada, no se crea reembolso: session=${this.mask(order.cashSession.id)} order=${this.mask(order.id)}`);
+          this.logger.warn(
+            `Sesión de caja cerrada, no se crea reembolso: session=${this.mask(order.cashSession.id)} order=${this.mask(order.id)}`,
+          );
         } else {
-          this.logger.log(`Creando movimientos de reembolso: order=${this.mask(order.id)} count=${cashPayments.length}`);
-          // Crear movimientos de caja de tipo EXPENSE por cada pago en efectivo
-          for (const cashPayment of cashPayments) {
+          this.logger.log(
+            `Creando movimientos de reembolso: order=${this.mask(order.id)} count=${refundPaymentMethods.length}`,
+          );
+
+          for (const refund of refundPaymentMethods) {
             try {
-              // Usar createFromOrder para obtener datos directamente de la orden
-              await this.cashMovementService.createFromOrder({
-                cashSessionId: order.cashSession.id,
-                amount: cashPayment.amount,
-                orderId: order.id,
-                clientId: order.client?.id || undefined,
-                clientName: order.client?.name || undefined,
-                clientEmail: order.client?.email || undefined
-              }, true); // isRefund: true para reembolsos
+              await this.cashMovementService.createFromOrder(
+                {
+                  cashSessionId: order.cashSession.id,
+                  amount: this.toNumber(refund.amount),
+                  payment: refund.type as PaymentType,
+                  orderId: order.id,
+                  clientId: order.client?.id || undefined,
+                  clientName: order.client?.name || undefined,
+                  clientEmail: order.client?.email || undefined,
+                },
+                true,
+                authenticatedUser,
+              );
             } catch (error) {
               this.logger.error(
-                `Error al crear movimiento de reembolso: order=${this.mask(order.id)} amount=${cashPayment.amount} msg=${error.message}`,
+                `Error al crear movimiento de reembolso: order=${this.mask(order.id)} amount=${refund.amount} msg=${error.message}`,
               );
               // No fallar la cancelación si falla el movimiento
             }
           }
         }
-      } else if (cashPayments.length > 0 && !order.cashSession) {
+      } else if (refundPaymentMethods.length > 0 && !order.cashSession) {
         this.logger.warn(`Orden sin sesión de caja, no se crea reembolso: order=${this.mask(order.id)}`);
-      } else if (cashPayments.length === 0) {
-        this.logger.warn(`No hay pagos en efectivo para reembolsar: order=${this.mask(order.id)}`);
       }
 
       // 5. Devolver stock de productos y registrar movimientos de inventario
@@ -950,6 +1541,206 @@ export class OrderService {
     });
   }
 
+<<<<<<< HEAD
+=======
+  async payOrderPayments(orderId: string, dto: PayOrderPaymentsDto, user?: AuthUser): Promise<{ success: true; fullPayment: boolean }> {
+    if (!user) {
+      throw new ForbiddenException('Usuario no autenticado');
+    }
+
+    await this.assertOrderAccess(orderId, user);
+
+    const PAID_STATUS = 'PAID' as any;
+
+    return this.prisma.$transaction(async (prisma) => {
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          totalAmount: true,
+          clientId: true,
+          client: { select: { name: true, email: true } },
+          cashSession: { select: { id: true } },
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException('La orden especificada no existe');
+      }
+
+      if (order.status === SaleStatus.CANCELLED) {
+        throw new BadRequestException('No se puede registrar pagos en una orden cancelada');
+      }
+
+      const payments = dto?.payments || [];
+      if (!Array.isArray(payments) || payments.length === 0) {
+        throw new BadRequestException('payments es requerido y debe tener al menos un item');
+      }
+
+      await prisma.paymentMethod.createMany({
+        data: payments.map((p) => ({
+          orderId,
+          type: p.type,
+          amount: p.amount,
+        })),
+      });
+
+      const movementsToCreate = payments.filter((p) => (p.amount || 0) > 0);
+      if (movementsToCreate.length > 0) {
+        for (const payment of movementsToCreate) {
+          try {
+            await this.cashMovementService.createFromOrder({
+              cashSessionId: order.cashSession?.id || '',
+              amount: payment.amount,
+              payment: payment.type,
+              orderId: order.id,
+              clientId: order.clientId,
+              clientName: order.client?.name || undefined,
+              clientEmail: order.client?.email || undefined,
+            }, false, user);
+          } catch (error) {
+            this.logger.error(`Error al crear movimiento de caja (pago): ${error.message}`);
+          }
+        }
+      }
+
+      const paymentMethods = await prisma.paymentMethod.findMany({
+        where: { orderId },
+        select: { amount: true },
+      });
+
+      const totalPaid = paymentMethods.reduce((sum, pm) => sum + this.toNumber(pm.amount), 0);
+      const totalAmount = this.toNumber(order.totalAmount);
+      const fullPayment = totalPaid >= totalAmount;
+
+      if (fullPayment && (order.status as any) !== PAID_STATUS) {
+        await prisma.order.update({
+          where: { id: orderId },
+          data: {
+            status: PAID_STATUS,
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      return { success: true, fullPayment };
+    });
+  }
+
+  async completePaidOrder(orderId: string, user?: AuthUser): Promise<{ success: true }> {
+    if (!user) {
+      throw new ForbiddenException('Usuario no autenticado');
+    }
+
+    await this.assertOrderAccess(orderId, user);
+
+    return this.prisma.$transaction(async (prisma) => {
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          totalAmount: true,
+          services: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+          paymentMethods: {
+            select: { amount: true },
+          },
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException('La orden especificada no existe');
+      }
+
+      if (order.status === SaleStatus.CANCELLED) {
+        throw new BadRequestException('No se puede completar una orden cancelada');
+      }
+
+      const totalPaid = (order.paymentMethods || []).reduce((sum, pm) => sum + this.toNumber(pm.amount), 0);
+      const totalAmount = this.toNumber(order.totalAmount);
+
+      if (totalPaid + 0.00001 < totalAmount) {
+        throw new BadRequestException('La orden tiene pagos pendientes');
+      }
+
+      await prisma.service.updateMany({
+        where: {
+          orderId,
+          NOT: {
+            status: ServiceStatus.ANNULLATED,
+          },
+        },
+        data: {
+          status: ServiceStatus.COMPLETED,
+          updatedAt: new Date(),
+        },
+      });
+
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: SaleStatus.COMPLETED,
+          updatedAt: new Date(),
+        },
+      });
+
+      return { success: true };
+    });
+  }
+
+  async getOrderPaymentMethods(orderId: string, user: AuthUser) {
+    await this.assertOrderAccess(orderId, user);
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        orderNumber: true,
+        totalAmount: true,
+        paymentMethods: {
+          select: {
+            id: true,
+            type: true,
+            amount: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Orden no encontrada');
+    }
+
+    const totalAmount = this.toNumber(order.totalAmount);
+    const payments = (order.paymentMethods || []).map((pm) => ({
+      id: pm.id,
+      type: pm.type,
+      amount: this.toNumber(pm.amount),
+      createdAt: pm.createdAt,
+    }));
+
+    const totalPaid = payments.reduce((sum, pm) => sum + pm.amount, 0);
+    const pendingAmount = Math.max(totalAmount - totalPaid, 0);
+
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      totalAmount,
+      totalPaid,
+      pendingAmount,
+      payments,
+    };
+  }
+
+>>>>>>> 8306ad0a6497549eb18602a8124a24afa1e8089b
   async hardDeleteOrdersByDateRange(
     input: HardDeleteOrdersByDateRangeInput,
     user: AuthUser,
@@ -1075,6 +1866,10 @@ export class OrderService {
     });
   }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 8306ad0a6497549eb18602a8124a24afa1e8089b
   // Método auxiliar para obtener la orden con todos los detalles necesarios para la respuesta (PDF, pagos, etc.)
   async getOrderWithDetails(orderId: string, user: AuthUser): Promise<Order> {
     await this.assertOrderAccess(orderId, user);
@@ -1157,7 +1952,10 @@ export class OrderService {
       clientName: orderClient?.name || 'Cliente no identificado',
       clientDni: orderClient?.dni || 'N/A',
       clientPhone: orderClient?.phone || 'N/A',
-      paidAmount: (completeOrder.paymentMethods || []).reduce((sum, pm) => sum + pm.amount, 0)
+      paidAmount: (completeOrder.paymentMethods || []).reduce(
+        (sum, pm) => sum + this.toNumber(pm.amount),
+        0,
+      )
     };
 
     return {
@@ -1300,7 +2098,7 @@ export class OrderService {
       for (const servicePayment of services) {
         for (const payment of (servicePayment.payments || [])) {
           newPaymentMethods.push({
-            type: payment.type as unknown as PaymentType,
+            type: payment.type as PaymentType,
             amount: payment.amount,
           });
         }
@@ -1316,38 +2114,46 @@ export class OrderService {
         });
       }
 
-      const cashPayments = newPaymentMethods.filter((pm) => pm.type === PaymentType.EFECTIVO && (pm.amount || 0) > 0);
-      if (cashPayments.length > 0) {
-        console.log('💰 Creando movimientos de caja para pagos en efectivo');
+      const movementsToCreate = newPaymentMethods.filter((pm) => (pm.amount || 0) > 0);
+      if (movementsToCreate.length > 0) {
+        console.log('💰 Creando movimientos de caja para pagos');
 
-        for (const cashPayment of cashPayments) {
+        for (const payment of movementsToCreate) {
           try {
             await this.cashMovementService.createFromOrder({
               cashSessionId: order.cashSession?.id || '',
-              amount: cashPayment.amount,
+              amount: payment.amount,
+              payment: payment.type,
               orderId: order.id,
               clientId: order.clientId,
               clientName: order.client?.name || undefined,
               clientEmail: order.client?.email || undefined
-            }, false, user?.userId);
+            }, false, user);
 
-            console.log('✅ Movimiento de caja creado para servicio:', cashPayment.amount);
+            console.log('✅ Movimiento de caja creado:', payment.amount);
           } catch (error) {
-            console.error('❌ Error al crear movimiento de caja para servicio:', error.message);
+            console.error('❌ Error al crear movimiento de caja:', error.message);
           }
         }
       }
 
       // 5. Calcular totales para determinar si la orden puede completarse
-      const totalOwed = order.services.reduce((sum, s) => sum + (s.price || 0), 0)
-        + order.orderProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0);
+      const totalOwed =
+        order.services.reduce((sum, s) => sum + this.toNumber(s.price), 0) +
+        order.orderProducts.reduce(
+          (sum, p) => sum + this.toNumber(p.price) * p.quantity,
+          0,
+        );
 
       const existingPaymentMethods = await prisma.paymentMethod.findMany({
         where: { orderId },
         select: { amount: true }
       });
 
-      const totalPaid = existingPaymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
+      const totalPaid = existingPaymentMethods.reduce(
+        (sum, pm) => sum + this.toNumber(pm.amount),
+        0,
+      );
       
       console.log('💰 Estado financiero:', { totalOwed, totalPaid, balance: totalPaid - totalOwed });
 
@@ -1449,8 +2255,8 @@ export class OrderService {
 
     if (!order) return 0;
 
-    const servicesTotal = order.services.reduce((sum, service) => sum + service.price, 0);
-    const productsTotal = order.orderProducts.reduce((sum, product) => sum + (product.price * product.quantity), 0);
+    const servicesTotal = order.services.reduce((sum, service) => sum + this.toNumber(service.price), 0);
+    const productsTotal = order.orderProducts.reduce((sum, product) => sum + this.toNumber(product.price) * product.quantity, 0);
     
     return servicesTotal + productsTotal;
   }
@@ -1459,25 +2265,11 @@ export class OrderService {
   private async calculateTotalPaid(orderId: string, user: AuthUser): Promise<number> {
     await this.assertOrderAccess(orderId, user);
 
-    const tenantId = user?.tenantId;
-    if (!tenantId) {
-      throw new ForbiddenException('Tenant no encontrado en el token');
-    }
-
     const paymentMethods = await this.prisma.paymentMethod.findMany({
-      where: {
-        orderId,
-        order: {
-          cashSession: {
-            Store: {
-              tenantId,
-            },
-          },
-        },
-      },
+      where: { orderId },
       select: { amount: true }
     });
 
-    return paymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
+    return paymentMethods.reduce((sum, pm) => sum + this.toNumber(pm.amount), 0);
   }
 }

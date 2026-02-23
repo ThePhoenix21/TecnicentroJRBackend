@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
+import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { Role } from '@prisma/client';
 
 @Injectable()
@@ -15,8 +15,13 @@ export class PermissionsGuard implements CanActivate {
       context.getClass(),
     ]);
 
+    const anyRequiredPermissions = this.reflector.getAllAndOverride<string[]>(ANY_PERMISSIONS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
     // Si no se requieren permisos específicos, permitir acceso
-    if (!requiredPermissions || requiredPermissions.length === 0) {
+    if ((!requiredPermissions || requiredPermissions.length === 0) && (!anyRequiredPermissions || anyRequiredPermissions.length === 0)) {
       return true;
     }
 
@@ -41,13 +46,27 @@ export class PermissionsGuard implements CanActivate {
     // Verificar si el usuario tiene TODOS los permisos requeridos (estrategia AND)
     // O si prefieres que tenga AL MENOS UNO (estrategia OR), cambia 'every' por 'some'.
     // Usualmente para seguridad granular es "necesitas tener este permiso específico".
-    const hasAllPermissions = requiredPermissions.every(permission => 
-      userPermissions.includes(permission)
-    );
+    if (requiredPermissions && requiredPermissions.length > 0) {
+      const hasAllPermissions = requiredPermissions.every(permission => 
+        userPermissions.includes(permission)
+      );
 
-    if (!hasAllPermissions) {
-      this.logger.warn(`Usuario ${user.email} intentó acceder a recurso protegido sin permisos suficientes. Requeridos: [${requiredPermissions}], Tiene: [${userPermissions}]`);
-      throw new ForbiddenException(`No tienes permisos suficientes. Requerido: ${requiredPermissions.join(', ')}`);
+      if (!hasAllPermissions) {
+        this.logger.warn(`Usuario ${user.email} intentó acceder a recurso protegido sin permisos suficientes. Requeridos: [${requiredPermissions}], Tiene: [${userPermissions}]`);
+        throw new ForbiddenException(`No tienes permisos suficientes. Requerido: ${requiredPermissions.join(', ')}`);
+      }
+    }
+
+    // Verificar si el usuario tiene AL MENOS UNO de los permisos requeridos (estrategia OR)
+    if (anyRequiredPermissions && anyRequiredPermissions.length > 0) {
+      const hasAnyPermission = anyRequiredPermissions.some(permission =>
+        userPermissions.includes(permission)
+      );
+
+      if (!hasAnyPermission) {
+        this.logger.warn(`Usuario ${user.email} intentó acceder a recurso protegido sin permisos suficientes. Requeridos (ANY): [${anyRequiredPermissions}], Tiene: [${userPermissions}]`);
+        throw new ForbiddenException(`No tienes permisos suficientes. Requiere al menos uno: ${anyRequiredPermissions.join(', ')}`);
+      }
     }
 
     return true;
