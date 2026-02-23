@@ -23,8 +23,4 @@ export class HardDeleteOrdersByDateRangeDto {
   @IsOptional()
   @IsString()
   reason?: string;
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 8306ad0a6497549eb18602a8124a24afa1e8089b

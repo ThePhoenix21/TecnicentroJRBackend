@@ -1541,8 +1541,6 @@ export class OrderService {
     });
   }
 
-<<<<<<< HEAD
-=======
   async payOrderPayments(orderId: string, dto: PayOrderPaymentsDto, user?: AuthUser): Promise<{ success: true; fullPayment: boolean }> {
     if (!user) {
       throw new ForbiddenException('Usuario no autenticado');
@@ -1740,7 +1738,6 @@ export class OrderService {
     };
   }
 
->>>>>>> 8306ad0a6497549eb18602a8124a24afa1e8089b
   async hardDeleteOrdersByDateRange(
     input: HardDeleteOrdersByDateRangeInput,
     user: AuthUser,
@@ -1866,10 +1863,6 @@ export class OrderService {
     });
   }
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 8306ad0a6497549eb18602a8124a24afa1e8089b
   // Método auxiliar para obtener la orden con todos los detalles necesarios para la respuesta (PDF, pagos, etc.)
   async getOrderWithDetails(orderId: string, user: AuthUser): Promise<Order> {
     await this.assertOrderAccess(orderId, user);

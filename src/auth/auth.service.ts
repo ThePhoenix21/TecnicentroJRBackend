@@ -17,7 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { EmailValidatorService } from '../common/validators/email-validator.service';
-import { Role } from '../common/enums/role.enum';
+import { Role } from './enums/role.enum';
 import { ALL_PERMISSIONS } from './permissions';
 import { DashboardService } from '../dashboard/dashboard.service';
 
@@ -479,22 +479,19 @@ export class AuthService {
   }
 
   async resetPassword(token: string, newPassword: string) {
-    // 1. Buscar usuario con token
     const user = await this.prisma.user.findFirst({
-      where: { 
+      where: {
         passwordResetToken: token,
-        passwordResetTokenExpires: { gt: new Date() }
+        passwordResetTokenExpires: { gt: new Date() },
       },
     });
-    
+
     if (!user) {
       throw new BadRequestException('Token inválido o expirado');
     }
 
-    // 2. Hashear nueva contraseña
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // 3. Actualizar usuario
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
@@ -518,8 +515,17 @@ export class AuthService {
     }
 
     // Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
-    let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
-    if (user.role === 'ADMIN') {
+    let stores: {
+      id: string;
+      name: string;
+      address: string | null;
+      phone: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      createdById: string | null;
+    }[] = [];
+
+    if (user.role === Role.ADMIN) {
       stores = await this.prisma.store.findMany({
         where: { tenantId: user.tenantId },
         select: {
@@ -529,11 +535,10 @@ export class AuthService {
           phone: true,
           createdAt: true,
           updatedAt: true,
-          createdById: true
-        }
+          createdById: true,
+        },
       });
     } else {
-      // Para usuarios normales, obtener sus tiendas asignadas
       const userStores = await this.prisma.storeUsers.findMany({
         where: { userId: user.id },
         include: {
@@ -545,62 +550,57 @@ export class AuthService {
               phone: true,
               createdAt: true,
               updatedAt: true,
-              createdById: true
-            }
-          }
-        }
+              createdById: true,
+            },
+          },
+        },
       });
-      stores = userStores.map(us => us.store);
+      stores = userStores.map((us) => us.store);
     }
 
-    const payload = { 
-      email: user.email, 
+    const payload = {
+      email: user.email,
       sub: user.id,
       role: user.role,
       tenantId: tenant.id,
       tenantName: tenant.name,
-      tenantFeatures: tenant.features || [],
+      tenantFeatures: (tenant as any).features || [],
       tenantCurrency: (tenant as any).currency ?? 'PEN',
       tenantLogoUrl: (tenant as any).logoUrl ?? null,
-      permissions: user.permissions || [], // Incluir permisos en el token
-      stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
+      permissions: user.permissions || [],
+      stores: stores.map((store) => store.id),
     };
 
-    // Crear tokens
     const accessToken = this.jwtService.sign(payload);
     const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
-    
-    // Calcular fecha de expiración (7 días desde ahora)
+
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    // Guardar el refresh token en la base de datos
     await this.prisma.refreshToken.create({
       data: {
         token: refreshToken,
         userId: user.id,
-        expiresAt: expiresAt,
-        revoked: false
-      }
-    });
-
-    // Actualizar la última hora de inicio de sesión
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { 
-        lastLoginAt: new Date(),
-        ...(ipAddress && { lastLoginIp: ipAddress })
+        expiresAt,
+        revoked: false,
       },
     });
 
-    // Setear cookie si res está disponible
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastLoginAt: new Date(),
+        ...(ipAddress && { lastLoginIp: ipAddress }),
+      },
+    });
+
     if (res) {
       res.cookie('refresh_token', refreshToken, {
         httpOnly: true,
-        secure: true, // Cambiar a false en desarrollo si no usas HTTPS
+        secure: true,
         sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
-        path: '/auth/refresh'
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/auth/refresh',
       });
     }
 
@@ -612,36 +612,30 @@ export class AuthService {
         name: user.name,
         username: user.username,
         role: user.role,
-        permissions: user.permissions || [], // Incluir permisos en la respuesta
+        permissions: user.permissions || [],
         verified: user.verified,
-        stores: stores // Incluir tiendas completas en la respuesta
-      }
+        stores,
+      },
     };
-  } catch (error) {
-    this.logger.error(`Error al refrescar token: ${error?.message || error}`, error?.stack);
-    throw new UnauthorizedException('Token de refresco inválido');
   }
 
   async refreshToken(refreshToken: string, ipAddress: string, res: Response) {
     try {
-      // 1. Verificar que el token sea válido
-      const payload = this.jwtService.verify(refreshToken);
-      
-      // 2. Buscar el token en la base de datos
+      const payload = this.jwtService.verify(refreshToken) as any;
+
       const storedToken = await this.prisma.refreshToken.findFirst({
-        where: { 
+        where: {
           token: refreshToken,
           userId: payload.sub,
           revoked: false,
-          expiresAt: { gte: new Date() }
-        }
+          expiresAt: { gte: new Date() },
+        },
       });
 
       if (!storedToken) {
         throw new UnauthorizedException('Token de refresco inválido o expirado');
       }
 
-      // 3. Obtener el usuario
       const user = await this.usersService.findById(payload.sub);
       if (!user) {
         throw new UnauthorizedException('Usuario no encontrado');
@@ -653,9 +647,17 @@ export class AuthService {
 
       const tenantId = user.tenantId;
 
-      // 4. Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
-      let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
-      if (user.role === 'ADMIN') {
+      let stores: {
+        id: string;
+        name: string;
+        address: string | null;
+        phone: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        createdById: string | null;
+      }[] = [];
+
+      if (user.role === Role.ADMIN) {
         stores = await this.prisma.store.findMany({
           where: { tenantId },
           select: {
@@ -665,11 +667,10 @@ export class AuthService {
             phone: true,
             createdAt: true,
             updatedAt: true,
-            createdById: true
-          }
+            createdById: true,
+          },
         });
       } else {
-        // Para usuarios normales, obtener sus tiendas asignadas
         const userStores = await this.prisma.storeUsers.findMany({
           where: { userId: user.id },
           include: {
@@ -681,12 +682,12 @@ export class AuthService {
                 phone: true,
                 createdAt: true,
                 updatedAt: true,
-                createdById: true
-              }
-            }
-          }
+                createdById: true,
+              },
+            },
+          },
         });
-        stores = userStores.map(us => us.store);
+        stores = userStores.map((us) => us.store);
       }
 
       const tenant = await this.prisma.tenant.findUnique({
@@ -698,58 +699,53 @@ export class AuthService {
         throw new UnauthorizedException('Tenant no encontrado');
       }
 
-      // 5. Crear nuevos tokens
-      const newPayload = { 
-        email: user.email, 
+      const newPayload = {
+        email: user.email,
         sub: user.id,
         role: user.role,
-        tenantId: tenant.id,
-        tenantName: tenant.name,
-        tenantFeatures: tenant.features || [],
+        tenantId: (tenant as any).id,
+        tenantName: (tenant as any).name,
+        tenantFeatures: (tenant as any).features || [],
         tenantCurrency: (tenant as any).currency ?? 'PEN',
         tenantLogoUrl: (tenant as any).logoUrl ?? null,
         permissions: user.permissions || [],
-        stores: stores.map(store => store.id) // Guardar IDs de tiendas en el token
+        stores: stores.map((store) => store.id),
       };
 
       const newAccessToken = this.jwtService.sign(newPayload);
       const newRefreshToken = this.jwtService.sign(newPayload, { expiresIn: '7d' });
-      
-      // 5. Calcular nueva fecha de expiración
+
       const newExpiresAt = new Date();
       newExpiresAt.setDate(newExpiresAt.getDate() + 7);
 
-      // 6. Actualizar el refresh token en la base de datos
       await this.prisma.refreshToken.update({
         where: { id: storedToken.id },
-        data: { 
+        data: {
           token: newRefreshToken,
           expiresAt: newExpiresAt,
-          updatedAt: new Date()
-        }
-      });
-
-      // 7. Actualizar última actividad del usuario
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { 
-          lastLoginAt: new Date(),
-          ...(ipAddress && { lastLoginIp: ipAddress })
+          updatedAt: new Date(),
         },
       });
 
-      // 8. Setear la cookie para el refresh_token y devolver el access_token y tiendas
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          lastLoginAt: new Date(),
+          ...(ipAddress && { lastLoginIp: ipAddress }),
+        },
+      });
+
       res.cookie('refresh_token', newRefreshToken, {
         httpOnly: true,
-        secure: true, // Cambiar a false en desarrollo si no usas HTTPS
+        secure: true,
         sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
-        path: '/auth/refresh'
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/auth/refresh',
       });
 
       return res.status(201).json({
         access_token: newAccessToken,
-        stores: stores // Incluir tiendas actualizadas en la respuesta
+        stores,
       });
     } catch (error) {
       this.logger.error(`Error al refrescar token: ${error?.message || error}`, error?.stack);
