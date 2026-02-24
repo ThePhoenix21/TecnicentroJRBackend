@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpStatus, Patch, Post, Req, Res, UnauthorizedException, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Patch, Post, Req, Res, UnauthorizedException, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { TenantService } from './tenant.service';
@@ -151,5 +151,41 @@ export class TenantController {
     }
 
     return this.tenantService.updateLogo(tenantId, logo);
+  }
+
+  @Patch('disable')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Desactivar tenant actual' })
+  async disableTenant(@Req() req: any) {
+    const tenantId: string | undefined = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Tenant no encontrado en el token');
+    }
+
+    if (req.user?.role !== 'ADMIN') {
+      throw new ForbiddenException('Solo administradores pueden desactivar el tenant');
+    }
+
+    return this.tenantService.disableTenant(tenantId);
+  }
+
+  @Patch('enable')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Activar tenant actual' })
+  async enableTenant(@Req() req: any) {
+    const tenantId: string | undefined = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Tenant no encontrado en el token');
+    }
+
+    if (req.user?.role !== 'ADMIN') {
+      throw new ForbiddenException('Solo administradores pueden activar el tenant');
+    }
+
+    return this.tenantService.enableTenant(tenantId);
   }
 }

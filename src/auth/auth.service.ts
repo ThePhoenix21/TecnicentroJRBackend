@@ -5,6 +5,7 @@ import {
   ForbiddenException, 
   Injectable,
   Logger,
+  NotFoundException,
   UnauthorizedException 
 } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
@@ -12,7 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Prisma, User } from '@prisma/client';
+import { Prisma, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
@@ -92,7 +93,7 @@ export class AuthService {
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
-      select: { id: true, name: true, features: true, currency: true, logoUrl: true } as any,
+      select: { id: true, name: true, status: true, features: true, currency: true, logoUrl: true },
     });
 
     if (!tenant) {
@@ -507,11 +508,17 @@ export class AuthService {
   async login(user: any, ipAddress?: string, res?: Response) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
-      select: { id: true, name: true, features: true, currency: true, logoUrl: true } as any,
+      select: { id: true, name: true, status: true, features: true, currency: true, logoUrl: true },
     });
 
     if (!tenant) {
       throw new UnauthorizedException('Tenant no encontrado');
+    }
+
+    if (tenant.status !== TenantStatus.ACTIVE) {
+      throw new UnauthorizedException(
+        'Su usuario ha sido desactivado. Por favor, póngase en contacto con soporte para más información.',
+      );
     }
 
     // Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)

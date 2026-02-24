@@ -271,4 +271,46 @@ export class TenantService {
       tenant: updatedTenant,
     };
   }
+
+  async disableTenant(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, status: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant no encontrado');
+    }
+
+    const updatedTenant = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { status: TenantStatus.DISABLED },
+    });
+
+    return {
+      message: 'Tenant desactivado exitosamente',
+      tenant: updatedTenant,
+    };
+  }
+
+  async enableTenant(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, status: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant no encontrado');
+    }
+
+    const updatedTenant = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { status: TenantStatus.ACTIVE },
+    });
+
+    return {
+      message: 'Tenant activado exitosamente',
+      tenant: updatedTenant,
+    };
+  }
 }

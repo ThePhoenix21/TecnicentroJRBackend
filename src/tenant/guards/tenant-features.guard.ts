@@ -55,7 +55,9 @@ export class TenantFeaturesGuard implements CanActivate {
     }
 
     if (tenant.status !== TenantStatus.ACTIVE) {
-      throw new ForbiddenException('Tenant inactivo');
+      throw new ForbiddenException(
+        'Su usuario ha sido desactivado. Por favor, póngase en contacto con soporte para más información.',
+      );
     }
 
     const tenantFeatures = tenant.features || [];

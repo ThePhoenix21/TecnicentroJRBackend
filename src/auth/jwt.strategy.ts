@@ -3,7 +3,8 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy, StrategyOptions, VerifyCallback } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
-import { Role, TenantFeature } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { Role, TenantFeature, TenantStatus } from '@prisma/client';
 
 type JwtPayload = {
   sub: string;
@@ -26,6 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private readonly configService: ConfigService,
     private readonly usersService: UsersService,
+    private readonly prisma: PrismaService,
   ) {
     const secret = configService.get<string>('JWT_SECRET') || 'superSecretKey';
     
@@ -71,6 +73,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       
       this.logger.debug(`Usuario autenticado correctamente: ${user.email}`);
 
+      const resolvedTenantId = (payload.tenantId ?? user.tenantId) ?? undefined;
+      if (resolvedTenantId) {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: resolvedTenantId },
+          select: { status: true },
+        });
+
+        if (!tenant) {
+          throw new UnauthorizedException('Tenant no encontrado');
+        }
+
+        if (tenant.status !== TenantStatus.ACTIVE) {
+          throw new UnauthorizedException(
+            'Su usuario ha sido desactivado. Por favor, póngase en contacto con soporte para más información.',
+          );
+        }
+      }
+
       if (payload.tenantId && user.tenantId && payload.tenantId !== user.tenantId) {
         this.logger.warn(`Mismatch de tenantId en token para usuario ${user.email}`);
         throw new UnauthorizedException('Tenant inválido');
@@ -86,7 +106,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: payload.role as Role,
         permissions: mergedPermissions,
         stores: payload.stores || [],
-        tenantId: (payload.tenantId ?? user.tenantId) ?? undefined,
+        tenantId: resolvedTenantId,
         tenantName: payload.tenantName,
         tenantFeatures: payload.tenantFeatures || [],
         tenantCurrency: payload.tenantCurrency ?? null,
