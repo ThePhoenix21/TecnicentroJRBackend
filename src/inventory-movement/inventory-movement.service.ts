@@ -198,7 +198,8 @@ export class InventoryMovementService {
     // Para INCOMING, RETURN, ADJUST: usamos el quantity tal como viene (puede ser + o -)
 
     // Validar stock suficiente para salidas
-    if (stockChange < 0 && (storeProduct.stock + stockChange < 0)) {
+    const wouldGoNegative = stockChange < 0 && storeProduct.stock + stockChange < 0;
+    if (wouldGoNegative && type !== InventoryMovementType.OUTGOING) {
       throw new BadRequestException('Stock insuficiente para realizar esta salida');
     }
 
@@ -227,12 +228,14 @@ export class InventoryMovementService {
   }
 
   async findAll(filterDto: FilterInventoryMovementDto, user: AuthUser): Promise<ListInventoryMovementsResponseDto> {
-    const { name, type, userId, userName, fromDate, toDate } = filterDto;
+    const { storeId, name, type, userId, userName, fromDate, toDate } = filterDto;
 
     const tenantId = user?.tenantId;
     if (!tenantId) {
       throw new ForbiddenException('Tenant no encontrado en el token');
     }
+
+    await this.assertStoreAccess(storeId, user);
     
     const { page, pageSize, skip } = getPaginationParams({
       page: filterDto.page,
@@ -253,6 +256,7 @@ export class InventoryMovementService {
     }
 
     where.storeProduct = {
+      storeId,
       store: {
         tenantId,
         ...(user.role !== 'ADMIN'

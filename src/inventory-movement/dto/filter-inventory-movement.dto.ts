@@ -1,9 +1,13 @@
 import { IsOptional, IsUUID, IsDateString, IsString, IsEnum } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InventoryMovementType } from '@prisma/client';
 import { BasePaginationDto } from '../../common/dto/base-pagination.dto';
 
 export class FilterInventoryMovementDto extends BasePaginationDto {
+  @ApiProperty({ description: 'ID de la tienda (obligatorio)', example: 'b3b2a6a3-1f20-4e18-9f64-8f9c78c1a111' })
+  @IsUUID()
+  storeId!: string;
+
   @ApiPropertyOptional({ description: 'Nombre de producto (coincidencia parcial)' })
   @IsOptional()
   @IsString()
