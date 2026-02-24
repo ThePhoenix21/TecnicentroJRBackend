@@ -106,7 +106,7 @@ export class StoreProductService {
           name: 'asc',
         },
       },
-      take: 200,
+      //take: 200, //esto serive para que devuelve solo 200 resultados pero esta desactivado
     });
 
     return rows.map((r) => ({
