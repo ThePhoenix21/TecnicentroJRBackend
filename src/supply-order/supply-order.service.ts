@@ -824,6 +824,7 @@ export class SupplyOrderService {
               description: 'Ingreso por recepción de orden de suministro',
               storeProductId: storeProduct.id,
               userId: receivedById,
+              tenantId,
             },
           });
 

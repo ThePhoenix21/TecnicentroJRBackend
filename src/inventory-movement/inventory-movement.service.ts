@@ -72,6 +72,7 @@ export class InventoryMovementService {
     const endDate = toDate ? new Date(toDate) : new Date();
 
     const where: Prisma.InventoryMovementWhereInput = {
+      tenantId,
       storeProduct: {
         storeId,
         store: {
@@ -212,6 +213,7 @@ export class InventoryMovementService {
           quantity: stockChange, // Guardamos con signo
           description,
           userId: user.userId,
+          tenantId: user.tenantId,
         },
       });
 
@@ -246,6 +248,8 @@ export class InventoryMovementService {
     });
 
     const where: Prisma.InventoryMovementWhereInput = {};
+
+    where.tenantId = tenantId;
 
     if (type) {
       where.type = type;
@@ -454,6 +458,7 @@ export class InventoryMovementService {
 
     return this.prisma.inventoryMovement.findMany({
       where: {
+        tenantId,
         storeProductId,
         storeProduct: {
           store: {

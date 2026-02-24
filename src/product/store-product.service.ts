@@ -623,7 +623,8 @@ export class StoreProductService {
           type: InventoryMovementType.ADJUST,
           quantity: difference,
           description: 'Ajuste manual de stock desde edición de producto',
-          userId: userId
+          userId: userId,
+          tenantId,
         }
       });
 

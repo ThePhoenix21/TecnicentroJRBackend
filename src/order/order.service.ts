@@ -607,6 +607,7 @@ export class OrderService {
               description: "Movimiento por venta automática",
               storeProductId: storeProduct.id,
               userId: userIdToUse,
+              tenantId: user.tenantId,
               orderId: order.id
             }
           });
@@ -1478,6 +1479,7 @@ export class OrderService {
                   description: 'Devolución por anulación de orden',
                   storeProductId: op.productId,
                   userId: userId,
+                  tenantId: order.cashSession?.Store?.tenantId,
                   orderId: order.id,
                 },
               }),
