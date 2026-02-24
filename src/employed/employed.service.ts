@@ -1065,4 +1065,39 @@ export class EmployedService {
       return this.buildBasicResponse(prisma, created.id, tenantId);
     });
   }
+
+  async softDelete(employedId: string, reason: string | undefined, user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
+    const actorUserId = this.getAuthUserIdOrThrow(user);
+    const employed = await this.findEmployedOrThrow(employedId, tenantId);
+
+    if (employed.deletedAt) {
+      throw new BadRequestException('El empleado ya está eliminado');
+    }
+
+    return this.prisma.$transaction(async (prisma) => {
+      // Cerrar historial abierto si existe
+      await this.closeOpenHistory(
+        prisma,
+        employedId,
+        { endedAt: new Date(), reason: reason ?? 'eliminacion' },
+        actorUserId,
+      );
+
+      // Marcar como eliminado
+      const updated = await prisma.employed.update({
+        where: { id: employedId },
+        data: {
+          deletedAt: new Date(),
+          status: EmployedStatus.INACTIVE,
+        },
+      });
+
+      return {
+        id: updated.id,
+        deletedAt: updated.deletedAt,
+        reason: reason ?? 'eliminacion',
+      };
+    });
+  }
 }

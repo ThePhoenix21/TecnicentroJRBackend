@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -436,5 +437,41 @@ export class EmployedController {
     dto: ReassignEmployedDto,
   ) {
     return this.employedService.reassign(id, dto, req.user);
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.MANAGE_EMPLOYEES)
+  @RateLimit({
+    keyType: 'user',
+    rules: [{ limit: 10, windowSeconds: 60 }],
+  })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Eliminar empleado (soft delete)',
+    description: 'Marca el empleado como eliminado (deletedAt) y cierra su historial laboral si está abierto.',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiBody({
+    type: ChangeEmployedStatusDto,
+    description: 'Razón opcional de la eliminación',
+    required: false,
+  })
+  @ApiResponse({ status: 200, description: 'Empleado eliminado correctamente' })
+  @ApiResponse({ status: 404, description: 'Empleado no encontrado' })
+  @ApiResponse({ status: 403, description: 'No autorizado' })
+  async softDelete(
+    @Req() req: Request & { user: any },
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    dto?: ChangeEmployedStatusDto,
+  ) {
+    return this.employedService.softDelete(id, dto?.reason, req.user);
   }
 }
