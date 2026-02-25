@@ -23,7 +23,7 @@ export class TenantFeaturesGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredFeatures = this.reflector.getAllAndOverride<TenantFeature[]>(
+    const requiredFeatures = this.reflector.getAllAndOverride<Array<TenantFeature | string>>(
       TENANT_FEATURES_KEY,
       [context.getHandler(), context.getClass()],
     );
@@ -74,19 +74,20 @@ export class TenantFeaturesGuard implements CanActivate {
       );
     }
 
-    const tenantFeatures = tenant.features || [];
-    const hasAllFeatures = requiredFeatures.every((feature) =>
+    const tenantFeatures = (tenant.features || []).map((f) => String(f));
+    const requiredFeatureStrings = requiredFeatures.map((f) => String(f));
+    const hasAllFeatures = requiredFeatureStrings.every((feature) =>
       tenantFeatures.includes(feature),
     );
 
     if (!hasAllFeatures) {
       this.logger.warn(
-        `Tenant ${tenantId} intentó acceder sin features suficientes. Requeridos: [${requiredFeatures.join(
+        `Tenant ${tenantId} intentó acceder sin features suficientes. Requeridos: [${requiredFeatureStrings.join(
           ', ',
         )}], Tiene: [${tenantFeatures.join(', ')}]`,
       );
       throw new ForbiddenException(
-        `Funcionalidad no habilitada para este tenant: ${requiredFeatures.join(
+        `Funcionalidad no habilitada para este tenant: ${requiredFeatureStrings.join(
           ', ',
         )}`,
       );
