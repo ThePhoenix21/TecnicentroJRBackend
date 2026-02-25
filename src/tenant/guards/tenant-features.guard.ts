@@ -4,8 +4,10 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantFeature, TenantStatus } from '@prisma/client';
 import { TENANT_FEATURES_KEY } from '../decorators/tenant-features.decorator';
@@ -17,6 +19,7 @@ export class TenantFeaturesGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -30,12 +33,23 @@ export class TenantFeaturesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const user = request.user;
+    let user = request.user;
 
-    // Si no hay usuario autenticado, no bloquear aquí.
-    // Esto permite que JwtAuthGuard (u otro guard de auth) responda 401 correctamente.
+    // Nota: este guard está registrado como APP_GUARD, por lo que puede ejecutarse
+    // antes que JwtAuthGuard (que setea request.user). En ese caso, resolvemos el
+    // tenantId desde el JWT para evitar bypass.
     if (!user) {
-      return true;
+      const authHeader: string | undefined = request.headers?.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        throw new UnauthorizedException('Token de autenticación no proporcionado');
+      }
+
+      const token = authHeader.split(' ')[1];
+      try {
+        user = await this.jwtService.verifyAsync(token);
+      } catch {
+        throw new UnauthorizedException('Token inválido. Por favor, inicie sesión nuevamente.');
+      }
     }
 
     const tenantId: string | undefined = user?.tenantId;

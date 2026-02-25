@@ -25,17 +25,17 @@ import { PERMISSIONS } from '../auth/permissions';
 import { Role } from '../auth/enums/role.enum';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
-import { TenantFeature } from '@prisma/client';
 import { SupplyOrderService } from './supply-order.service';
 import { CreateSupplyOrderDto } from './dto/create-supply-order.dto';
 import { ListSupplyOrdersDto } from './dto/list-supply-orders.dto';
 import { ListSupplyOrdersResponseDto } from './dto/list-supply-orders-response.dto';
 import { ReceiveSupplyOrderDto } from './dto/receive-supply-order.dto';
 import { UpdateSupplyOrderDto } from './dto/update-supply-order.dto';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Órdenes de Suministro')
 @ApiBearerAuth()
-@RequireTenantFeatures(TenantFeature.INVENTORY)
+@RequireTenantFeatures(TenantFeature.SUPPLY_ORDERS)
 @Controller('supply-orders')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class SupplyOrderController {

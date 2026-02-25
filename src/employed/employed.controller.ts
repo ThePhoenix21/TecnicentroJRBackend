@@ -46,10 +46,13 @@ import { validateSync } from 'class-validator';
 import * as path from 'path';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Empleados')
 @ApiBearerAuth('JWT-auth')
 @Controller('employed')
+@RequireTenantFeatures(TenantFeature.EMPLOYEES)
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EmployedController {
   constructor(private readonly employedService: EmployedService) {}

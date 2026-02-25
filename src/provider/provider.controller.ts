@@ -37,10 +37,12 @@ import { UpdateProviderDto } from './dto/update-provider.dto';
 import { SetProviderProductsDto } from './dto/set-provider-products.dto';
 import { ListProvidersDto } from './dto/list-providers.dto';
 import { ListProvidersResponseDto } from './dto/list-providers-response.dto';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 
 @ApiTags('Proveedores')
 @ApiBearerAuth('JWT-auth')
 @Controller('providers')
+@RequireTenantFeatures('SUPPLIERS' as any)
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ProviderController {
   constructor(private readonly providerService: ProviderService) {}
