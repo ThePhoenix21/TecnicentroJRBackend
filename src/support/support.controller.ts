@@ -21,10 +21,13 @@ import { Role } from '../auth/enums/role.enum';
 import { PERMISSIONS } from '../auth/permissions';
 import { CreateSupportTicketDto } from './dto/create-support-ticket.dto';
 import { SupportService } from './support.service';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Support')
 @ApiBearerAuth('JWT-auth')
 @Controller('support')
+@RequireTenantFeatures(TenantFeature.SUPPORT)
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class SupportController {
   constructor(private readonly supportService: SupportService) {}

@@ -46,9 +46,12 @@ import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { CreateUserFromEmployedDto } from './dto/create-user-from-employed.dto';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Users')
 @Controller('users')
+@RequireTenantFeatures(TenantFeature.USERS)
 export class UsersController {
   private readonly BUCKET_NAME = 'tecnicentroJR-img';
   private readonly MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB

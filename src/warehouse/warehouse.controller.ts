@@ -20,10 +20,13 @@ import { Role } from '../auth/enums/role.enum';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { WarehouseService } from './warehouse.service';
+import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
+import { TenantFeature } from '@prisma/client';
 
 @ApiTags('Warehouses')
 @ApiBearerAuth('JWT-auth')
 @Controller('warehouses')
+@RequireTenantFeatures(TenantFeature.WAREHOUSES)
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class WarehouseController {
   constructor(private readonly warehouseService: WarehouseService) {}

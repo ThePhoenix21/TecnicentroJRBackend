@@ -106,7 +106,7 @@ export class StoreProductService {
           name: 'asc',
         },
       },
-      take: 200,
+      //take: 200,
     });
 
     return rows.map((r) => ({

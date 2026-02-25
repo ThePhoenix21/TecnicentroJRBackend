@@ -15,6 +15,7 @@ import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 @ApiTags('Analytics')
 @ApiBearerAuth('JWT-auth')
 @Controller('analytics')
+@RequireTenantFeatures(TenantFeature.DASHBOARD)
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
