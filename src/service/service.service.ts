@@ -76,6 +76,8 @@ export class ServiceService {
       throw new BadRequestException('storeId es requerido');
     }
 
+    const canSeeSeller = user?.role === 'ADMIN' || this.hasPermission(user, PERMISSIONS.DETAIL_SERVICES);
+
     const canViewAll = this.hasViewAllServices(user);
     const requestedStoreId = query.storeId;
 
@@ -159,6 +161,12 @@ export class ServiceService {
           order: {
             select: {
               cashSessionsId: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
               client: {
                 select: {
                   name: true,
@@ -181,6 +189,13 @@ export class ServiceService {
         status: service.status,
         price: this.toNumber(service.price),
         createdAt: service.createdAt,
+        seller:
+          canSeeSeller && service.order?.user
+            ? {
+                id: service.order.user.id,
+                name: service.order.user.name,
+              }
+            : undefined,
         isFromCurrentCash: !!(currentOpenCashSessionId && service.order?.cashSessionsId === currentOpenCashSessionId),
       })),
       total,
