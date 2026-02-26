@@ -143,10 +143,8 @@ export class SupabaseStorageService {
         const { error } = await this.supabase.storage
           .from(this.bucketName)
           .remove([filePath]);
-        
-        if (error) {
-          console.error(`Error al eliminar archivo ${filePath}:`, error);
-        }
+
+        void error;
       }
     });
 
@@ -157,9 +155,7 @@ export class SupabaseStorageService {
     if (!paths || paths.length === 0) return;
 
     const { error } = await this.supabase.storage.from(bucket).remove(paths);
-    if (error) {
-      console.error('Error al eliminar archivos:', error);
-    }
+    void error;
   }
 
   async uploadEmployeeDocument(
@@ -201,7 +197,6 @@ export class SupabaseStorageService {
         path: filePath,
       };
     } catch (error) {
-      console.error('Error en uploadFile:', error);
       throw new Error(`Error al procesar el archivo: ${error.message}`);
     }
   }

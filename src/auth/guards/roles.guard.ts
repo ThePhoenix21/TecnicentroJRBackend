@@ -40,14 +40,11 @@ export class RolesGuard implements CanActivate {
             });
             payload = jwtService.verify(token);
         } catch (error) {
-            console.error('Error al verificar el token:', error);
             throw new ForbiddenException('Token inválido o expirado');
         }
 
         // Extraer el rol del payload
         const userRole = payload.role;
-        console.log('Roles requeridos:', requiredRoles);
-        console.log('Rol del usuario:', userRole);
 
         if (!userRole) {
             throw new ForbiddenException('El token no contiene información de roles');

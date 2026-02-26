@@ -26,8 +26,6 @@ export class ApiMetricsController {
   constructor(private readonly prisma: PrismaService) {}
 
   private whereRange(from: Date, to: Date, tenantId?: string): Prisma.Sql {
-    console.log('whereRange - from (ISO):', from.toISOString(), 'to (ISO):', to.toISOString()); // DEBUG
-    
     const clauses: Prisma.Sql[] = [
       Prisma.sql`"intervalStart" AT TIME ZONE 'UTC' >= ${from.toISOString()}::timestamptz`,
       Prisma.sql`"intervalStart" AT TIME ZONE 'UTC' <= ${to.toISOString()}::timestamptz`,
@@ -49,15 +47,11 @@ export class ApiMetricsController {
     const from = parseDateParam(fromRaw, 'from');
     const to = parseDateParam(toRaw, 'to');
 
-    console.log('summary - raw dates from:', fromRaw, 'to:', toRaw); // DEBUG
-    console.log('summary - from:', from, 'to:', to); // DEBUG
-
     if (from > to) {
       throw new BadRequestException('Invalid range: from must be <= to');
     }
 
     const where = this.whereRange(from, to, tenantId);
-    console.log('summary - where:', where); // DEBUG
 
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -95,14 +89,11 @@ export class ApiMetricsController {
     const from = parseDateParam(fromRaw, 'from');
     const to = parseDateParam(toRaw, 'to');
 
-    console.log('timeseries - from:', from, 'to:', to); // DEBUG
-
     if (from > to) {
       throw new BadRequestException('Invalid range: from must be <= to');
     }
 
     const where = this.whereRange(from, to, tenantId);
-    console.log('timeseries - where:', where); // DEBUG
 
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -138,8 +129,6 @@ export class ApiMetricsController {
     const from = parseDateParam(fromRaw, 'from');
     const to = parseDateParam(toRaw, 'to');
 
-    console.log('endpoints - from:', from, 'to:', to); // DEBUG
-
     if (from > to) {
       throw new BadRequestException('Invalid range: from must be <= to');
     }
@@ -154,7 +143,6 @@ export class ApiMetricsController {
     }
 
     const where = this.whereRange(from, to, tenantId);
-    console.log('endpoints - where:', where); // DEBUG
 
     const rows = await this.prisma.$queryRaw<
       Array<{

@@ -201,7 +201,6 @@ export class CashMovementService {
 
     // Si tiene VIEW_ALL_CASH_HISTORY, permitir acceso a cualquier sesión
     if (user.permissions?.includes('VIEW_ALL_CASH_HISTORY')) {
-      console.log('DEBUG SERVICE: Usuario tiene VIEW_ALL_CASH_HISTORY, omitiendo validación de ownership');
       return cashSession;
     }
 
@@ -812,36 +811,25 @@ export class CashMovementService {
     });
 
     if (user) {
-      console.log('DEBUG SERVICE: User permissions:', user.permissions);
-      console.log('DEBUG SERVICE: User role:', user.role);
-      console.log('DEBUG SERVICE: User ID:', user.userId);
-      
       // Para usuarios con VIEW_ALL_CASH_HISTORY, permitir acceso a cualquier sesión
       if (user.role !== 'ADMIN') {
         const hasAllHistory = user.permissions?.includes('VIEW_ALL_CASH_HISTORY') || false;
         const hasOwnHistory = user.permissions?.includes('VIEW_OWN_CASH_HISTORY') || false;
-        
-        console.log('DEBUG SERVICE: hasAllHistory:', hasAllHistory);
-        console.log('DEBUG SERVICE: hasOwnHistory:', hasOwnHistory);
-        
+
         // Si tiene VIEW_ALL_CASH_HISTORY, no validar ownership
         if (hasAllHistory) {
-          console.log('DEBUG SERVICE: Usando VIEW_ALL_CASH_HISTORY - allowAdmin: true');
           // Solo validar tenant y store, no ownership
           await this.assertCashSessionAccess(sessionId, user, { allowAdmin: true, requireOpen: false });
         } 
         // Si tiene VIEW_OWN_CASH_HISTORY, validar ownership
         else if (hasOwnHistory) {
-          console.log('DEBUG SERVICE: Usando VIEW_OWN_CASH_HISTORY - allowAdmin: false');
           await this.assertCashSessionAccess(sessionId, user, { allowAdmin: false, requireOpen: false });
         }
         // Si no tiene permisos de historial, validar ownership normal
         else {
-          console.log('DEBUG SERVICE: Sin permisos de historial - allowAdmin: false');
           await this.assertCashSessionAccess(sessionId, user, { allowAdmin: false, requireOpen: false });
         }
       } else {
-        console.log('DEBUG SERVICE: Usuario ADMIN - allowAdmin: true');
         // Admin siempre tiene acceso
         await this.assertCashSessionAccess(sessionId, user, { allowAdmin: true, requireOpen: false });
       }

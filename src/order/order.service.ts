@@ -2091,7 +2091,6 @@ export class OrderService {
       }
 
       // 4. Procesar pagos (permite pagos parciales sin validar estado de servicios)
-      console.log('💰 Procesando pagos para servicios:', services.length);
 
       const newPaymentMethods: Array<{ type: PaymentType; amount: number }> = [];
       for (const servicePayment of services) {
@@ -2116,8 +2115,6 @@ export class OrderService {
 
       const movementsToCreate = newPaymentMethods.filter((pm) => (pm.amount || 0) > 0);
       if (movementsToCreate.length > 0) {
-        console.log('💰 Creando movimientos de caja para pagos');
-
         for (const payment of movementsToCreate) {
           try {
             await this.cashMovementService.createFromOrder({
@@ -2129,10 +2126,8 @@ export class OrderService {
               clientName: order.client?.name || undefined,
               clientEmail: order.client?.email || undefined
             }, false, user);
-
-            console.log('✅ Movimiento de caja creado:', payment.amount);
           } catch (error) {
-            console.error('❌ Error al crear movimiento de caja:', error.message);
+            this.logger.error(`Error al crear movimiento de caja (pago de servicios): ${error.message}`);
           }
         }
       }
@@ -2154,8 +2149,6 @@ export class OrderService {
         (sum, pm) => sum + this.toNumber(pm.amount),
         0,
       );
-      
-      console.log('💰 Estado financiero:', { totalOwed, totalPaid, balance: totalPaid - totalOwed });
 
       // 6. Evaluar estados de servicios para determinar estado final de la orden
       const allServicesCompleted = order.services.every(s => s.status === ServiceStatus.COMPLETED);
@@ -2170,20 +2163,14 @@ export class OrderService {
         // Si todos los servicios están anulados, cancelar la orden
         newStatus = SaleStatus.CANCELLED;
         shouldUpdateStatus = true;
-        console.log('🚫 Todos los servicios anulados → Orden CANCELLED');
       } else if (totalPaid >= totalOwed && allServicesCompleted) {
         // Si está todo pagado Y todos los servicios completados, completar la orden
         newStatus = SaleStatus.COMPLETED;
         shouldUpdateStatus = true;
-        console.log('✅ Todo pagado y servicios completados → Orden COMPLETED');
       } else if (totalPaid >= totalOwed && hasSomeCompletedServices) {
         // Si está todo pagado pero hay servicios mixtos, completar de todos modos
         newStatus = SaleStatus.COMPLETED;
         shouldUpdateStatus = true;
-        console.log('✅ Todo pagado con servicios mixtos → Orden COMPLETED');
-      } else {
-        // Mantener en PENDING si aún falta pago o hay servicios en progreso
-        console.log('⏳ Aún faltan pagos o servicios → Orden mantiene PENDING');
       }
 
       // 8. Actualizar estado de la orden si es necesario
@@ -2221,8 +2208,6 @@ export class OrderService {
             },
           },
         });
-        
-        console.log(`📈 Orden actualizada a estado: ${newStatus}`);
       }
 
       return updatedOrder as unknown as Order;

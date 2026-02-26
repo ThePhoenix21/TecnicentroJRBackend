@@ -67,7 +67,6 @@ export class MailService {
         verificationUrl,
       });
 
-      console.log("DefaultFrom: ",this.defaultFrom);
       await this.transporter.sendMail({
         from: this.defaultFrom,
         to,

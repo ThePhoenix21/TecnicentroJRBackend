@@ -454,27 +454,18 @@ export class AuthController {
     @Body('email') email: string,
     @Body('password') password: string,
   ) {
-    console.log('Iniciando proceso de login para:', email);
     try {
-      console.log('Validando credenciales...');
       const user = await this.authService.validateUser(email, password);
-      console.log('Usuario validado, obteniendo dirección IP...');
       const ipAddress =
         req.ip ||
         req.headers['x-forwarded-for'] ||
         req.connection.remoteAddress;
-      console.log('IP detectada:', ipAddress);
-      console.log('Iniciando sesión...');
       const result = await this.authService.login(user, ipAddress, res);
-      console.log('Login exitoso');
       return res.status(200).json(result);
     } catch (error) {
-      console.error('Error en login:', error);
       if (error instanceof UnauthorizedException) {
-        console.log('Error de autenticación:', error.message);
         throw error;
       }
-      console.error('Error inesperado en login:', error);
       throw new UnauthorizedException('Error al iniciar sesión');
     }
   }

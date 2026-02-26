@@ -42,9 +42,6 @@ export class CashSessionController {
   @RequirePermissions(PERMISSIONS.MANAGE_CASH)
   @ApiOperation({ summary: 'Crear nueva sesión de caja' })
   async create(@Body() createCashSessionDto: CreateCashSessionDto, @Req() req: any) {
-    console.log('Usuario en request:', req.user);
-    console.log('Request completo:', req);
-    
     if (!req.user) {
       throw new UnauthorizedException('Usuario no autenticado');
     }

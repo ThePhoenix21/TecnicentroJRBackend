@@ -56,7 +56,6 @@ export class ProductService {
       const withCreatedBy = await this.attachCreatedByForTenant(product, tenantId);
       return withCreatedBy as unknown as CatalogProduct;
     } catch (error) {
-      console.error('Error al crear el producto del catálogo:', error);
       throw new Error('No se pudo crear el producto del catálogo: ' + (error as Error).message);
     }
   }
