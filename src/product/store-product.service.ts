@@ -620,12 +620,13 @@ export class StoreProductService {
       await prisma.inventoryMovement.create({
         data: {
           storeProductId: id,
+          storeId: (storeProduct as any).storeId,
           type: InventoryMovementType.ADJUST,
           quantity: difference,
           description: 'Ajuste manual de stock desde edición de producto',
           userId: userId,
           tenantId,
-        }
+        } as any
       });
 
       // 2. Actualizar el stock

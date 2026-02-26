@@ -209,12 +209,13 @@ export class InventoryMovementService {
       const movement = await prisma.inventoryMovement.create({
         data: {
           storeProductId,
+          storeId: storeProduct.storeId,
           type,
           quantity: stockChange, // Guardamos con signo
           description,
           userId: user.userId,
           tenantId: user.tenantId,
-        },
+        } as any,
       });
 
       // Actualizar stock

@@ -823,9 +823,10 @@ export class SupplyOrderService {
               quantity: product.quantity,
               description: 'Ingreso por recepción de orden de suministro',
               storeProductId: storeProduct.id,
+              storeId: supplyOrder.storeId!,
               userId: receivedById,
               tenantId,
-            },
+            } as any,
           });
 
           if (product.batches && product.batches.length > 0) {

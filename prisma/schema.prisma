@@ -81,6 +81,8 @@ model User {
   employedHistoriesUpdated            EmployedHistory[] @relation("EmployedUpdatedBy")
   ordersCanceled                      Order[]         @relation("OrderCanceledBy")
   employeeDocumentsUpdated            EmployeeDocument[] @relation("EmployeeDocumentUpdatedBy")
+
+  paymentMethodsCreated               PaymentMethod[] @relation("PaymentMethodCreatedBy")
 }
 
 //===================PERFILES DE ACCESO===================
@@ -157,6 +159,7 @@ model Store {
   cashSessions      CashSession[]
   storeUsers        StoreUsers[]
   storeProducts     StoreProduct[]
+  inventoryMovements InventoryMovement[]
   inventorySessions InventoryCountSession[]
   storeEmployees    StoreEmployed[]
   warehouseStores   WarehouseStore[]
@@ -396,6 +399,9 @@ model PaymentMethod {
   orderId String
   order   Order  @relation(fields: [orderId], references: [id])
 
+  createdById String?
+  createdBy   User?   @relation("PaymentMethodCreatedBy", fields: [createdById], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -547,6 +553,9 @@ model InventoryMovement {
   quantity    Int
   description String?
   date        DateTime              @default(now())
+
+  storeId String?
+  store   Store?  @relation(fields: [storeId], references: [id])
 
   // relación con StoreProduct (producto en una tienda específica)
   storeProductId String

@@ -572,6 +572,7 @@ export class OrderService {
           create: paymentMethodsFiltered.map((pm) => ({
             type: pm.type as PaymentType,
             amount: pm.amount,
+            createdById: user.userId,
           })),
         },
       };
@@ -606,10 +607,11 @@ export class OrderService {
               quantity: -productData.quantity, // Cantidad negativa para salida
               description: "Movimiento por venta automática",
               storeProductId: storeProduct.id,
+              storeId: storeProduct.storeId,
               userId: userIdToUse,
               tenantId: user.tenantId,
               orderId: order.id
-            }
+            } as any
           });
 
           return Promise.all([updateStock, createMovement]);
@@ -1478,10 +1480,11 @@ export class OrderService {
                   quantity: op.quantity, // Cantidad positiva para devolver al stock
                   description: 'Devolución por anulación de orden',
                   storeProductId: op.productId,
+                  storeId: (order.cashSession as any)?.StoreId,
                   userId: userId,
                   tenantId: order.cashSession?.Store?.tenantId,
                   orderId: order.id,
-                },
+                } as any,
               }),
             ]),
           ),
@@ -1583,6 +1586,7 @@ export class OrderService {
           orderId,
           type: p.type,
           amount: p.amount,
+          createdById: user.userId,
         })),
       });
 
@@ -2105,6 +2109,7 @@ export class OrderService {
             orderId,
             type: pm.type,
             amount: pm.amount,
+            createdById: user.userId,
           })),
         });
       }
