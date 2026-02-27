@@ -400,6 +400,7 @@ export class OrderController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.MANAGE_ORDERS)
   @ApiOperation({ summary: 'Lookup de números de orden (solo valores)' })
   async lookupOrderNumbers(
     @Req() req: Request & { user: any },

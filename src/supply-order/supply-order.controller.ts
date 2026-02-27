@@ -54,6 +54,7 @@ export class SupplyOrderController {
   @Get('lookup')
   @HttpCode(HttpStatus.OK)
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SUPPLY_ORDERS)
   @ApiOperation({ summary: 'Lookup de órdenes de suministro (id y código)' })
   @RateLimit({
     keyType: 'user',

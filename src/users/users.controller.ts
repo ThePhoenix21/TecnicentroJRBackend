@@ -313,6 +313,7 @@ export class UsersController {
   @Get('lookup')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS, PERMISSIONS.VIEW_SUPPLY_ORDERS, PERMISSIONS.VIEW_INVENTORY)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],

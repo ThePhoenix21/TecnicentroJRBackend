@@ -160,6 +160,7 @@ export class EmployedController {
 
   @Get('lookup')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_EMPLOYEES)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],

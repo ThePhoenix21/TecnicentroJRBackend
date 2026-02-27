@@ -79,6 +79,7 @@ export class ClientController {
 
   @Get('lookup-name')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS, PERMISSIONS.VIEW_SERVICES, PERMISSIONS.VIEW_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Lookup de nombres de clientes (id, name)' })
   async lookupName(@Request() req: any) {
@@ -88,6 +89,7 @@ export class ClientController {
 
   @Get('lookup-phone')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Lookup de teléfonos de clientes (id, phone)' })
   async lookupPhone(@Request() req: any) {
@@ -97,6 +99,7 @@ export class ClientController {
 
   @Get('lookup-dni')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_CLIENTS)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Lookup de DNI de clientes (id, dni)' })
   async lookupDni(@Request() req: any) {

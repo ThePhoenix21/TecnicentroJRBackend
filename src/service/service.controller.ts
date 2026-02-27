@@ -71,6 +71,7 @@ export class ServiceController {
   @Get('lookup')
   @HttpCode(HttpStatus.OK)
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SERVICES)
   @ApiOperation({ summary: 'Lookup de servicios (id y value)' })
   async lookup(@Req() req: any): Promise<ServiceLookupItemDto[]> {
     return this.serviceService.lookup(req.user);

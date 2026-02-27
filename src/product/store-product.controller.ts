@@ -124,6 +124,7 @@ export class StoreProductController {
 
   @Get('lookup')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
   @ApiOperation({ summary: 'Lookup de productos en tienda' })
   async lookup(
     @Req() req: any,
@@ -179,6 +180,7 @@ export class StoreProductController {
 
   @Get('store/:storeId/simple')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_ORDERS)
   @ApiOperation({ summary: 'Listar productos simples por tienda' })
   async findByStoreSimple(
     @Req() req: any,

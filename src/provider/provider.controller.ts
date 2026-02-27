@@ -142,6 +142,7 @@ export class ProviderController {
 
   @Get('lookup')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SUPPLIERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
@@ -183,6 +184,7 @@ export class ProviderController {
 
   @Get('lookup-ruc')
   @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_SUPPLIERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
