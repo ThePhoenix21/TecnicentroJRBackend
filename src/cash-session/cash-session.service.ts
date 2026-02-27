@@ -539,15 +539,11 @@ export class CashSessionService {
         UserId: user.userId,
         status: SessionStatus.OPEN,
       },
-      include: {
-        Store: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-            phone: true,
-          },
-        },
+      select: {
+        id: true,
+        openedAt: true,
+        status: true,
+        openingAmount: true,
         User: {
           select: {
             id: true,
@@ -560,6 +556,36 @@ export class CashSessionService {
     });
 
     return session;
+  }
+
+  async findOpenSessionsByStore(storeId: string, user: AuthUser) {
+    await this.assertStoreAccess(storeId, user);
+
+    const sessions = await this.prisma.cashSession.findMany({
+      where: {
+        StoreId: storeId,
+        status: SessionStatus.OPEN,
+      },
+      select: {
+        id: true,
+        openedAt: true,
+        status: true,
+        openingAmount: true,
+        User: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            username: true,
+          },
+        },
+      },
+      orderBy: {
+        openedAt: 'desc',
+      },
+    });
+
+    return sessions;
   }
 
   // Método para cerrar una sesión de caja

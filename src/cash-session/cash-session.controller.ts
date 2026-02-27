@@ -199,6 +199,15 @@ export class CashSessionController {
     return this.cashSessionService.findOpenSessionByStore(storeId, req.user);
   }
 
+  @Get('store/:storeId/open/all')
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.USER, Role.ADMIN)
+  @RequirePermissions(PERMISSIONS.VIEW_CASH, PERMISSIONS.VIEW_ALL_CASH_OPEN)
+  @ApiOperation({ summary: 'Obtener todas las sesiones de caja abiertas de una tienda' })
+  findOpenSessionsByStore(@Param('storeId') storeId: string, @Req() req: any) {
+    return this.cashSessionService.findOpenSessionsByStore(storeId, req.user);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER, Role.ADMIN)
