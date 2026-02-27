@@ -328,4 +328,47 @@ export class CashSessionController {
       closingReport,
     };
   }
+
+  @Post(':id/force-close')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Forzar cierre de sesión de caja (solo ADMIN)' })
+  async forceCloseCashSession(@Param('id') id: string, @Req() req: any) {
+    const authUser = req.user;
+
+    // 1. Obtener la sesión de caja con información completa
+    const cashSession = await this.cashSessionService.findOneForClose(id, authUser);
+    if (!cashSession) {
+      throw new NotFoundException('La sesión de caja no existe');
+    }
+
+    // 2. Verificar que la sesión esté abierta
+    if (cashSession.status !== 'OPEN') {
+      throw new BadRequestException('La sesión de caja ya está cerrada');
+    }
+
+    // 3. Obtener el cuadre de caja actual (admin puede cerrar aunque no sea owner)
+    const cashBalance = await this.cashMovementService.getCashBalance(id, authUser, { allowAdmin: true });
+
+    // 4. Calcular el monto de cierre (balance actual)
+    const closingAmount = cashBalance.balance.balanceActual;
+
+    // 5. Cerrar la sesión de caja (declaredAmount=0 y closedById=admin)
+    await this.cashSessionService.close(
+      id,
+      authUser.userId,
+      closingAmount,
+      0,
+      authUser,
+    );
+
+    // 6. Obtener reporte de cierre
+    const closingReport = await this.cashSessionService.getClosingReport(id, authUser, { allowAllHistoryInStore: true });
+
+    return {
+      message: 'Sesión de caja cerrada exitosamente',
+      cashBalance: cashBalance.balance,
+      closingReport,
+    };
+  }
 }
