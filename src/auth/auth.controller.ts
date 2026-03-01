@@ -31,6 +31,7 @@ import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { TokensDto } from './dto/tokens.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AuthChangePasswordDto } from './dto/auth-change-password.dto';
+import { AuthContextDto } from './dto/auth-context.dto';
 import { UsersService } from 'src/users/users.service';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -345,6 +346,19 @@ export class AuthController {
     return this.authService.refreshToken(refreshToken, ipAddress, res);
   }
 
+  @Post('context')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cambiar contexto activo (sin cambiar modo)',
+    description:
+      'Permite cambiar el storeId activo en modo STORE o el warehouseId activo en modo WAREHOUSE. Rota tokens obligatoriamente y actualiza la cookie refresh_token.',
+  })
+  async changeContext(@Req() req, @Res() res: Response, @Body() body: AuthContextDto) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    return this.authService.changeActiveContext(req.user, body, ipAddress, res);
+  }
+
   @Post('login')
   @RateLimit({
     keyType: ['ip', 'identity'],
@@ -451,6 +465,7 @@ export class AuthController {
   async login(
     @Req() req,
     @Res() res: Response,
+    @Body() body: any,
     @Body('email') email: string,
     @Body('password') password: string,
   ) {
@@ -460,7 +475,11 @@ export class AuthController {
         req.ip ||
         req.headers['x-forwarded-for'] ||
         req.connection.remoteAddress;
-      const result = await this.authService.login(user, ipAddress, res);
+      const result = await this.authService.login(user, ipAddress, res, {
+        loginMode: body?.loginMode,
+        storeId: body?.storeId,
+        warehouseId: body?.warehouseId,
+      });
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
@@ -585,6 +604,7 @@ export class AuthController {
   async loginWithUsername(
     @Req() req,
     @Res() res: Response,
+    @Body() body: any,
     @Body('username') username: string,
     @Body('password') password: string,
   ) {
@@ -602,7 +622,11 @@ export class AuthController {
       this.logger.debug(`IP detectada: ${ipAddress}`);
       this.logger.debug('Generando tokens...');
       
-      const result = await this.authService.login(user, ipAddress, res);
+      const result = await this.authService.login(user, ipAddress, res, {
+        loginMode: body?.loginMode,
+        storeId: body?.storeId,
+        warehouseId: body?.warehouseId,
+      });
       this.logger.log('Login exitoso');
       
       return res.status(200).json(result);

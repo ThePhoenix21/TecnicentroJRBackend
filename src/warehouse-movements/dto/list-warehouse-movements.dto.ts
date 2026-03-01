@@ -1,0 +1,36 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsDateString, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { WarehouseMovementKind } from './create-warehouse-movement.dto';
+
+export class ListWarehouseMovementsDto {
+  @ApiPropertyOptional({ enum: WarehouseMovementKind })
+  @IsOptional()
+  @IsEnum(WarehouseMovementKind)
+  type?: WarehouseMovementKind;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  fromDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  toDate?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number;
+}

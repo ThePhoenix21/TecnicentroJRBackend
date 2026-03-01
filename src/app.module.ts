@@ -27,6 +27,11 @@ import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.intercep
 import { EmployedModule } from './employed/employed.module';
 import { ProviderModule } from './provider/provider.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
+import { WarehouseProductsModule } from './warehouse-products/warehouse-products.module';
+import { WarehouseMovementsModule } from './warehouse-movements/warehouse-movements.module';
+import { WarehouseCountModule } from './warehouse-count/warehouse-count.module';
+import { WarehouseSuppliersModule } from './warehouse-suppliers/warehouse-suppliers.module';
+import { WarehouseReceptionsModule } from './warehouse-receptions/warehouse-receptions.module';
 import { SupportModule } from './support/support.module';
 import { SupplyOrderModule } from './supply-order/supply-order.module';
 
@@ -64,6 +69,11 @@ import { SupplyOrderModule } from './supply-order/supply-order.module';
     EmployedModule,
     ProviderModule,
     WarehouseModule,
+    WarehouseProductsModule,
+    WarehouseMovementsModule,
+    WarehouseCountModule,
+    WarehouseSuppliersModule,
+    WarehouseReceptionsModule,
     SupportModule,
     SupplyOrderModule,
   ],

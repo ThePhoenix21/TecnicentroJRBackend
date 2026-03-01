@@ -16,6 +16,10 @@ type JwtPayload = {
   tenantCurrency?: string | null;
   permissions?: string[];
   stores?: string[];
+  warehouses?: string[];
+  activeLoginMode?: 'STORE' | 'WAREHOUSE' | null;
+  activeStoreId?: string | null;
+  activeWarehouseId?: string | null;
   iat?: number;
   exp?: number;
 };
@@ -41,7 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super(strategyOptions);
   }
 
-  async validate(payload: JwtPayload): Promise<{ userId: string; email: string; role: Role; permissions: string[]; stores?: string[]; tenantId?: string; tenantName?: string; tenantFeatures?: TenantFeature[]; tenantCurrency?: string | null }> {
+  async validate(payload: JwtPayload): Promise<{ userId: string; email: string; role: Role; permissions: string[]; stores?: string[]; warehouses?: string[]; activeLoginMode?: 'STORE' | 'WAREHOUSE' | null; activeStoreId?: string | null; activeWarehouseId?: string | null; tenantId?: string; tenantName?: string; tenantFeatures?: TenantFeature[]; tenantCurrency?: string | null }> {
     try {
       this.logger.debug(`Validando token para usuario: ${payload.email}`);
       
@@ -106,6 +110,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: payload.role as Role,
         permissions: mergedPermissions,
         stores: payload.stores || [],
+        warehouses: payload.warehouses || [],
+        activeLoginMode: payload.activeLoginMode ?? null,
+        activeStoreId: payload.activeStoreId ?? null,
+        activeWarehouseId: payload.activeWarehouseId ?? null,
         tenantId: resolvedTenantId,
         tenantName: payload.tenantName,
         tenantFeatures: payload.tenantFeatures || [],

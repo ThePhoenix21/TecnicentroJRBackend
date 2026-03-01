@@ -26,6 +26,9 @@ import { DashboardService } from '../dashboard/dashboard.service';
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
+  private readonly LOGIN_MODE_STORE = 'STORE';
+  private readonly LOGIN_MODE_WAREHOUSE = 'WAREHOUSE';
+
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
@@ -42,6 +45,372 @@ export class AuthService {
   private hasPermission(permissions: string[] | undefined, permission: string): boolean {
     if (!permissions || permissions.length === 0) return false;
     return permissions.includes(permission);
+  }
+
+  private async getAccessibleStores(user: any): Promise<Array<{
+    id: string;
+    name: string;
+    address: string | null;
+    phone: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    createdById: string | null;
+  }>> {
+    if (user.role === Role.ADMIN) {
+      return this.prisma.store.findMany({
+        where: { tenantId: user.tenantId },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          phone: true,
+          createdAt: true,
+          updatedAt: true,
+          createdById: true,
+        },
+      });
+    }
+
+    const userStores = await this.prisma.storeUsers.findMany({
+      where: { userId: user.id },
+      include: {
+        store: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+            createdAt: true,
+            updatedAt: true,
+            createdById: true,
+          },
+        },
+      },
+    });
+
+    return userStores.map((us) => us.store);
+  }
+
+  private async getAccessibleWarehouses(user: any, storeIds: string[]): Promise<Array<{
+    id: string;
+    name: string;
+    address: string | null;
+    phone: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    createdById: string | null;
+  }>> {
+    if (user.role === Role.ADMIN) {
+      return this.prisma.warehouse.findMany({
+        where: { tenantId: user.tenantId },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          phone: true,
+          createdAt: true,
+          updatedAt: true,
+          createdById: true,
+        },
+      });
+    }
+
+    const byStoreAssignments = storeIds.length > 0
+      ? await this.prisma.warehouseStore.findMany({
+          where: {
+            storeId: { in: storeIds },
+            warehouse: { tenantId: user.tenantId },
+          },
+          select: {
+            warehouse: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+                createdAt: true,
+                updatedAt: true,
+                createdById: true,
+              },
+            },
+          },
+        })
+      : [];
+
+    const byEmployeeAssignments = await this.prisma.warehouseEmployed.findMany({
+      where: {
+        employed: {
+          userId: user.id,
+        },
+        warehouse: {
+          tenantId: user.tenantId,
+        },
+      },
+      select: {
+        warehouse: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+            createdAt: true,
+            updatedAt: true,
+            createdById: true,
+          },
+        },
+      },
+    });
+
+    const unique = new Map<string, {
+      id: string;
+      name: string;
+      address: string | null;
+      phone: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      createdById: string | null;
+    }>();
+
+    for (const row of byStoreAssignments) {
+      unique.set(row.warehouse.id, row.warehouse);
+    }
+    for (const row of byEmployeeAssignments) {
+      unique.set(row.warehouse.id, row.warehouse);
+    }
+
+    return Array.from(unique.values());
+  }
+
+  private resolveActiveLoginContext(params: {
+    userRole: string;
+    stores: Array<{ id: string }>;
+    warehouses: Array<{ id: string }>;
+    loginMode?: string;
+    storeId?: string;
+    warehouseId?: string;
+  }): { activeLoginMode: 'STORE' | 'WAREHOUSE' | null; activeStoreId: string | null; activeWarehouseId: string | null } {
+    const { userRole, stores, warehouses, loginMode, storeId, warehouseId } = params;
+    const storeIds = new Set(stores.map((s) => s.id));
+    const warehouseIds = new Set(warehouses.map((w) => w.id));
+
+    if (loginMode === this.LOGIN_MODE_STORE) {
+      if (!storeId) {
+        throw new BadRequestException('storeId es requerido para login en modo STORE');
+      }
+      if (!storeIds.has(storeId)) {
+        throw new ForbiddenException('No tienes acceso a la tienda seleccionada');
+      }
+      return {
+        activeLoginMode: this.LOGIN_MODE_STORE,
+        activeStoreId: storeId,
+        activeWarehouseId: null,
+      };
+    }
+
+    if (loginMode === this.LOGIN_MODE_WAREHOUSE) {
+      if (!warehouseId) {
+        throw new BadRequestException('warehouseId es requerido para login en modo WAREHOUSE');
+      }
+      if (!warehouseIds.has(warehouseId)) {
+        throw new ForbiddenException('No tienes acceso al almacén seleccionado');
+      }
+      return {
+        activeLoginMode: this.LOGIN_MODE_WAREHOUSE,
+        activeStoreId: null,
+        activeWarehouseId: warehouseId,
+      };
+    }
+
+    // Selección automática para USER cuando solo hay un contexto posible.
+    if (userRole !== Role.ADMIN) {
+      if (stores.length === 1 && warehouses.length === 0) {
+        return {
+          activeLoginMode: this.LOGIN_MODE_STORE,
+          activeStoreId: stores[0].id,
+          activeWarehouseId: null,
+        };
+      }
+
+      if (warehouses.length === 1 && stores.length === 0) {
+        return {
+          activeLoginMode: this.LOGIN_MODE_WAREHOUSE,
+          activeStoreId: null,
+          activeWarehouseId: warehouses[0].id,
+        };
+      }
+
+      if (stores.length === 1) {
+        return {
+          activeLoginMode: this.LOGIN_MODE_STORE,
+          activeStoreId: stores[0].id,
+          activeWarehouseId: null,
+        };
+      }
+
+      if (warehouses.length === 1) {
+        return {
+          activeLoginMode: this.LOGIN_MODE_WAREHOUSE,
+          activeStoreId: null,
+          activeWarehouseId: warehouses[0].id,
+        };
+      }
+    }
+
+    return {
+      activeLoginMode: null,
+      activeStoreId: null,
+      activeWarehouseId: null,
+    };
+  }
+
+  async changeActiveContext(
+    authUser: {
+      userId: string;
+      email: string;
+      role: string;
+      tenantId?: string;
+      activeLoginMode?: 'STORE' | 'WAREHOUSE' | null;
+      activeStoreId?: string | null;
+      activeWarehouseId?: string | null;
+    },
+    body: { storeId?: string; warehouseId?: string },
+    ipAddress: string,
+    res: Response,
+  ) {
+    const user = await this.usersService.findById(authUser.userId);
+    if (!user) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    if (authUser.tenantId && user.tenantId && authUser.tenantId !== user.tenantId) {
+      throw new UnauthorizedException('Tenant inválido');
+    }
+
+    const activeLoginMode = authUser.activeLoginMode ?? null;
+
+    // Reglas estrictas de body: exactamente uno de los dos
+    const hasStoreId = Boolean(body?.storeId);
+    const hasWarehouseId = Boolean(body?.warehouseId);
+    if ((hasStoreId && hasWarehouseId) || (!hasStoreId && !hasWarehouseId)) {
+      throw new BadRequestException('Debe enviar solo storeId o warehouseId (nunca ambos)');
+    }
+
+    // Modo fijo hasta logout: solo permitimos activación inicial cuando activeLoginMode es null
+    if (activeLoginMode !== null) {
+      throw new ForbiddenException('No se permite cambiar el contexto/mode en la misma sesión');
+    }
+
+    const requestedLoginMode = hasStoreId ? this.LOGIN_MODE_STORE : this.LOGIN_MODE_WAREHOUSE;
+
+    const stores = await this.getAccessibleStores(user);
+    const warehouses = await this.getAccessibleWarehouses(
+      user,
+      stores.map((store) => store.id),
+    );
+
+    if (requestedLoginMode === this.LOGIN_MODE_STORE) {
+      const ok = stores.some((s) => s.id === body.storeId);
+      if (!ok) {
+        throw new ForbiddenException('No tienes acceso a la tienda seleccionada');
+      }
+    }
+
+    if (requestedLoginMode === this.LOGIN_MODE_WAREHOUSE) {
+      const ok = warehouses.some((w) => w.id === body.warehouseId);
+      if (!ok) {
+        throw new ForbiddenException('No tienes acceso al almacén seleccionado');
+      }
+    }
+
+    const tenant = user.tenantId
+      ? await this.prisma.tenant.findUnique({
+          where: { id: user.tenantId },
+          select: { id: true, name: true, features: true, currency: true, logoUrl: true } as any,
+        })
+      : null;
+
+    if (!tenant) {
+      throw new UnauthorizedException('Tenant no encontrado');
+    }
+
+    const newPayload = {
+      email: user.email,
+      sub: user.id,
+      role: user.role,
+      tenantId: (tenant as any).id,
+      tenantName: (tenant as any).name,
+      tenantFeatures: (tenant as any).features || [],
+      tenantCurrency: (tenant as any).currency ?? 'PEN',
+      tenantLogoUrl: (tenant as any).logoUrl ?? null,
+      permissions: user.permissions || [],
+      stores: stores.map((store) => store.id),
+      warehouses: warehouses.map((warehouse) => warehouse.id),
+      activeLoginMode: requestedLoginMode,
+      activeStoreId: requestedLoginMode === this.LOGIN_MODE_STORE ? (body.storeId as string) : null,
+      activeWarehouseId:
+        requestedLoginMode === this.LOGIN_MODE_WAREHOUSE ? (body.warehouseId as string) : null,
+    };
+
+    const newAccessToken = this.jwtService.sign(newPayload);
+    const newRefreshToken = this.jwtService.sign(newPayload, { expiresIn: '7d' });
+
+    const newExpiresAt = new Date();
+    newExpiresAt.setDate(newExpiresAt.getDate() + 7);
+
+    await this.prisma.refreshToken.updateMany({
+      where: {
+        userId: user.id,
+        revoked: false,
+        expiresAt: { gte: new Date() },
+      },
+      data: {
+        revoked: true,
+      },
+    });
+
+    await this.prisma.refreshToken.create({
+      data: {
+        token: newRefreshToken,
+        userId: user.id,
+        expiresAt: newExpiresAt,
+        revoked: false,
+      },
+    });
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastLoginAt: new Date(),
+        ...(ipAddress && { lastLoginIp: ipAddress }),
+      },
+    });
+
+    res.cookie('refresh_token', newRefreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/auth/refresh',
+    });
+
+    return res.status(201).json({
+      access_token: newAccessToken,
+      accessToken: newAccessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        permissions: user.permissions || [],
+        verified: user.verified,
+        stores,
+        warehouses,
+        activeLoginMode: requestedLoginMode,
+        activeStoreId: newPayload.activeStoreId,
+        activeWarehouseId: newPayload.activeWarehouseId,
+      },
+    });
   }
 
   private pickLandingView(params: {
@@ -124,6 +493,10 @@ export class AuthService {
     return {
       ...loginResult,
       stores: (loginResult as any)?.user?.stores ?? [],
+      warehouses: (loginResult as any)?.user?.warehouses ?? [],
+      activeLoginMode: (loginResult as any)?.user?.activeLoginMode ?? null,
+      activeStoreId: (loginResult as any)?.user?.activeStoreId ?? null,
+      activeWarehouseId: (loginResult as any)?.user?.activeWarehouseId ?? null,
       landing: {
         view: landing.view,
         reason: landing.reason,
@@ -505,7 +878,12 @@ export class AuthService {
     return true;
   }
 
-  async login(user: any, ipAddress?: string, res?: Response) {
+  async login(
+    user: any,
+    ipAddress?: string,
+    res?: Response,
+    context?: { loginMode?: 'STORE' | 'WAREHOUSE'; storeId?: string; warehouseId?: string },
+  ) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
       select: { id: true, name: true, status: true, features: true, currency: true, logoUrl: true },
@@ -521,49 +899,20 @@ export class AuthService {
       );
     }
 
-    // Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
-    let stores: {
-      id: string;
-      name: string;
-      address: string | null;
-      phone: string | null;
-      createdAt: Date;
-      updatedAt: Date;
-      createdById: string | null;
-    }[] = [];
+    const stores = await this.getAccessibleStores(user);
+    const warehouses = await this.getAccessibleWarehouses(
+      user,
+      stores.map((store) => store.id),
+    );
 
-    if (user.role === Role.ADMIN) {
-      stores = await this.prisma.store.findMany({
-        where: { tenantId: user.tenantId },
-        select: {
-          id: true,
-          name: true,
-          address: true,
-          phone: true,
-          createdAt: true,
-          updatedAt: true,
-          createdById: true,
-        },
-      });
-    } else {
-      const userStores = await this.prisma.storeUsers.findMany({
-        where: { userId: user.id },
-        include: {
-          store: {
-            select: {
-              id: true,
-              name: true,
-              address: true,
-              phone: true,
-              createdAt: true,
-              updatedAt: true,
-              createdById: true,
-            },
-          },
-        },
-      });
-      stores = userStores.map((us) => us.store);
-    }
+    const activeContext = this.resolveActiveLoginContext({
+      userRole: user.role,
+      stores,
+      warehouses,
+      loginMode: context?.loginMode,
+      storeId: context?.storeId,
+      warehouseId: context?.warehouseId,
+    });
 
     const payload = {
       email: user.email,
@@ -576,6 +925,10 @@ export class AuthService {
       tenantLogoUrl: (tenant as any).logoUrl ?? null,
       permissions: user.permissions || [],
       stores: stores.map((store) => store.id),
+      warehouses: warehouses.map((warehouse) => warehouse.id),
+      activeLoginMode: activeContext.activeLoginMode,
+      activeStoreId: activeContext.activeStoreId,
+      activeWarehouseId: activeContext.activeWarehouseId,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -622,6 +975,10 @@ export class AuthService {
         permissions: user.permissions || [],
         verified: user.verified,
         stores,
+        warehouses,
+        activeLoginMode: activeContext.activeLoginMode,
+        activeStoreId: activeContext.activeStoreId,
+        activeWarehouseId: activeContext.activeWarehouseId,
       },
     };
   }
@@ -654,48 +1011,20 @@ export class AuthService {
 
       const tenantId = user.tenantId;
 
-      let stores: {
-        id: string;
-        name: string;
-        address: string | null;
-        phone: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        createdById: string | null;
-      }[] = [];
+      const stores = await this.getAccessibleStores(user);
+      const warehouses = await this.getAccessibleWarehouses(
+        user,
+        stores.map((store) => store.id),
+      );
 
-      if (user.role === Role.ADMIN) {
-        stores = await this.prisma.store.findMany({
-          where: { tenantId },
-          select: {
-            id: true,
-            name: true,
-            address: true,
-            phone: true,
-            createdAt: true,
-            updatedAt: true,
-            createdById: true,
-          },
-        });
-      } else {
-        const userStores = await this.prisma.storeUsers.findMany({
-          where: { userId: user.id },
-          include: {
-            store: {
-              select: {
-                id: true,
-                name: true,
-                address: true,
-                phone: true,
-                createdAt: true,
-                updatedAt: true,
-                createdById: true,
-              },
-            },
-          },
-        });
-        stores = userStores.map((us) => us.store);
-      }
+      const activeContext = this.resolveActiveLoginContext({
+        userRole: user.role,
+        stores,
+        warehouses,
+        loginMode: payload?.activeLoginMode,
+        storeId: payload?.activeStoreId,
+        warehouseId: payload?.activeWarehouseId,
+      });
 
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
@@ -717,6 +1046,10 @@ export class AuthService {
         tenantLogoUrl: (tenant as any).logoUrl ?? null,
         permissions: user.permissions || [],
         stores: stores.map((store) => store.id),
+        warehouses: warehouses.map((warehouse) => warehouse.id),
+        activeLoginMode: activeContext.activeLoginMode,
+        activeStoreId: activeContext.activeStoreId,
+        activeWarehouseId: activeContext.activeWarehouseId,
       };
 
       const newAccessToken = this.jwtService.sign(newPayload);
@@ -753,6 +1086,10 @@ export class AuthService {
       return res.status(201).json({
         access_token: newAccessToken,
         stores,
+        warehouses,
+        activeLoginMode: activeContext.activeLoginMode,
+        activeStoreId: activeContext.activeStoreId,
+        activeWarehouseId: activeContext.activeWarehouseId,
       });
     } catch (error) {
       this.logger.error(`Error al refrescar token: ${error?.message || error}`, error?.stack);
