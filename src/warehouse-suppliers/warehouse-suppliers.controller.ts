@@ -27,7 +27,7 @@ export class WarehouseSuppliersController {
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_SUPPLIERS)
   @ApiOperation({ summary: 'Crear proveedor para dominio warehouse' })
   create(@Req() req: any, @Body() dto: CreateWarehouseSupplierDto) {
-    return this.service.create(req.user, dto);
+    return this.service.create(req.user, req.warehouseId, dto);
   }
 
   @Get()
@@ -35,7 +35,7 @@ export class WarehouseSuppliersController {
   @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_SUPPLIERS)
   @ApiOperation({ summary: 'Listar proveedores para dominio warehouse' })
   list(@Req() req: any, @Query() query: ListWarehouseSuppliersDto) {
-    return this.service.list(req.user, query);
+    return this.service.list(req.user, req.warehouseId, query);
   }
 
   @Get(':id')
@@ -43,7 +43,7 @@ export class WarehouseSuppliersController {
   @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_SUPPLIERS)
   @ApiOperation({ summary: 'Detalle de proveedor' })
   findOne(@Req() req: any, @Param('id') id: string) {
-    return this.service.findOne(req.user, id);
+    return this.service.findOne(req.user, req.warehouseId, id);
   }
 
   @Patch(':id')
@@ -51,7 +51,7 @@ export class WarehouseSuppliersController {
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_SUPPLIERS)
   @ApiOperation({ summary: 'Actualizar proveedor' })
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateWarehouseSupplierDto) {
-    return this.service.update(req.user, id, dto);
+    return this.service.update(req.user, req.warehouseId, id, dto);
   }
 
   @Delete(':id')
@@ -59,6 +59,6 @@ export class WarehouseSuppliersController {
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_SUPPLIERS)
   @ApiOperation({ summary: 'Eliminar proveedor (soft delete)' })
   remove(@Req() req: any, @Param('id') id: string) {
-    return this.service.remove(req.user, id);
+    return this.service.remove(req.user, req.warehouseId, id);
   }
 }

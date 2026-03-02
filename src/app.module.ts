@@ -24,6 +24,7 @@ import { TenantFeaturesGuard } from './tenant/guards/tenant-features.guard';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ApiMetricsModule } from './common/api-metrics/api-metrics.module';
 import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.interceptor';
+import { DomainContextGuard } from './common/context/domain-context.guard';
 import { EmployedModule } from './employed/employed.module';
 import { ProviderModule } from './provider/provider.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
@@ -82,6 +83,10 @@ import { SupplyOrderModule } from './supply-order/supply-order.module';
     {
       provide: APP_GUARD,
       useClass: TenantFeaturesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: DomainContextGuard,
     },
     {
       provide: APP_INTERCEPTOR,

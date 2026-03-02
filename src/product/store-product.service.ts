@@ -390,6 +390,38 @@ export class StoreProductService {
         )
       );
 
+      // Propagar WarehouseProduct a todos los almacenes del tenant (stock/threshold 0)
+      const allWarehouses = await this.prisma.warehouse.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { id: true },
+      });
+
+      if (allWarehouses.length > 0) {
+        const existingWarehouseProducts = await this.prisma.warehouseProduct.findMany({
+          where: {
+            productId,
+            warehouse: { tenantId, deletedAt: null },
+          } as any,
+          select: { warehouseId: true },
+        } as any);
+
+        const existingWarehouseIds = new Set(existingWarehouseProducts.map((wp: any) => wp.warehouseId));
+        const warehousesToCreate = allWarehouses.filter((w) => !existingWarehouseIds.has(w.id));
+
+        if (warehousesToCreate.length > 0) {
+          await this.prisma.warehouseProduct.createMany({
+            data: warehousesToCreate.map((w) => ({
+              warehouseId: w.id,
+              productId,
+              tenantId,
+              stock: 0,
+              stockThreshold: 0,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
       return createdStoreProducts as unknown as StoreProduct[];
     } catch (error) {
       throw new Error('No se pudo crear el producto en tienda: ' + (error as Error).message);

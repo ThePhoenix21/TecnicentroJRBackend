@@ -26,7 +26,7 @@ export class WarehouseMovementsController {
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_MOVEMENTS)
   @ApiOperation({ summary: 'Registrar movimiento en almacén activo' })
   create(@Req() req: any, @Body() dto: CreateWarehouseMovementDto) {
-    return this.service.create(req.user, dto);
+    return this.service.create(req.user, req.warehouseId, dto);
   }
 
   @Get()
@@ -34,6 +34,6 @@ export class WarehouseMovementsController {
   @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_MOVEMENTS)
   @ApiOperation({ summary: 'Listar movimientos de almacén activo' })
   list(@Req() req: any, @Query() query: ListWarehouseMovementsDto) {
-    return this.service.list(req.user, query);
+    return this.service.list(req.user, req.warehouseId, query);
   }
 }

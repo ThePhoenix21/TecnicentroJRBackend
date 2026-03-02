@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../auth/enums/role.enum';
 
@@ -6,9 +6,6 @@ type AuthUser = {
   userId: string;
   role: string;
   tenantId?: string;
-  activeLoginMode?: 'STORE' | 'WAREHOUSE' | null;
-  activeStoreId?: string | null;
-  activeWarehouseId?: string | null;
 };
 
 @Injectable()
@@ -23,19 +20,12 @@ export class WarehouseAccessService {
     return tenantId;
   }
 
-  getActiveWarehouseIdOrThrow(user: AuthUser): string {
-    if (user?.activeLoginMode !== 'WAREHOUSE' || !user?.activeWarehouseId) {
-      throw new ForbiddenException('El contexto activo debe ser WAREHOUSE');
-    }
-    return user.activeWarehouseId;
-  }
-
   async assertWarehouseAccess(user: AuthUser, warehouseId?: string): Promise<string> {
     const tenantId = this.getTenantIdOrThrow(user);
-    const targetWarehouseId = warehouseId ?? this.getActiveWarehouseIdOrThrow(user);
 
-    if (user?.activeLoginMode === 'WAREHOUSE' && user?.activeWarehouseId && user.activeWarehouseId !== targetWarehouseId) {
-      throw new ForbiddenException('No se permite operar fuera del warehouse activo');
+    const targetWarehouseId = warehouseId;
+    if (!targetWarehouseId) {
+      throw new BadRequestException('warehouseId es requerido');
     }
 
     const warehouse = await this.prisma.warehouse.findFirst({

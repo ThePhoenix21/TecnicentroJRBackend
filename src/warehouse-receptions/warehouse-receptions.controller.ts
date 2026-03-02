@@ -26,7 +26,7 @@ export class WarehouseReceptionsController {
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_RECEPTIONS)
   @ApiOperation({ summary: 'Confirmar recepción en almacén activo' })
   create(@Req() req: any, @Body() dto: CreateWarehouseReceptionDto) {
-    return this.service.create(req.user, dto);
+    return this.service.create(req.user, req.warehouseId, dto);
   }
 
   @Get()
@@ -34,7 +34,7 @@ export class WarehouseReceptionsController {
   @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_RECEPTIONS)
   @ApiOperation({ summary: 'Listar recepciones del almacén activo' })
   list(@Req() req: any, @Query() query: ListWarehouseReceptionsDto) {
-    return this.service.list(req.user, query);
+    return this.service.list(req.user, req.warehouseId, query);
   }
 
   @Get(':id')
@@ -42,6 +42,6 @@ export class WarehouseReceptionsController {
   @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_RECEPTIONS)
   @ApiOperation({ summary: 'Detalle de recepción de almacén' })
   findOne(@Req() req: any, @Param('id') id: string) {
-    return this.service.findOne(req.user, id);
+    return this.service.findOne(req.user, req.warehouseId, id);
   }
 }

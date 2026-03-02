@@ -11,8 +11,6 @@ type AuthUser = {
   userId: string;
   role: string;
   tenantId?: string;
-  activeLoginMode?: 'STORE' | 'WAREHOUSE' | null;
-  activeWarehouseId?: string | null;
 };
 
 @Injectable()
@@ -28,9 +26,9 @@ export class WarehouseMovementsService {
     return InventoryMovementType.ADJUST;
   }
 
-  async create(user: AuthUser, dto: CreateWarehouseMovementDto) {
+  async create(user: AuthUser, warehouseId: string, dto: CreateWarehouseMovementDto) {
     const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const warehouseProduct = await this.prisma.warehouseProduct.findFirst({
       where: {
@@ -83,8 +81,8 @@ export class WarehouseMovementsService {
     };
   }
 
-  async list(user: AuthUser, query: ListWarehouseMovementsDto) {
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+  async list(user: AuthUser, warehouseId: string, query: ListWarehouseMovementsDto) {
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const { page, pageSize, skip } = getPaginationParams({
       page: query.page,

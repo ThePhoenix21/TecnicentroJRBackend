@@ -10,8 +10,6 @@ type AuthUser = {
   userId: string;
   role: string;
   tenantId?: string;
-  activeLoginMode?: 'STORE' | 'WAREHOUSE' | null;
-  activeWarehouseId?: string | null;
 };
 
 @Injectable()
@@ -21,9 +19,9 @@ export class WarehouseCountService {
     private readonly warehouseAccessService: WarehouseAccessService,
   ) {}
 
-  private async assertSessionAccess(sessionId: string, user: AuthUser) {
+  private async assertSessionAccess(sessionId: string, warehouseId: string, user: AuthUser) {
     const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const session = await this.prisma.warehouseCountSession.findFirst({
       where: {
@@ -40,8 +38,8 @@ export class WarehouseCountService {
     return session;
   }
 
-  async createSession(user: AuthUser, dto: CreateWarehouseCountSessionDto) {
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+  async createSession(user: AuthUser, warehouseId: string, dto: CreateWarehouseCountSessionDto) {
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     return this.prisma.warehouseCountSession.create({
       data: {
@@ -52,8 +50,8 @@ export class WarehouseCountService {
     });
   }
 
-  async listSessions(user: AuthUser) {
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+  async listSessions(user: AuthUser, warehouseId: string) {
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     return this.prisma.warehouseCountSession.findMany({
       where: { warehouseId },
@@ -64,8 +62,8 @@ export class WarehouseCountService {
     });
   }
 
-  async addItem(user: AuthUser, sessionId: string, dto: AddWarehouseCountItemDto) {
-    const session = await this.assertSessionAccess(sessionId, user);
+  async addItem(user: AuthUser, warehouseId: string, sessionId: string, dto: AddWarehouseCountItemDto) {
+    const session = await this.assertSessionAccess(sessionId, warehouseId, user);
 
     if (session.finalizedAt) {
       throw new BadRequestException('La sesión ya está finalizada');
@@ -116,7 +114,7 @@ export class WarehouseCountService {
     });
   }
 
-  async updateItem(user: AuthUser, itemId: string, dto: UpdateWarehouseCountItemDto) {
+  async updateItem(user: AuthUser, warehouseId: string, itemId: string, dto: UpdateWarehouseCountItemDto) {
     const item = await this.prisma.warehouseCountItem.findUnique({
       where: { id: itemId },
       include: {
@@ -128,7 +126,7 @@ export class WarehouseCountService {
       throw new NotFoundException('Item de conteo no encontrado');
     }
 
-    await this.assertSessionAccess(item.sessionId, user);
+    await this.assertSessionAccess(item.sessionId, warehouseId, user);
 
     if (item.session.finalizedAt) {
       throw new BadRequestException('La sesión ya está finalizada');
@@ -152,9 +150,9 @@ export class WarehouseCountService {
     });
   }
 
-  async closeSession(user: AuthUser, sessionId: string) {
+  async closeSession(user: AuthUser, warehouseId: string, sessionId: string) {
     const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
-    const session = await this.assertSessionAccess(sessionId, user);
+    const session = await this.assertSessionAccess(sessionId, warehouseId, user);
 
     if (session.finalizedAt) {
       throw new BadRequestException('La sesión ya está cerrada');
@@ -199,11 +197,11 @@ export class WarehouseCountService {
       });
     });
 
-    return this.getSessionReport(user, sessionId);
+    return this.getSessionReport(user, warehouseId, sessionId);
   }
 
-  async getSessionReport(user: AuthUser, sessionId: string) {
-    await this.assertSessionAccess(sessionId, user);
+  async getSessionReport(user: AuthUser, warehouseId: string, sessionId: string) {
+    await this.assertSessionAccess(sessionId, warehouseId, user);
 
     const session = await this.prisma.warehouseCountSession.findUnique({
       where: { id: sessionId },

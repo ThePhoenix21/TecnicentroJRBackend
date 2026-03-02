@@ -1,29 +1,27 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
+import { WarehouseAccessService } from '../warehouse-common/warehouse-access.service';
 import { CreateWarehouseSupplierDto } from './dto/create-warehouse-supplier.dto';
 import { ListWarehouseSuppliersDto } from './dto/list-warehouse-suppliers.dto';
 import { UpdateWarehouseSupplierDto } from './dto/update-warehouse-supplier.dto';
 
 type AuthUser = {
   userId: string;
+  role: string;
   tenantId?: string;
 };
 
 @Injectable()
 export class WarehouseSuppliersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly warehouseAccessService: WarehouseAccessService,
+  ) {}
 
-  private getTenantIdOrThrow(user: AuthUser): string {
-    const tenantId = user?.tenantId;
-    if (!tenantId) {
-      throw new ForbiddenException('Tenant no encontrado en el token');
-    }
-    return tenantId;
-  }
-
-  async create(user: AuthUser, dto: CreateWarehouseSupplierDto) {
-    const tenantId = this.getTenantIdOrThrow(user);
+  async create(user: AuthUser, warehouseId: string, dto: CreateWarehouseSupplierDto) {
+    const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
     const ruc = dto.ruc ? dto.ruc.trim() : null;
 
     if (ruc) {
@@ -62,8 +60,9 @@ export class WarehouseSuppliersService {
     });
   }
 
-  async list(user: AuthUser, query: ListWarehouseSuppliersDto) {
-    const tenantId = this.getTenantIdOrThrow(user);
+  async list(user: AuthUser, warehouseId: string, query: ListWarehouseSuppliersDto) {
+    const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
     const { page, pageSize, skip } = getPaginationParams({
       page: query.page,
       pageSize: query.pageSize,
@@ -108,8 +107,9 @@ export class WarehouseSuppliersService {
     return buildPaginatedResponse(rows, total, page, pageSize);
   }
 
-  async findOne(user: AuthUser, id: string) {
-    const tenantId = this.getTenantIdOrThrow(user);
+  async findOne(user: AuthUser, warehouseId: string, id: string) {
+    const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const row = await this.prisma.provider.findFirst({
       where: {
@@ -140,8 +140,9 @@ export class WarehouseSuppliersService {
     return row;
   }
 
-  async update(user: AuthUser, id: string, dto: UpdateWarehouseSupplierDto) {
-    const tenantId = this.getTenantIdOrThrow(user);
+  async update(user: AuthUser, warehouseId: string, id: string, dto: UpdateWarehouseSupplierDto) {
+    const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const existing = await this.prisma.provider.findFirst({
       where: {
@@ -176,8 +177,9 @@ export class WarehouseSuppliersService {
     });
   }
 
-  async remove(user: AuthUser, id: string) {
-    const tenantId = this.getTenantIdOrThrow(user);
+  async remove(user: AuthUser, warehouseId: string, id: string) {
+    const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const existing = await this.prisma.provider.findFirst({
       where: {

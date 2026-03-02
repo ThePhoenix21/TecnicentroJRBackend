@@ -10,8 +10,6 @@ type AuthUser = {
   userId: string;
   role: string;
   tenantId?: string;
-  activeLoginMode?: 'STORE' | 'WAREHOUSE' | null;
-  activeWarehouseId?: string | null;
 };
 
 @Injectable()
@@ -21,57 +19,147 @@ export class WarehouseProductsService {
     private readonly warehouseAccessService: WarehouseAccessService,
   ) {}
 
-  async create(user: AuthUser, dto: CreateWarehouseProductDto) {
+  async create(user: AuthUser, warehouseId: string, dto: CreateWarehouseProductDto) {
     const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
-    const product = await this.prisma.product.findFirst({
-      where: {
-        id: dto.productId,
-        isDeleted: false,
-        createdBy: { tenantId },
-      },
-      select: { id: true },
-    });
-
-    if (!product) {
-      throw new NotFoundException('Producto no encontrado en el tenant');
+    const userId = user?.userId;
+    if (!userId) {
+      throw new ForbiddenException('No se pudo obtener el id del usuario desde el token');
     }
 
-    const exists = await this.prisma.warehouseProduct.findFirst({
-      where: {
-        warehouseId,
-        productId: dto.productId,
-      },
-      select: { id: true },
-    });
+    const shouldCreateCatalogProduct = dto.createNewProduct === true;
 
-    if (exists) {
-      throw new BadRequestException('El producto ya está registrado en el almacén');
+    let productId: string;
+    let catalogBasePrice = 0;
+
+    if (shouldCreateCatalogProduct) {
+      if (!dto.name) {
+        throw new BadRequestException('El nombre del producto es requerido cuando createNewProduct es true');
+      }
+
+      const created = await this.prisma.product.create({
+        data: {
+          name: dto.name,
+          description: dto.description ?? null,
+          basePrice: dto.basePrice ?? null,
+          buyCost: dto.buyCost ?? null,
+          createdById: userId,
+        } as any,
+        select: { id: true, basePrice: true },
+      });
+
+      productId = created.id;
+      catalogBasePrice = Number(created.basePrice ?? 0);
+    } else {
+      if (!dto.productId) {
+        throw new BadRequestException('productId es requerido cuando createNewProduct es false');
+      }
+
+      const product = await this.prisma.product.findFirst({
+        where: {
+          id: dto.productId,
+          isDeleted: false,
+          createdBy: { tenantId },
+        },
+        select: { id: true, basePrice: true },
+      });
+
+      if (!product) {
+        throw new NotFoundException('Producto no encontrado en el tenant');
+      }
+
+      productId = product.id;
+      catalogBasePrice = Number(product.basePrice ?? 0);
     }
 
-    return this.prisma.warehouseProduct.create({
-      data: {
-        warehouseId,
-        productId: dto.productId,
-        tenantId,
-        stock: dto.stock ?? 0,
-        stockThreshold: dto.stockThreshold ?? 0,
-      },
-      select: {
-        id: true,
-        warehouseId: true,
-        productId: true,
-        stock: true,
-        stockThreshold: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    const [allStores, allWarehouses] = await Promise.all([
+      this.prisma.store.findMany({ where: { tenantId }, select: { id: true } }),
+      this.prisma.warehouse.findMany({ where: { tenantId, deletedAt: null }, select: { id: true } }),
+    ]);
+
+    const [existingStoreProducts, existingWarehouseProducts] = await Promise.all([
+      this.prisma.storeProduct.findMany({
+        where: {
+          productId,
+          deletedAt: null,
+          store: { tenantId },
+        } as any,
+        select: { storeId: true },
+      } as any),
+      this.prisma.warehouseProduct.findMany({
+        where: {
+          productId,
+          warehouse: { tenantId, deletedAt: null },
+        } as any,
+        select: { warehouseId: true },
+      } as any),
+    ]);
+
+    const existingStoreIds = new Set(existingStoreProducts.map((sp: any) => sp.storeId));
+    const existingWarehouseIds = new Set(existingWarehouseProducts.map((wp: any) => wp.warehouseId));
+
+    const storesToCreate = allStores.filter((s) => !existingStoreIds.has(s.id));
+    const warehousesToCreate = allWarehouses.filter((w) => !existingWarehouseIds.has(w.id));
+
+    const originWarehouseStock = dto.stock ?? 0;
+    const originWarehouseThreshold = dto.stockThreshold ?? 0;
+
+    const created = await this.prisma.$transaction(async (prisma) => {
+      if (storesToCreate.length > 0) {
+        await (prisma.storeProduct as any).createMany({
+          data: storesToCreate.map((s) => ({
+            productId,
+            storeId: s.id,
+            userId,
+            tenantId,
+            price: catalogBasePrice,
+            stock: 0,
+            stockThreshold: 0,
+            deletedAt: null,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      if (warehousesToCreate.length > 0) {
+        await (prisma.warehouseProduct as any).createMany({
+          data: warehousesToCreate.map((w) => ({
+            warehouseId: w.id,
+            productId,
+            tenantId,
+            stock: w.id === warehouseId ? originWarehouseStock : 0,
+            stockThreshold: w.id === warehouseId ? originWarehouseThreshold : 0,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      const origin = await prisma.warehouseProduct.findFirst({
+        where: { warehouseId, productId },
+        select: {
+          id: true,
+          warehouseId: true,
+          productId: true,
+          stock: true,
+          stockThreshold: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (!origin) {
+        throw new BadRequestException('No se pudo crear el producto en almacén');
+      }
+
+      return origin;
     });
+
+    return created;
   }
 
-  async list(user: AuthUser, query: ListWarehouseProductsDto) {
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+  async list(user: AuthUser, warehouseId: string, query: ListWarehouseProductsDto) {
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const { page, pageSize, skip } = getPaginationParams({
       page: query.page,
@@ -119,8 +207,8 @@ export class WarehouseProductsService {
     return buildPaginatedResponse(rows, total, page, pageSize);
   }
 
-  async findOne(user: AuthUser, id: string) {
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+  async findOne(user: AuthUser, warehouseId: string, id: string) {
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const row = await this.prisma.warehouseProduct.findFirst({
       where: { id, warehouseId },
@@ -144,36 +232,82 @@ export class WarehouseProductsService {
     return row;
   }
 
-  async update(user: AuthUser, id: string, dto: UpdateWarehouseProductDto) {
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+  async update(user: AuthUser, warehouseId: string, id: string, dto: UpdateWarehouseProductDto) {
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const existing = await this.prisma.warehouseProduct.findFirst({
       where: { id, warehouseId },
-      select: { id: true },
+      select: { id: true, productId: true },
     });
 
     if (!existing) {
       throw new NotFoundException('Producto de almacén no encontrado');
     }
 
-    return this.prisma.warehouseProduct.update({
-      where: { id },
-      data: {
-        ...(dto.stockThreshold !== undefined ? { stockThreshold: dto.stockThreshold } : {}),
-      },
-      select: {
-        id: true,
-        warehouseId: true,
-        productId: true,
-        stock: true,
-        stockThreshold: true,
-        updatedAt: true,
-      },
+    const warehouseProductFields: any = {};
+    if (dto.stock !== undefined) {
+      warehouseProductFields.stock = dto.stock;
+    }
+    if (dto.stockThreshold !== undefined) {
+      warehouseProductFields.stockThreshold = dto.stockThreshold;
+    }
+
+    const productFields: any = {};
+    if (dto.name !== undefined) {
+      productFields.name = dto.name;
+    }
+    if (dto.description !== undefined) {
+      productFields.description = dto.description;
+    }
+    if (dto.basePrice !== undefined) {
+      productFields.basePrice = dto.basePrice;
+    }
+    if (dto.buyCost !== undefined) {
+      productFields.buyCost = dto.buyCost;
+    }
+
+    const updated = await this.prisma.$transaction(async (prisma) => {
+      if (Object.keys(productFields).length > 0) {
+        await prisma.product.update({
+          where: { id: existing.productId },
+          data: productFields,
+        });
+      }
+
+      if (Object.keys(warehouseProductFields).length > 0) {
+        await prisma.warehouseProduct.update({
+          where: { id },
+          data: warehouseProductFields,
+        });
+      }
+
+      const row = await prisma.warehouseProduct.findFirst({
+        where: { id, warehouseId },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              buyCost: true,
+              basePrice: true,
+            },
+          },
+        },
+      });
+
+      if (!row) {
+        throw new NotFoundException('Producto de almacén no encontrado');
+      }
+
+      return row;
     });
+
+    return updated;
   }
 
-  async remove(user: AuthUser, id: string) {
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+  async remove(user: AuthUser, warehouseId: string, id: string) {
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const existing = await this.prisma.warehouseProduct.findFirst({
       where: { id, warehouseId },

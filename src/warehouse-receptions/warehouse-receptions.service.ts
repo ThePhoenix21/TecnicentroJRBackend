@@ -10,8 +10,6 @@ type AuthUser = {
   userId: string;
   role: string;
   tenantId?: string;
-  activeLoginMode?: 'STORE' | 'WAREHOUSE' | null;
-  activeWarehouseId?: string | null;
 };
 
 @Injectable()
@@ -21,9 +19,9 @@ export class WarehouseReceptionsService {
     private readonly warehouseAccessService: WarehouseAccessService,
   ) {}
 
-  async create(user: AuthUser, dto: CreateWarehouseReceptionDto) {
+  async create(user: AuthUser, warehouseId: string, dto: CreateWarehouseReceptionDto) {
     const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     if (!dto.products || dto.products.length === 0) {
       throw new BadRequestException('La recepción debe incluir al menos un producto');
@@ -163,8 +161,8 @@ export class WarehouseReceptionsService {
     return created;
   }
 
-  async list(user: AuthUser, query: ListWarehouseReceptionsDto) {
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+  async list(user: AuthUser, warehouseId: string, query: ListWarehouseReceptionsDto) {
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const { page, pageSize, skip } = getPaginationParams({
       page: query.page,
@@ -225,8 +223,8 @@ export class WarehouseReceptionsService {
     return buildPaginatedResponse(rows, total, page, pageSize);
   }
 
-  async findOne(user: AuthUser, id: string) {
-    const warehouseId = await this.warehouseAccessService.assertWarehouseAccess(user);
+  async findOne(user: AuthUser, warehouseId: string, id: string) {
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
     const row = await this.prisma.warehouseReception.findFirst({
       where: {

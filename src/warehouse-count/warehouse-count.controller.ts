@@ -27,7 +27,7 @@ export class WarehouseCountController {
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_COUNTS)
   @ApiOperation({ summary: 'Crear sesión de conteo para almacén activo' })
   createSession(@Req() req: any, @Body() dto: CreateWarehouseCountSessionDto) {
-    return this.service.createSession(req.user, dto);
+    return this.service.createSession(req.user, req.warehouseId, dto);
   }
 
   @Get('session')
@@ -35,7 +35,7 @@ export class WarehouseCountController {
   @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_COUNTS)
   @ApiOperation({ summary: 'Listar sesiones de conteo del almacén activo' })
   listSessions(@Req() req: any) {
-    return this.service.listSessions(req.user);
+    return this.service.listSessions(req.user, req.warehouseId);
   }
 
   @Post('session/:id/items')
@@ -43,7 +43,7 @@ export class WarehouseCountController {
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_COUNTS)
   @ApiOperation({ summary: 'Registrar conteo físico por producto de almacén' })
   addItem(@Req() req: any, @Param('id') sessionId: string, @Body() dto: AddWarehouseCountItemDto) {
-    return this.service.addItem(req.user, sessionId, dto);
+    return this.service.addItem(req.user, req.warehouseId, sessionId, dto);
   }
 
   @Patch('items/:id')
@@ -51,7 +51,7 @@ export class WarehouseCountController {
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_COUNTS)
   @ApiOperation({ summary: 'Actualizar conteo físico de item' })
   updateItem(@Req() req: any, @Param('id') itemId: string, @Body() dto: UpdateWarehouseCountItemDto) {
-    return this.service.updateItem(req.user, itemId, dto);
+    return this.service.updateItem(req.user, req.warehouseId, itemId, dto);
   }
 
   @Post('session/:id/close')
@@ -59,7 +59,7 @@ export class WarehouseCountController {
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_COUNTS)
   @ApiOperation({ summary: 'Cerrar conteo físico y aplicar ajustes de stock' })
   closeSession(@Req() req: any, @Param('id') sessionId: string) {
-    return this.service.closeSession(req.user, sessionId);
+    return this.service.closeSession(req.user, req.warehouseId, sessionId);
   }
 
   @Get('session/:id/report')
@@ -67,6 +67,6 @@ export class WarehouseCountController {
   @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_COUNTS)
   @ApiOperation({ summary: 'Reporte de sesión de conteo de almacén' })
   getReport(@Req() req: any, @Param('id') sessionId: string) {
-    return this.service.getSessionReport(req.user, sessionId);
+    return this.service.getSessionReport(req.user, req.warehouseId, sessionId);
   }
 }
