@@ -60,8 +60,12 @@ export class SupplyOrderController {
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
   })
-  async lookup(@Req() req: any) {
-    return this.supplyOrderService.lookup(req.user);
+  async lookup(
+    @Req() req: any,
+    @Query('storeId') storeId?: string,
+    @Query('warehouseId') warehouseId?: string,
+  ) {
+    return this.supplyOrderService.lookup(req.user, { storeId, warehouseId });
   }
 
   @Get(':id')

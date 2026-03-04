@@ -1157,8 +1157,9 @@ enum TenantStatus {
 
 enum TenantPlan {
   FREE
-  BASIC
+  BUSSINESS
   PRO
+  ENTERPRISE
 }
 
 enum TenantFeature {

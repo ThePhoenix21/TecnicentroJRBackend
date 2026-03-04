@@ -207,6 +207,61 @@ export class WarehouseProductsService {
     return buildPaginatedResponse(rows, total, page, pageSize);
   }
 
+  async getLookup(
+    warehouseId: string,
+    tenantId?: string,
+    search?: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    const where: any = {
+      warehouseId,
+      tenantId,
+      warehouse: {
+        tenantId,
+        deletedAt: null,
+      },
+      product: {
+        isDeleted: false,
+      },
+    };
+
+    if (search) {
+      where.product = {
+        ...(where.product ?? {}),
+        name: {
+          contains: search,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    const rows = await this.prisma.warehouseProduct.findMany({
+      where,
+      select: {
+        id: true,
+        product: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        product: {
+          name: 'asc',
+        },
+      },
+      take: 200,
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.product?.name ?? 'Producto sin nombre',
+    }));
+  }
+
   async findOne(user: AuthUser, warehouseId: string, id: string) {
     await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 

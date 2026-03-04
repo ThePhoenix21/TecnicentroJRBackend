@@ -62,7 +62,7 @@ async function bootstrap() {
         return callback(new Error('Not allowed by CORS'));
       },
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-      allowedHeaders: 'Content-Type, Accept, Authorization',
+      allowedHeaders: 'Content-Type, Accept, Authorization, x-warehouse-id, x-store-id',
       credentials: true,
     });
 

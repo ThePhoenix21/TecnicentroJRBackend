@@ -38,6 +38,14 @@ export class WarehouseProductsController {
     return this.service.list(req.user, req.warehouseId, query);
   }
 
+  @Get('lookup')
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_PRODUCTS)
+  @ApiOperation({ summary: 'Lookup de productos del almacén activo' })
+  lookup(@Req() req: any, @Query('search') search?: string) {
+    return this.service.getLookup(req.warehouseId, req.user?.tenantId, search);
+  }
+
   @Get(':id')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_PRODUCTS)

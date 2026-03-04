@@ -380,21 +380,43 @@ export class SupplyOrderService {
       })),
       total,
       page,
-      pageSize,
+      pageSize, 
     );
   }
 
-  async lookup(user?: AuthUser) {
+  async lookup(
+    user?: AuthUser,
+    filter?: { storeId?: string; warehouseId?: string },
+  ) {
     const tenantId = this.getTenantIdOrThrow(user);
 
+    const storeId = filter?.storeId;
+    const warehouseId = filter?.warehouseId;
+
+    if (storeId && warehouseId) {
+      throw new BadRequestException('Solo puedes enviar storeId o warehouseId, no ambos');
+    }
+
+    const where: any = { tenantId };
+
+    if (storeId) {
+      where.storeId = storeId;
+      where.warehouseId = null;
+    }
+
+    if (warehouseId) {
+      where.warehouseId = warehouseId;
+      where.storeId = null;
+    }
+
     return this.prisma.supplyOrder.findMany({
-      where: { tenantId },
+      where,
       select: {
         id: true,
         code: true,
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 400,
     });
   }
 
