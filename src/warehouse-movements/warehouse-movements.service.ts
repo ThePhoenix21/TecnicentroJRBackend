@@ -84,17 +84,23 @@ export class WarehouseMovementsService {
   async list(user: AuthUser, warehouseId: string, query: ListWarehouseMovementsDto) {
     await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
 
+    const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
+
     const { page, pageSize, skip } = getPaginationParams({
       page: query.page,
       pageSize: query.pageSize,
       defaultPage: 1,
-      defaultPageSize: 20,
+      defaultPageSize: 12,
       maxPageSize: 100,
     });
 
+    const effectiveType = query.type ?? (query.kind ? this.toPrismaType(query.kind) : undefined);
+
     const where: any = {
       warehouseId,
-      ...(query.type ? { type: this.toPrismaType(query.type) } : {}),
+      tenantId,
+      ...(effectiveType ? { type: effectiveType } : {}),
+      ...(query.userId ? { userId: query.userId } : {}),
       ...(query.fromDate || query.toDate
         ? {
             date: {
@@ -105,6 +111,28 @@ export class WarehouseMovementsService {
         : {}),
     };
 
+    if (query.name) {
+      where.warehouseProduct = {
+        ...(where.warehouseProduct ?? {}),
+        product: {
+          name: {
+            contains: query.name,
+            mode: 'insensitive',
+          },
+        },
+      };
+    }
+
+    if (query.userName) {
+      where.user = {
+        ...(where.user ?? {}),
+        name: {
+          contains: query.userName,
+          mode: 'insensitive',
+        },
+      };
+    }
+
     const [total, rows] = await Promise.all([
       this.prisma.warehouseMovement.count({ where }),
       this.prisma.warehouseMovement.findMany({
@@ -114,7 +142,6 @@ export class WarehouseMovementsService {
             include: {
               product: {
                 select: {
-                  id: true,
                   name: true,
                 },
               },
@@ -122,9 +149,7 @@ export class WarehouseMovementsService {
           },
           user: {
             select: {
-              id: true,
               name: true,
-              email: true,
             },
           },
         },
@@ -134,6 +159,16 @@ export class WarehouseMovementsService {
       }),
     ]);
 
-    return buildPaginatedResponse(rows, total, page, pageSize);
+    const items = rows.map((movement) => ({
+      id: movement.id,
+      date: movement.date,
+      name: movement.warehouseProduct?.product?.name ?? 'Producto sin nombre',
+      type: movement.type,
+      quantity: movement.quantity,
+      userName: movement.user?.name ?? null,
+      description: movement.description ?? null,
+    }));
+
+    return buildPaginatedResponse(items, total, page, pageSize);
   }
 }
