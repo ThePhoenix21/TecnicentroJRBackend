@@ -109,6 +109,7 @@ export class InventoryMovementService {
     const incoming = Math.abs(grouped.find((g) => g.type === InventoryMovementType.INCOMING)?._sum.quantity ?? 0);
     const outgoing = Math.abs(grouped.find((g) => g.type === InventoryMovementType.OUTGOING)?._sum.quantity ?? 0);
     const sales = Math.abs(grouped.find((g) => g.type === InventoryMovementType.SALE)?._sum.quantity ?? 0);
+    const returns = Math.abs(grouped.find((g) => g.type === InventoryMovementType.RETURN)?._sum.quantity ?? 0);
 
     const adjustAgg = await this.prisma.inventoryMovement.aggregate({
       where: {
@@ -132,6 +133,7 @@ export class InventoryMovementService {
         incoming,
         outgoing,
         sales,
+        returns,
         adjustmentsNet,
       },
     };

@@ -49,7 +49,7 @@ export class InventoryMovementController {
   }
 
   @Get('summary')
-  @ApiOperation({ summary: 'Obtener resumen de movimientos (entradas/salidas/ventas/ajustes) con filtro por fecha' })
+  @ApiOperation({ summary: 'Obtener resumen de movimientos (entradas/salidas/ventas/devoluciones/ajustes) con filtro por fecha' })
   getSummary(@Query() query: InventoryMovementSummaryDto, @Req() req: any) {
     return this.inventoryMovementService.getMovementsSummary(query, req.user);
   }
