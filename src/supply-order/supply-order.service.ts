@@ -308,6 +308,22 @@ export class SupplyOrderService {
 
     const where: any = { tenantId };
 
+    // Aplicar filtro por modo (store/warehouse)
+    if (query.mode === 'store') {
+      if (!query.storeId) {
+        throw new BadRequestException('storeId es requerido cuando mode="store"');
+      }
+      where.storeId = query.storeId;
+      where.warehouseId = null; // Asegurar que no tenga warehouseId
+    } else if (query.mode === 'warehouse') {
+      if (!query.warehouseId) {
+        throw new BadRequestException('warehouseId es requerido cuando mode="warehouse"');
+      }
+      where.warehouseId = query.warehouseId;
+      where.storeId = null; // Asegurar que no tenga storeId
+    }
+    // Si no hay mode especificado, mostrar todas las órdenes del tenant
+
     if (query.createdBy) {
       where.createdBy = {
         name: {

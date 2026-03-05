@@ -45,7 +45,10 @@ export class SupplyOrderController {
   @HttpCode(HttpStatus.OK)
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_SUPPLY_ORDERS)
-  @ApiOperation({ summary: 'Listar órdenes de suministro' })
+  @ApiOperation({ 
+    summary: 'Listar órdenes de suministro',
+    description: 'Lista órdenes de suministro filtradas por modo (tienda/almacén). En modo "store" muestra solo órdenes de la tienda especificada. En modo "warehouse" muestra solo órdenes del almacén especificado. Sin modo, muestra todas las órdenes del tenant.'
+  })
   @ApiOkResponse({ type: ListSupplyOrdersResponseDto })
   async list(@Req() req: any, @Query() query: ListSupplyOrdersDto): Promise<ListSupplyOrdersResponseDto> {
     return this.supplyOrderService.list(query, req.user);

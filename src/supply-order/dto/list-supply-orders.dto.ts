@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
 } from 'class-validator';
@@ -32,4 +33,29 @@ export class ListSupplyOrdersDto extends BasePaginationDto {
   @ApiPropertyOptional({ example: 'ABC-000123-T2R9KU' })
   @IsOptional()
   code?: string;
+
+  @ApiPropertyOptional({ 
+    example: 'store', 
+    description: 'Modo de filtro: "store" para mostrar órdenes de tienda, "warehouse" para mostrar órdenes de almacén',
+    enum: ['store', 'warehouse']
+  })
+  @IsOptional()
+  @IsIn(['store', 'warehouse'])
+  mode?: 'store' | 'warehouse';
+
+  @ApiPropertyOptional({ 
+    example: 'uuid-de-la-tienda',
+    description: 'ID de la tienda (requerido cuando mode="store")'
+  })
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+
+  @ApiPropertyOptional({ 
+    example: 'uuid-del-almacen', 
+    description: 'ID del almacén (requerido cuando mode="warehouse")'
+  })
+  @IsOptional()
+  @IsString()
+  warehouseId?: string;
 }
