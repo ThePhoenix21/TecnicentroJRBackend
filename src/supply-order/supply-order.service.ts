@@ -1092,13 +1092,36 @@ export class SupplyOrderService {
       throw new BadRequestException('No se puede modificar una orden anulada');
     }
 
-    // Verificar que la tienda existe y pertenece al tenant
-    const store = await this.prisma.store.findFirst({
-      where: { id: updateDto.storeId, tenantId },
-    });
+    // Validar que solo se proporcione storeId o warehouseId, no ambos
+    if (updateDto.storeId && updateDto.warehouseId) {
+      throw new BadRequestException('Solo puedes especificar storeId o warehouseId, no ambos');
+    }
 
-    if (!store) {
-      throw new NotFoundException('Tienda no encontrada o no pertenece a tu tenant');
+    // Validar que se proporcione al menos uno de los dos
+    if (!updateDto.storeId && !updateDto.warehouseId) {
+      throw new BadRequestException('Debes especificar storeId o warehouseId');
+    }
+
+    // Verificar que la tienda existe y pertenece al tenant (si se proporciona)
+    if (updateDto.storeId) {
+      const store = await this.prisma.store.findFirst({
+        where: { id: updateDto.storeId, tenantId },
+      });
+
+      if (!store) {
+        throw new NotFoundException('Tienda no encontrada o no pertenece a tu tenant');
+      }
+    }
+
+    // Verificar que el almacén existe y pertenece al tenant (si se proporciona)
+    if (updateDto.warehouseId) {
+      const warehouse = await this.prisma.warehouse.findFirst({
+        where: { id: updateDto.warehouseId, tenantId },
+      });
+
+      if (!warehouse) {
+        throw new NotFoundException('Almacén no encontrado o no pertenece a tu tenant');
+      }
     }
 
     // Verificar que todos los productos existan
@@ -1126,7 +1149,8 @@ export class SupplyOrderService {
         where: { id: orderId },
         data: {
           description: updateDto.description,
-          storeId: updateDto.storeId,
+          storeId: updateDto.storeId || null,
+          warehouseId: updateDto.warehouseId || null,
         },
         include: {
           products: {
@@ -1135,6 +1159,7 @@ export class SupplyOrderService {
             },
           },
           store: true,
+          warehouse: true,
           createdBy: true,
         },
       });
@@ -1154,18 +1179,6 @@ export class SupplyOrderService {
       return updated;
     });
 
-    // Obtener la orden actualizada con todos los datos
-    return this.prisma.supplyOrder.findFirst({
-      where: { id: orderId },
-      include: {
-        products: {
-          include: {
-            product: true,
-          },
-        },
-        store: true,
-        createdBy: true,
-      },
-    });
+    return { success: true };
   }
 }

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsOptional, IsString, IsUUID, IsNumber, IsNotEmpty, Min } from 'class-validator';
+import { IsArray, IsOptional, IsString, IsUUID, IsNumber, IsNotEmpty, Min, ValidateIf } from 'class-validator';
 
 export class UpdateSupplyOrderProductDto {
   @ApiProperty({ description: 'ID del producto' })
@@ -25,10 +25,23 @@ export class UpdateSupplyOrderDto {
   @IsString()
   description?: string;
 
-  @ApiProperty({ description: 'ID de la tienda' })
+  @ApiPropertyOptional({ 
+    description: 'ID de la tienda (requerido si no se proporciona warehouseId)',
+    example: 'uuid-de-la-tienda'
+  })
   @IsUUID()
+  @ValidateIf((dto: UpdateSupplyOrderDto) => !dto.warehouseId)
   @IsNotEmpty()
-  storeId: string;
+  storeId?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'ID del almacén (requerido si no se proporciona storeId)',
+    example: 'uuid-del-almacen'
+  })
+  @IsUUID()
+  @ValidateIf((dto: UpdateSupplyOrderDto) => !dto.storeId)
+  @IsNotEmpty()
+  warehouseId?: string;
 
   @ApiProperty({ description: 'Lista de productos de la orden', type: [UpdateSupplyOrderProductDto] })
   @IsArray()

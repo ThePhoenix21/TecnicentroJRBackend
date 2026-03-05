@@ -185,7 +185,10 @@ export class SupplyOrderController {
   @HttpCode(HttpStatus.OK)
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.EDIT_EMITTED_SUPPLY_ORDER)
-  @ApiOperation({ summary: 'Actualizar orden de suministro' })
+  @ApiOperation({ 
+    summary: 'Actualizar orden de suministro',
+    description: 'Actualiza una orden de suministro permitiendo asignarla a una tienda o un almacén. Debes especificar storeId o warehouseId, pero no ambos. Devuelve { success: true } si la actualización fue exitosa.'
+  })
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 20, windowSeconds: 60 }],
