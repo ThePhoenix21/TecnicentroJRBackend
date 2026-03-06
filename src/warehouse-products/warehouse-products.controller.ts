@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards, ValidationPipe, BadRequestException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -52,6 +52,33 @@ export class WarehouseProductsController {
   @ApiOperation({ summary: 'Detalle de producto de almacén' })
   findOne(@Req() req: any, @Param('id') id: string) {
     return this.service.findOne(req.user, req.warehouseId, id);
+  }
+
+  @Get('warehouse/:warehouseId')
+  @Roles(Role.ADMIN, Role.USER)
+  @ApiOperation({ summary: 'Listar productos por almacén' })
+  async findByWarehouse(
+    @Req() req: any,
+    @Param('warehouseId') warehouseId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+    @Query('search') search: string = ''
+  ): Promise<any> {
+    const perms: string[] = req.user?.permissions || [];
+    const canViewWarehouseProducts = perms.includes(PERMISSIONS.VIEW_WAREHOUSE_PRODUCTS);
+
+    if (!canViewWarehouseProducts) {
+      throw new ForbiddenException('No tienes permisos para ver productos del almacén');
+    }
+
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado en el token');
+    }
+
+    const res = await this.service.findByWarehouse(tenantId, warehouseId, Number(page), Number(limit), search);
+    return res; // Sin stripSensitiveFields por ahora, ya que es para reportes
   }
 
   @Patch(':id')

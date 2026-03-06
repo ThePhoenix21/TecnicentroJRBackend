@@ -5,6 +5,7 @@ import { WarehouseAccessService } from '../warehouse-common/warehouse-access.ser
 import { CreateWarehouseProductDto } from './dto/create-warehouse-product.dto';
 import { UpdateWarehouseProductDto } from './dto/update-warehouse-product.dto';
 import { ListWarehouseProductsDto } from './dto/list-warehouse-products.dto';
+import { PERMISSIONS } from '../auth/permissions';
 
 type AuthUser = {
   userId: string;
@@ -379,5 +380,89 @@ export class WarehouseProductsService {
 
     await this.prisma.warehouseProduct.delete({ where: { id } });
     return { success: true };
+  }
+
+  async findByWarehouse(
+    tenantId: string,
+    warehouseId: string,
+    page: number = 1,
+    limit: number = 20,
+    search: string = ''
+  ): Promise<any> {
+    // Permisos se manejan a nivel de controlador - no se necesita validación aquí
+
+    if (!tenantId) {
+      throw new BadRequestException('TenantId no encontrado');
+    }
+
+    // Validar que el almacén pertenezca al tenant
+    const warehouse = await this.prisma.warehouse.findFirst({
+      where: { id: warehouseId, tenantId },
+      select: { id: true, name: true },
+    });
+
+    if (!warehouse) {
+      throw new NotFoundException('Almacén no encontrado o no pertenece a tu tenant');
+    }
+
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      warehouseId,
+      product: { isDeleted: false },
+    };
+
+    if (search) {
+      where.product = {
+        isDeleted: false,
+        name: { contains: search, mode: 'insensitive' },
+      };
+    }
+
+    const [total, rows] = await Promise.all([
+      this.prisma.warehouseProduct.count({ where }),
+      this.prisma.warehouseProduct.findMany({
+        where,
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              buyCost: true,
+              basePrice: true,
+            },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      data: rows.map((row: any) => ({
+        id: row.id,
+        warehouseId: row.warehouseId,
+        productId: row.productId,
+        stock: row.stock,
+        stockThreshold: row.stockThreshold,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        product: row.product,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
+      },
+      warehouse: {
+        id: warehouse.id,
+        name: warehouse.name,
+      },
+    };
   }
 }

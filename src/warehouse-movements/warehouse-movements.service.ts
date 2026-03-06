@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InventoryMovementType } from '@prisma/client';
 import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,6 +6,7 @@ import { ensureNonNegativeStock, resolveStockChange } from '../shared/inventory-
 import { WarehouseAccessService } from '../warehouse-common/warehouse-access.service';
 import { CreateWarehouseMovementDto, WarehouseMovementKind } from './dto/create-warehouse-movement.dto';
 import { ListWarehouseMovementsDto } from './dto/list-warehouse-movements.dto';
+import { WarehouseMovementSummaryDto } from './dto/warehouse-movement-summary.dto';
 
 type AuthUser = {
   userId: string;
@@ -170,5 +171,64 @@ export class WarehouseMovementsService {
     }));
 
     return buildPaginatedResponse(items, total, page, pageSize);
+  }
+
+  async getMovementsSummary(query: WarehouseMovementSummaryDto, user: AuthUser, warehouseId: string) {
+    const tenantId = this.warehouseAccessService.getTenantIdOrThrow(user);
+    
+    await this.warehouseAccessService.assertWarehouseAccess(user, warehouseId);
+
+    const { fromDate, toDate } = query;
+
+    const startDate = fromDate ? new Date(fromDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const endDate = toDate ? new Date(toDate) : new Date();
+
+    const where: any = {
+      tenantId,
+      warehouseId,
+      user: {
+        tenantId,
+      },
+      date: {
+        gte: startDate,
+        lte: endDate,
+      },
+    };
+
+    const grouped = await this.prisma.warehouseMovement.groupBy({
+      by: ['type'],
+      where,
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    const incoming = Math.abs(grouped.find((g) => g.type === InventoryMovementType.INCOMING)?._sum.quantity ?? 0);
+    const outgoing = Math.abs(grouped.find((g) => g.type === InventoryMovementType.OUTGOING)?._sum.quantity ?? 0);
+
+    const adjustAgg = await this.prisma.warehouseMovement.aggregate({
+      where: {
+        ...where,
+        type: InventoryMovementType.ADJUST,
+      },
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    const adjustmentsNet = Number(adjustAgg._sum.quantity ?? 0);
+
+    return {
+      period: {
+        from: startDate.toISOString(),
+        to: endDate.toISOString(),
+      },
+      warehouseId: warehouseId,
+      totals: {
+        incoming,
+        outgoing,
+        adjustmentsNet,
+      },
+    };
   }
 }

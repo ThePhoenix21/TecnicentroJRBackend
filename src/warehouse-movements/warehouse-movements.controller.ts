@@ -11,6 +11,7 @@ import { PERMISSIONS } from '../auth/permissions';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { CreateWarehouseMovementDto } from './dto/create-warehouse-movement.dto';
 import { ListWarehouseMovementsDto } from './dto/list-warehouse-movements.dto';
+import { WarehouseMovementSummaryDto } from './dto/warehouse-movement-summary.dto';
 import { WarehouseMovementsService } from './warehouse-movements.service';
 
 @ApiTags('Warehouse Movements')
@@ -35,5 +36,12 @@ export class WarehouseMovementsController {
   @ApiOperation({ summary: 'Listar movimientos de almacén activo' })
   list(@Req() req: any, @Query() query: ListWarehouseMovementsDto) {
     return this.service.list(req.user, req.warehouseId, query);
+  }
+
+  @Get('summary')
+  @ApiOperation({ summary: 'Obtener resumen de movimientos de almacén (entradas/salidas/ajustes) con filtro por fecha' })
+  @RequirePermissions(PERMISSIONS.VIEW_WAREHOUSE_MOVEMENTS)
+  getSummary(@Req() req: any, @Query() query: WarehouseMovementSummaryDto) {
+    return this.service.getMovementsSummary(query, req.user, req.warehouseId);
   }
 }
