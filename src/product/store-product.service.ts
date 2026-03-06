@@ -390,6 +390,22 @@ export class StoreProductService {
         )
       );
 
+      // Crear movimiento de inventario para la tienda origen si hay stock inicial
+      const originStoreProduct = createdStoreProducts.find(sp => sp.storeId === createStoreProductDto.storeId);
+      if (originStoreProduct && createStoreProductDto.stock > 0) {
+        await this.prisma.inventoryMovement.create({
+          data: {
+            storeProductId: originStoreProduct.id,
+            storeId: createStoreProductDto.storeId,
+            type: InventoryMovementType.INCOMING,
+            quantity: createStoreProductDto.stock,
+            description: `Ingreso inicial de producto: ${createStoreProductDto.name || productId}`,
+            userId: userId,
+            tenantId: tenantId,
+          } as any,
+        });
+      }
+
       // Propagar WarehouseProduct a todos los almacenes del tenant (stock/threshold 0)
       const allWarehouses = await this.prisma.warehouse.findMany({
         where: { tenantId, deletedAt: null },

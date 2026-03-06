@@ -15,6 +15,7 @@ import { Prisma, SupplyOrderStatus } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import { PdfService } from '../common/pdf/pdf.service';
 import { MailService } from '../mail/mail.service';
+import { WarehouseMovementKind } from '../warehouse-movements/dto/create-warehouse-movement.dto';
 
 const codeGenerator = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 
@@ -788,7 +789,20 @@ export class SupplyOrderService {
               stock: product.quantity,
               stockThreshold: 0,
             },
-            select: { id: true },
+            select: { id: true, stock: true },
+          });
+
+          // Crear movimiento de almacén por recepción de orden de suministro
+          await prisma.warehouseMovement.create({
+            data: {
+              warehouseId: supplyOrder.warehouseId!,
+              warehouseProductId: warehouseProduct.id,
+              type: WarehouseMovementKind.INCOMING,
+              quantity: product.quantity,
+              description: `Recepción de orden de suministro: ${supplyOrder.code}`,
+              userId: receivedById,
+              tenantId,
+            } as any,
           });
 
           if (product.batches && product.batches.length > 0) {

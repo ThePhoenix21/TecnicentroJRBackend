@@ -93,6 +93,26 @@ export class WarehouseService {
         });
       }
 
+      // Crear WarehouseProducts para todos los productos existentes del catálogo
+      const allProducts = await prisma.product.findMany({
+        where: { isDeleted: false }
+      });
+      
+      if (allProducts.length > 0) {
+        const warehouseProductsData = allProducts.map(product => ({
+          warehouseId: warehouse.id,
+          productId: product.id,
+          tenantId: tenantId,
+          stock: 0,
+          stockThreshold: 1 // Valor por defecto
+        }));
+        
+        await prisma.warehouseProduct.createMany({
+          data: warehouseProductsData,
+          skipDuplicates: true
+        });
+      }
+
       return warehouse;
     });
   }

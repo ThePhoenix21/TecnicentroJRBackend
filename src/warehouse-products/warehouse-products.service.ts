@@ -6,6 +6,7 @@ import { CreateWarehouseProductDto } from './dto/create-warehouse-product.dto';
 import { UpdateWarehouseProductDto } from './dto/update-warehouse-product.dto';
 import { ListWarehouseProductsDto } from './dto/list-warehouse-products.dto';
 import { PERMISSIONS } from '../auth/permissions';
+import { WarehouseMovementKind } from '../warehouse-movements/dto/create-warehouse-movement.dto';
 
 type AuthUser = {
   userId: string;
@@ -151,6 +152,21 @@ export class WarehouseProductsService {
 
       if (!origin) {
         throw new BadRequestException('No se pudo crear el producto en almacén');
+      }
+
+      // Crear movimiento de almacén si hay stock inicial
+      if (originWarehouseStock > 0) {
+        await prisma.warehouseMovement.create({
+          data: {
+            warehouseId: warehouseId,
+            warehouseProductId: origin.id,
+            type: WarehouseMovementKind.INCOMING,
+            quantity: originWarehouseStock,
+            description: `Ingreso inicial de producto: ${dto.name || productId}`,
+            userId: userId,
+            tenantId: tenantId,
+          } as any,
+        });
       }
 
       return origin;
