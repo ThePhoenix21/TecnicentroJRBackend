@@ -1426,37 +1426,63 @@ export class OrderService {
       );
 
       if (refundPaymentMethods.length > 0 && order.cashSession) {
-        // Verificar que la sesión de caja esté abierta
-        if (order.cashSession.status !== SessionStatus.OPEN) {
-          this.logger.warn(
-            `Sesión de caja cerrada, no se crea reembolso: session=${this.mask(order.cashSession.id)} order=${this.mask(order.id)}`,
-          );
-        } else {
-          this.logger.log(
-            `Creando movimientos de reembolso: order=${this.mask(order.id)} count=${refundPaymentMethods.length}`,
-          );
+        let refundCashSessionId: string | null = null;
 
-          for (const refund of refundPaymentMethods) {
-            try {
-              await this.cashMovementService.createFromOrder(
-                {
-                  cashSessionId: order.cashSession.id,
-                  amount: this.toNumber(refund.amount),
-                  payment: refund.type as PaymentType,
-                  orderId: order.id,
-                  clientId: order.client?.id || undefined,
-                  clientName: order.client?.name || undefined,
-                  clientEmail: order.client?.email || undefined,
+        if (order.cashSession.status === SessionStatus.OPEN) {
+          refundCashSessionId = order.cashSession.id;
+        } else {
+          const currentUserId = authenticatedUser?.userId ?? userId;
+          const storeId = order.cashSession.StoreId;
+          const tenantId = order.cashSession?.Store?.tenantId;
+
+          if (storeId && tenantId && currentUserId) {
+            const currentOpenSession = await prisma.cashSession.findFirst({
+              where: {
+                status: SessionStatus.OPEN,
+                StoreId: storeId,
+                UserId: currentUserId,
+                Store: {
+                  tenantId,
                 },
-                true,
-                authenticatedUser,
-              );
-            } catch (error) {
-              this.logger.error(
-                `Error al crear movimiento de reembolso: order=${this.mask(order.id)} amount=${refund.amount} msg=${error.message}`,
-              );
-              // No fallar la cancelación si falla el movimiento
-            }
+              },
+              select: { id: true },
+              orderBy: { openedAt: 'desc' },
+            });
+
+            refundCashSessionId = currentOpenSession?.id ?? null;
+          }
+        }
+
+        if (!refundCashSessionId) {
+          throw new BadRequestException(
+            'No existe una sesión de caja abierta actual para registrar la devolución en esta tienda',
+          );
+        }
+
+        this.logger.log(
+          `Creando movimientos de reembolso: order=${this.mask(order.id)} session=${this.mask(refundCashSessionId)} count=${refundPaymentMethods.length}`,
+        );
+
+        for (const refund of refundPaymentMethods) {
+          try {
+            await this.cashMovementService.createFromOrder(
+              {
+                cashSessionId: refundCashSessionId,
+                amount: this.toNumber(refund.amount),
+                payment: refund.type as PaymentType,
+                orderId: order.id,
+                clientId: order.client?.id || undefined,
+                clientName: order.client?.name || undefined,
+                clientEmail: order.client?.email || undefined,
+              },
+              true,
+              authenticatedUser,
+            );
+          } catch (error) {
+            this.logger.error(
+              `Error al crear movimiento de reembolso: order=${this.mask(order.id)} amount=${refund.amount} msg=${error.message}`,
+            );
+            // No fallar la cancelación si falla el movimiento
           }
         }
       } else if (refundPaymentMethods.length > 0 && !order.cashSession) {
