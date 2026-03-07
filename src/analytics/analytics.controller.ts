@@ -93,6 +93,8 @@ export class AnalyticsController {
   @ApiQuery({ name: 'to', required: true, example: '2025-01-31' })
   @ApiQuery({ name: 'timeZone', required: false, example: 'America/Lima' })
   @ApiQuery({ name: 'storeId', required: false, example: 'uuid-store' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'pageSize', required: false, example: 20 })
   @ApiQuery({ name: 'compareFrom', required: false, example: '2024-12-01' })
   @ApiQuery({ name: 'compareTo', required: false, example: '2024-12-31' })
   @ApiResponse({ status: 200, description: 'Analisis de ganancia neta' })
@@ -103,10 +105,22 @@ export class AnalyticsController {
     @Query('to') to: string,
     @Query('timeZone') timeZone?: string,
     @Query('storeId') storeId?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
     @Query('compareFrom') compareFrom?: string,
     @Query('compareTo') compareTo?: string,
   ) {
-    return this.analyticsService.getNetProfit(req.user, from, to, timeZone, storeId, compareFrom, compareTo);
+    return this.analyticsService.getNetProfit(
+      req.user,
+      from,
+      to,
+      timeZone,
+      storeId,
+      page ? Number(page) : undefined,
+      pageSize ? Number(pageSize) : undefined,
+      compareFrom,
+      compareTo,
+    );
   }
 
   @Get('income')

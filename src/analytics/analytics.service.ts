@@ -439,6 +439,8 @@ export class AnalyticsService {
     to: string,
     timeZone?: string,
     storeId?: string,
+    page: number = 1,
+    pageSize: number = 20,
     compareFrom?: string,
     compareTo?: string,
   ) {
@@ -447,21 +449,37 @@ export class AnalyticsService {
 
     const current = await this.computeNetProfitForRange(context.tenantId, context.range, context.storeId);
 
+    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+    const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : 20;
+
     const comparison = comparisonRange
       ? await this.computeNetProfitForRange(context.tenantId, comparisonRange, context.storeId)
       : null;
 
+    const mappedTimeline = current.timeline.map((t) => ({
+      date: t.date,
+      type: t.type,
+      concept: t.concept,
+      amount: t.amount,
+      source: t.source,
+      sourceId: t.sourceId,
+      ...(t.source === 'CASH_MOVEMENT' ? { paymentMethod: (t as any).paymentMethod } : {}),
+    }));
+
+    const total = mappedTimeline.length;
+    const totalPages = Math.max(1, Math.ceil(total / safePageSize));
+    const normalizedPage = Math.min(safePage, totalPages);
+    const start = (normalizedPage - 1) * safePageSize;
+    const end = start + safePageSize;
+    const paginatedTimeline = mappedTimeline.slice(start, end);
+
     return {
       totals: current.totals,
-      timeline: current.timeline.map((t) => ({
-        date: t.date,
-        type: t.type,
-        concept: t.concept,
-        amount: t.amount,
-        source: t.source,
-        sourceId: t.sourceId,
-        ...(t.source === 'CASH_MOVEMENT' ? { paymentMethod: (t as any).paymentMethod } : {}),
-      })),
+      timeline: paginatedTimeline,
+      total,
+      totalPages,
+      page: normalizedPage,
+      pageSize: safePageSize,
       ...(comparison
         ? {
             comparison: {
@@ -916,7 +934,7 @@ export class AnalyticsService {
     const [income, expenses, netProfit, paymentMethods, incomeSeries] = await Promise.all([
       this.getIncome(user, from, to, timeZone, storeId, compareFrom, compareTo),
       this.getExpenses(user, from, to, timeZone, storeId, compareFrom, compareTo),
-      this.getNetProfit(user, from, to, timeZone, storeId, compareFrom, compareTo),
+      this.getNetProfit(user, from, to, timeZone, storeId, undefined, undefined, compareFrom, compareTo),
       this.getPaymentMethodsSummary(user, from, to, timeZone, storeId),
       this.getIncomeTimeSeries(user, from, to, timeZone, storeId),
     ]);
