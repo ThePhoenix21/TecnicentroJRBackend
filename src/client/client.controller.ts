@@ -222,7 +222,7 @@ export class ClientController {
   async findByDni(
     @Param('dni') dni: string,
     @Request() req: any
-  ): Promise<Client> {
+  ): Promise<Client | Record<string, any>> {
     // Validar formato del DNI (debe ser un número de 8 dígitos)
     const dniRegex = /^\d{8}$/;
     if (!dniRegex.test(dni)) {
@@ -235,6 +235,24 @@ export class ClientController {
     
     if (!client) {
       throw new NotFoundException(`No se encontró cliente con DNI ${dni}`);
+    }
+
+    if ((client as any).source === 'RENIEC') {
+      return {
+        id: null,
+        name: (client as any).name,
+        email: null,
+        phone: null,
+        address: null,
+        ruc: null,
+        dni: (client as any).dni,
+        createdAt: null,
+        updatedAt: null,
+        deletedAt: null,
+        userId: null,
+        tenantId: req.user?.tenantId ?? null,
+        source: 'RENIEC',
+      };
     }
 
     // ✅ AMBOS ROLES (ADMIN y USER) pueden ver cualquier cliente

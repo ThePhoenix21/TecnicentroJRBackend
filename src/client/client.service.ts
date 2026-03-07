@@ -3,8 +3,10 @@ import {
   NotFoundException, 
   ConflictException,
   BadRequestException,
-  InternalServerErrorException
+  InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
@@ -12,10 +14,146 @@ import { Client, Prisma, SaleStatus } from '@prisma/client';
 import { buildPaginatedResponse, getPaginationParams } from '../common/pagination/pagination.helper';
 import { ListClientsDto } from './dto/list-clients.dto';
 import { ListClientsResponseDto } from './dto/list-clients-response.dto';
+import * as https from 'https';
+
+type ReniecFallbackResult = {
+  dni: string;
+  name: string;
+  source: 'RENIEC';
+};
 
 @Injectable()
 export class ClientService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(ClientService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  private extractNameFromReniecPayload(payload: any): string | null {
+    if (!payload || typeof payload !== 'object') return null;
+
+    const directName =
+      payload?.full_name ??
+      payload?.nombre_completo ??
+      payload?.nombreCompleto ??
+      payload?.name ??
+      payload?.data?.full_name ??
+      payload?.data?.nombre_completo ??
+      payload?.data?.nombreCompleto;
+
+    if (typeof directName === 'string' && directName.trim().length > 0) {
+      return directName.trim();
+    }
+
+    const names = [
+      payload?.nombres ?? payload?.data?.nombres,
+      payload?.apellidoPaterno ?? payload?.data?.apellidoPaterno,
+      payload?.apellidoMaterno ?? payload?.data?.apellidoMaterno,
+    ]
+      .filter((part) => typeof part === 'string' && part.trim().length > 0)
+      .map((part) => part.trim());
+
+    return names.length ? names.join(' ') : null;
+  }
+
+  private async findPersonByDniInReniec(dni: string): Promise<ReniecFallbackResult | null> {
+    const token =
+      this.configService.get<string>('TOKEN_DECOLECTA') ||
+      this.configService.get<string>('DECOLECTA_API_TOKEN');
+
+    if (!token) {
+      this.logger.warn('TOKEN_DECOLECTA no configurado. Se omite fallback RENIEC');
+      return null;
+    }
+
+    const url = `https://api.decolecta.com/v1/reniec/dni?numero=${encodeURIComponent(dni)}`;
+
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      };
+
+      const fetchFn = (globalThis as any)?.fetch as
+        | undefined
+        | ((input: any, init?: any) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>);
+
+      const requestViaHttps = () =>
+        new Promise<{ ok: boolean; status: number; json: () => Promise<any> }>((resolve, reject) => {
+          const req = https.request(
+            url,
+            {
+              method: 'GET',
+              headers,
+            },
+            (res) => {
+              const status = res.statusCode ?? 0;
+              let raw = '';
+              res.setEncoding('utf8');
+              res.on('data', (chunk) => (raw += chunk));
+              res.on('end', () => {
+                resolve({
+                  ok: status >= 200 && status < 300,
+                  status,
+                  json: async () => {
+                    try {
+                      return raw ? JSON.parse(raw) : {};
+                    } catch {
+                      return {};
+                    }
+                  },
+                });
+              });
+            },
+          );
+
+          req.on('error', reject);
+          req.end();
+        });
+
+      const response = fetchFn
+        ? await fetchFn(url, {
+            method: 'GET',
+            headers,
+          })
+        : await requestViaHttps();
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          this.logger.warn(`Fallback RENIEC sin cuota disponible para dni=${dni}`);
+          return null;
+        }
+
+        if (response.status === 401 || response.status === 403) {
+          this.logger.warn('Fallback RENIEC rechazado por credenciales (token inválido o sin permisos)');
+          return null;
+        }
+
+        this.logger.warn(`Fallback RENIEC falló: status=${response.status} dni=${dni}`);
+        return null;
+      }
+
+      const payload = await response.json();
+      const fullName = this.extractNameFromReniecPayload(payload);
+
+      if (!fullName) {
+        const keys = payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 10).join(',') : '';
+        this.logger.warn(`Fallback RENIEC sin nombre utilizable para dni=${dni} keys=[${keys}]`);
+        return null;
+      }
+
+      return {
+        dni,
+        name: fullName,
+        source: 'RENIEC',
+      };
+    } catch (error) {
+      this.logger.error(`Error consultando fallback RENIEC para dni=${dni}: ${error?.message || error}`);
+      return null;
+    }
+  }
 
   async create(createClientDto: CreateClientDto, tenantId?: string): Promise<Client> {
     try {
@@ -379,15 +517,21 @@ export class ClientService {
     `;
   }
 
-  // ✅ NUEVO: Buscar cliente por DNI
-  async findByDni(dni: string, tenantId?: string): Promise<Client | null> {
+  // Buscar cliente por DNI en BD y, si no existe, consultar RENIEC como fallback.
+  async findByDni(dni: string, tenantId?: string): Promise<Client | ReniecFallbackResult | null> {
     if (!tenantId) {
       throw new BadRequestException('TenantId no encontrado en el token');
     }
 
-    return await this.prisma.client.findFirst({
+    const client = await this.prisma.client.findFirst({
       where: { tenantId, dni, deletedAt: null } as any,
     });
+
+    if (client) {
+      return client;
+    }
+
+    return this.findPersonByDniInReniec(dni);
   }
 
   async softDelete(id: string, tenantId?: string): Promise<Client> {
