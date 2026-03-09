@@ -27,7 +27,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { RequirePermissions, RequireAnyPermissions } from '../auth/decorators/permissions.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { PERMISSIONS } from '../auth/permissions';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
@@ -142,7 +142,7 @@ export class ProviderController {
 
   @Get('lookup')
   @Roles(Role.ADMIN, Role.USER)
-  @RequirePermissions(PERMISSIONS.VIEW_SUPPLIERS)
+  @RequireAnyPermissions(PERMISSIONS.VIEW_SUPPLIERS, PERMISSIONS.VIEW_SUPPLY_ORDERS)
   @RateLimit({
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
