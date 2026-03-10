@@ -308,39 +308,19 @@ export class WarehouseService {
             },
           },
         },
-        supplyOrders: {
-          select: {
-            id: true,
-            code: true,
-            status: true,
-            description: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-        warehouseReceptions: {
-          select: {
-            id: true,
-            reference: true,
-            notes: true,
-            receivedAt: true,
-            createdAt: true,
-          },
-          orderBy: { receivedAt: 'desc' },
-        },
         warehouseProducts: {
           select: {
             id: true,
             stock: true,
-            stockThreshold: true,
-            createdAt: true,
-            updatedAt: true,
             product: {
               select: {
-                id: true,
                 name: true,
-                description: true,
               },
+            },
+          },
+          where: {
+            product: {
+              isDeleted: false,
             },
           },
         },
