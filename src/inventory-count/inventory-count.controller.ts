@@ -8,6 +8,7 @@ import {
   Get, 
   UseGuards, 
   Req, 
+  Query,
   HttpStatus,
   HttpCode
 } from '@nestjs/common';
@@ -51,9 +52,12 @@ export class InventoryCountController {
   @Get('session')
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_INVENTORY)
-  @ApiOperation({ summary: 'Listar sesiones de conteo' })
-  findAllSessions(@Req() req: any) {
-    return this.inventoryCountService.findAllSessions(req.user);
+  @ApiOperation({ summary: 'Listar sesiones de conteo (filtrar por tienda opcional)' })
+  findAllSessions(
+    @Req() req: any,
+    @Query('storeId') storeId?: string,
+  ) {
+    return this.inventoryCountService.findAllSessions(req.user, storeId);
   }
 
   @Delete('session/:id')
