@@ -974,6 +974,11 @@ export class SupplyOrderService {
     const supplyOrder = await this.prisma.supplyOrder.findFirst({
       where: { id: orderId, tenantId },
       include: {
+        tenant: {
+          select: {
+            name: true,
+          },
+        },
         provider: {
           select: {
             id: true,
@@ -1056,12 +1061,18 @@ export class SupplyOrderService {
         });
       });
 
-      const pdfContent = await this.pdfService.generateSupplyOrderPdf(supplyOrder);
-      
+      const tenantName = (supplyOrder as any)?.tenant?.name ?? '';
+
+      const [pdfBuffer, emailBodyHtml] = await Promise.all([
+        this.pdfService.generateSupplyOrderPdf(supplyOrder),
+        Promise.resolve(this.pdfService.generateSupplyOrderEmailHtml(supplyOrder, tenantName)),
+      ]);
+
       await this.mailService.sendSupplyOrderApprovalEmail(
         supplyOrder.provider.email,
         supplyOrder.code,
-        pdfContent
+        emailBodyHtml,
+        pdfBuffer,
       );
 
       this.logger.log(

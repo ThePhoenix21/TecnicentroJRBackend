@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupplyOrderStatus } from '@prisma/client';
+import PDFDocument = require('pdfkit');
 
 interface SupplyOrderData {
   id: string;
@@ -41,13 +42,273 @@ interface SupplyOrderData {
 export class PdfService {
   private readonly logger = new Logger(PdfService.name);
 
-  async generateSupplyOrderPdf(supplyOrder: SupplyOrderData): Promise<string> {
-    try {
-      return this.generateHtmlContent(supplyOrder);
-    } catch (error) {
-      this.logger.error('Error generating PDF HTML:', error);
-      throw error;
-    }
+  async generateSupplyOrderPdf(supplyOrder: SupplyOrderData): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ margin: 40, size: 'A4' });
+        const chunks: Buffer[] = [];
+
+        doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        const statusText = this.getStatusText(supplyOrder.status);
+        const location = supplyOrder.warehouse?.name || supplyOrder.store?.name || 'N/A';
+        const totalProducts = supplyOrder.products.reduce((sum, p) => sum + p.quantity, 0);
+
+        const primaryColor = '#0B5ED7';
+        const lightGray = '#F8F9FA';
+        const darkGray = '#495057';
+        const borderColor = '#DEE2E6';
+
+        doc
+          .rect(40, 40, 515, 80)
+          .fillAndStroke(primaryColor, primaryColor);
+
+        doc
+          .fontSize(24)
+          .fillColor('#FFFFFF')
+          .font('Helvetica-Bold')
+          .text('ORDEN DE SUMINISTRO', 40, 60, { align: 'center', width: 515 });
+
+        doc
+          .fontSize(11)
+          .fillColor('#FFFFFF')
+          .font('Helvetica')
+          .text(`Código: ${supplyOrder.code}`, 40, 90, { align: 'center', width: 515 });
+
+        doc.moveDown(2);
+        let currentY = 140;
+
+        doc
+          .rect(40, currentY, 515, 30)
+          .fillAndStroke(lightGray, borderColor);
+
+        doc
+          .fontSize(11)
+          .fillColor(darkGray)
+          .font('Helvetica-Bold')
+          .text('INFORMACIÓN DE LA ORDEN', 50, currentY + 10);
+
+        currentY += 40;
+
+        doc.fontSize(10).fillColor('#000000').font('Helvetica');
+        
+        const infoData = [
+          { label: 'Estado', value: statusText },
+          { label: 'Fecha de Emisión', value: supplyOrder.createdAt.toLocaleDateString('es-PE') },
+          { label: 'Destino', value: location },
+          { label: 'Solicitado por', value: `${supplyOrder.createdBy.name} (${supplyOrder.createdBy.email})` },
+        ];
+
+        infoData.forEach((item, index) => {
+          const y = currentY + index * 25;
+          doc.font('Helvetica-Bold').text(`${item.label}:`, 50, y, { width: 120, lineBreak: false });
+          doc.font('Helvetica').text(item.value, 175, y, { width: 380, lineBreak: false });
+        });
+
+        currentY += infoData.length * 25 + 30;
+
+        doc
+          .rect(40, currentY, 515, 30)
+          .fillAndStroke(lightGray, borderColor);
+
+        doc
+          .fontSize(11)
+          .fillColor(darkGray)
+          .font('Helvetica-Bold')
+          .text('PRODUCTOS SOLICITADOS', 50, currentY + 10);
+
+        currentY += 40;
+
+        const tableHeaders = [
+          { text: 'Producto', x: 50, width: 280 },
+          { text: 'Cantidad', x: 340, width: 80, align: 'center' },
+          { text: 'Nota', x: 430, width: 125 },
+        ];
+
+        doc
+          .rect(40, currentY, 515, 25)
+          .fillAndStroke('#E9ECEF', borderColor);
+
+        tableHeaders.forEach((header) => {
+          doc
+            .fontSize(10)
+            .fillColor('#000000')
+            .font('Helvetica-Bold')
+            .text(header.text, header.x, currentY + 8, {
+              width: header.width,
+              align: (header.align as any) || 'left',
+            });
+        });
+
+        currentY += 25;
+
+        doc.fontSize(9).font('Helvetica');
+
+        supplyOrder.products.forEach((p, index) => {
+          const rowHeight = 22;
+          const bgColor = index % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
+
+          doc.rect(40, currentY, 515, rowHeight).fillAndStroke(bgColor, borderColor);
+
+          doc.fillColor('#000000');
+          doc.text(p.product.name, 50, currentY + 6, { width: 280, ellipsis: true });
+          doc.text(String(p.quantity), 340, currentY + 6, { width: 80, align: 'center' });
+          doc.text(p.note || '-', 430, currentY + 6, { width: 125, ellipsis: true });
+
+          currentY += rowHeight;
+        });
+
+        currentY += 15;
+
+        doc
+          .fontSize(11)
+          .fillColor('#000000')
+          .font('Helvetica-Bold')
+          .text(`Total de productos: ${totalProducts} unidades`, 50, currentY);
+
+        currentY += 30;
+
+        if (supplyOrder.description) {
+          doc
+            .rect(40, currentY, 515, 30)
+            .fillAndStroke(lightGray, borderColor);
+
+          doc
+            .fontSize(11)
+            .fillColor(darkGray)
+            .font('Helvetica-Bold')
+            .text('OBSERVACIONES', 50, currentY + 10);
+
+          currentY += 40;
+
+          doc
+            .fontSize(10)
+            .fillColor('#000000')
+            .font('Helvetica')
+            .text(supplyOrder.description, 50, currentY, { width: 495, align: 'justify' });
+
+          currentY += 40;
+        }
+
+        const footerY = doc.page.height - 60;
+        doc
+          .fontSize(8)
+          .fillColor('#6C757D')
+          .font('Helvetica')
+          .text(
+            `Generado el ${new Date().toLocaleString('es-PE')} | Documento generado automáticamente`,
+            40,
+            footerY,
+            { align: 'center', width: 515 }
+          );
+
+        doc.end();
+      } catch (err) {
+        this.logger.error('Error generando PDF:', err);
+        reject(err);
+      }
+    });
+  }
+
+  generateSupplyOrderEmailHtml(supplyOrder: SupplyOrderData, tenantName: string): string {
+    const statusText = this.getStatusText(supplyOrder.status);
+    const totalProducts = supplyOrder.products.reduce((sum, p) => sum + p.quantity, 0);
+    const location = supplyOrder.warehouse?.name || supplyOrder.store?.name || 'N/A';
+
+    const productsRows = supplyOrder.products
+      .map(
+        (product) => `
+      <tr>
+        <td style="padding: 8px; border: 1px solid #ddd;">${this.escapeHtml(product.product.name)}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.quantity}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.note ? this.escapeHtml(product.note) : '-'}</td>
+      </tr>`,
+      )
+      .join('');
+
+    const approverName = supplyOrder.createdBy?.name ? this.escapeHtml(supplyOrder.createdBy.name) : '';
+
+    const safeTenantName = tenantName ? this.escapeHtml(tenantName) : '';
+
+    // Nota: deliberadamente NO incluimos datos del proveedor en el body del correo.
+    return `
+    <!DOCTYPE html>
+    <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Solicitud de suministro - ${this.escapeHtml(supplyOrder.code)}</title>
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 760px; margin: 0 auto; padding: 24px;">
+        <div style="background: #0B5ED7; color: white; padding: 18px 20px; border-radius: 6px 6px 0 0;">
+          <h2 style="margin: 0; font-size: 18px;">Orden de Suministro</h2>
+          <div style="margin-top: 6px; font-size: 13px; opacity: 0.95;">Código: <strong>${this.escapeHtml(supplyOrder.code)}</strong></div>
+        </div>
+
+        <div style="background: #f9f9f9; padding: 20px; border-radius: 0 0 6px 6px;">
+          <p style="margin-top: 0;">Estimados,</p>
+
+          <p>
+            Por medio de la presente, solicitamos su amable atención para el abastecimiento de los productos detallados a continuación.
+            Agradeceremos nos confirmen la disponibilidad y el plazo de entrega a la brevedad posible.
+          </p>
+
+          <div style="background: #fff; padding: 14px 16px; border-radius: 6px; border-left: 4px solid #0B5ED7; margin: 16px 0;">
+            <div style="font-weight: bold; margin-bottom: 8px;">Datos de la Orden</div>
+            <div><strong>Estado:</strong> ${this.escapeHtml(statusText)}</div>
+            <div><strong>Fecha:</strong> ${supplyOrder.createdAt.toLocaleDateString('es-PE')}</div>
+            <div><strong>Almacén/Tienda:</strong> ${this.escapeHtml(location)}</div>
+            ${approverName ? `<div><strong>Solicitado por:</strong> ${approverName}</div>` : ''}
+          </div>
+
+          <div style="background: #fff; padding: 14px 16px; border-radius: 6px; margin: 16px 0;">
+            <div style="font-weight: bold; margin-bottom: 10px;">Productos solicitados</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <thead>
+                <tr>
+                  <th style="padding: 8px; border: 1px solid #ddd; background: #f2f2f2; text-align: left;">Producto</th>
+                  <th style="padding: 8px; border: 1px solid #ddd; background: #f2f2f2; text-align: center; width: 90px;">Cantidad</th>
+                  <th style="padding: 8px; border: 1px solid #ddd; background: #f2f2f2; text-align: left;">Nota</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${productsRows}
+              </tbody>
+            </table>
+            <div style="margin-top: 10px; font-weight: bold;">Total: ${totalProducts} unidades</div>
+          </div>
+
+          ${
+            supplyOrder.description
+              ? `<div style="background: #fff; padding: 14px 16px; border-radius: 6px; margin: 16px 0;">
+                  <div style="font-weight: bold; margin-bottom: 8px;">Descripción / Observaciones</div>
+                  <div>${this.escapeHtml(supplyOrder.description)}</div>
+                </div>`
+              : ''
+          }
+
+          <p>
+            Se adjunta en PDF la orden para su revisión.
+          </p>
+
+          <p style="margin-bottom: 0;">
+            Sin otro particular, quedamos atentos a su pronta respuesta.
+          </p>
+
+          <div style="margin-top: 18px;">
+            <div>ATTE.</div>
+            <div style="font-weight: bold;">${safeTenantName}</div>
+          </div>
+
+          <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid #e6e6e6; font-size: 12px; color: #666;">
+            Este es un mensaje automático generado por el sistema.
+          </div>
+        </div>
+      </body>
+    </html>
+    `;
   }
 
   private generateHtmlContent(supplyOrder: SupplyOrderData): string {
