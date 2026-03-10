@@ -320,7 +320,7 @@ export class StoreProductController {
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.DELETE_PRODUCTS)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Eliminar producto en tienda' })
+  @ApiOperation({ summary: 'Eliminar producto en tienda (registra movimiento de salida si hay stock)' })
   async remove(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,

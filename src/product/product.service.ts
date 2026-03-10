@@ -6,6 +6,8 @@ import { CatalogProduct } from './entities/catalog-product.entity';
 import { StoreProductStockDto } from './dto/store-product-stock.dto';
 import { AuthService } from '../auth/auth.service';
 import { AdminCredentialsDto } from './dto/admin-credentials.dto';
+import { InventoryMovementType } from '@prisma/client';
+import { WarehouseMovementKind } from '../warehouse-movements/dto/create-warehouse-movement.dto';
 
 type AuthUser = {
   userId: string;
@@ -178,13 +180,71 @@ export class ProductService {
     const now = new Date();
 
     const updatedProduct = await this.prisma.$transaction(async (prisma) => {
-      // 1) Soft delete del producto de catálogo
+      // 1) Obtener todos los StoreProduct y WarehouseProduct con stock antes de eliminar
+      const storeProducts = await prisma.storeProduct.findMany({
+        where: {
+          productId: id,
+          deletedAt: null,
+          store: { tenantId },
+          stock: { gt: 0 },
+        },
+        select: {
+          id: true,
+          storeId: true,
+          stock: true,
+        },
+      });
+
+      const warehouseProducts = await prisma.warehouseProduct.findMany({
+        where: {
+          productId: id,
+          stock: { gt: 0 },
+          warehouse: { tenantId, deletedAt: null },
+        },
+        select: {
+          id: true,
+          warehouseId: true,
+          stock: true,
+        },
+      });
+
+      // 2) Crear movimientos de inventario negativos para tiendas con stock
+      for (const sp of storeProducts) {
+        await prisma.inventoryMovement.create({
+          data: {
+            storeProductId: sp.id,
+            storeId: sp.storeId,
+            type: InventoryMovementType.OUTGOING,
+            quantity: -Math.abs(sp.stock), // Movimiento negativo
+            description: `Eliminación de catálogo: producto ${id}`,
+            userId: authUser.id,
+            tenantId,
+          } as any,
+        });
+      }
+
+      // 3) Crear movimientos de almacén negativos para almacenes con stock
+      for (const wp of warehouseProducts) {
+        await prisma.warehouseMovement.create({
+          data: {
+            warehouseId: wp.warehouseId,
+            warehouseProductId: wp.id,
+            type: WarehouseMovementKind.OUTGOING,
+            quantity: wp.stock, // Movimiento positivo para OUTGOING
+            description: `Eliminación de catálogo: producto ${id}`,
+            userId: authUser.id,
+            tenantId,
+          } as any,
+        });
+      }
+
+      // 4) Soft delete del producto de catálogo
       const updated = await prisma.product.update({
         where: { id },
         data: { isDeleted: true },
       });
 
-      // 2) “Borrar de todas las tiendas” => soft delete de todos los StoreProduct de ese producto
+      // 5) Soft delete de todos los StoreProduct de ese producto
       await prisma.storeProduct.updateMany({
         where: {
           productId: id,

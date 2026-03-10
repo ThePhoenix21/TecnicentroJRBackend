@@ -1064,6 +1064,21 @@ export class StoreProductService {
       throw new ForbiddenException('No tienes permiso para eliminar este producto');
     }
 
+    // Crear movimiento de inventario negativo si hay stock
+    if (storeProduct.stock > 0) {
+      await this.prisma.inventoryMovement.create({
+        data: {
+          storeProductId: storeProduct.id,
+          storeId: storeProduct.storeId,
+          type: InventoryMovementType.OUTGOING,
+          quantity: -Math.abs(storeProduct.stock), // Movimiento negativo
+          description: `Eliminación de producto: ${storeProduct.id}`,
+          userId: userId,
+          tenantId: tenantId,
+        } as any,
+      });
+    }
+
     // Soft delete (solo para esa tienda)
     await this.prisma.storeProduct.update({
       where: { id },

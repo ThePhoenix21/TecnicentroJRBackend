@@ -124,7 +124,7 @@ export class WarehouseProductsController {
   @Delete(':id')
   @Roles(Role.ADMIN)
   @RequirePermissions(PERMISSIONS.MANAGE_WAREHOUSE_PRODUCTS)
-  @ApiOperation({ summary: 'Eliminar producto de almacén (stock debe ser 0)' })
+  @ApiOperation({ summary: 'Eliminar producto de almacén (registra movimiento de salida si hay stock)' })
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req.user, req.warehouseId, id);
   }

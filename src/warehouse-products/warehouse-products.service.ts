@@ -383,15 +383,26 @@ export class WarehouseProductsService {
 
     const existing = await this.prisma.warehouseProduct.findFirst({
       where: { id, warehouseId },
-      select: { id: true, stock: true },
+      select: { id: true, stock: true, productId: true },
     });
 
     if (!existing) {
       throw new NotFoundException('Producto de almacén no encontrado');
     }
 
-    if (existing.stock !== 0) {
-      throw new ForbiddenException('No se puede eliminar un producto con stock distinto de 0');
+    // Crear movimiento de almacén negativo si hay stock
+    if (existing.stock > 0) {
+      await this.prisma.warehouseMovement.create({
+        data: {
+          warehouseId: warehouseId,
+          warehouseProductId: existing.id,
+          type: WarehouseMovementKind.OUTGOING,
+          quantity: existing.stock, // Movimiento positivo para OUTGOING
+          description: `Eliminación de producto: ${existing.productId}`,
+          userId: user.userId,
+          tenantId: user.tenantId,
+        } as any,
+      });
     }
 
     await this.prisma.warehouseProduct.delete({ where: { id } });

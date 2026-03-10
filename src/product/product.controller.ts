@@ -128,7 +128,7 @@ export class ProductController {
   @Delete('remove/:id')
   @Roles(Role.ADMIN)
   @RequirePermissions(PERMISSIONS.VIEW_PRODUCTS, PERMISSIONS.MANAGE_PRODUCTS)
-  @ApiOperation({ summary: 'Eliminar producto de catálogo' })
+  @ApiOperation({ summary: 'Eliminar producto de catálogo (registra movimientos de salida en tiendas y almacenes)' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() credentials: AdminCredentialsDto,
