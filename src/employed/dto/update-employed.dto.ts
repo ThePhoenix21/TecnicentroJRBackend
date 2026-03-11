@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString } from 'class-validator';
+import { IsEitherStoreOrWarehouse } from '../../common/validators/store-or-warehouse.validator';
 
 export class UpdateEmployedDto {
   @ApiPropertyOptional({ example: 'Juan' })
@@ -31,4 +32,16 @@ export class UpdateEmployedDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-store-123', description: 'ID de la tienda donde asignar el empleado (XOR con warehouseId)' })
+  @IsOptional()
+  @IsString()
+  @IsEitherStoreOrWarehouse()
+  storeId?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-warehouse-456', description: 'ID del almacén donde asignar el empleado (XOR con storeId)' })
+  @IsOptional()
+  @IsString()
+  @IsEitherStoreOrWarehouse()
+  warehouseId?: string;
 }

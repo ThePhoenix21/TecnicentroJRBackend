@@ -449,34 +449,70 @@ export class EmployedService {
       email?: string;
       position?: string;
       status?: string;
+      storeId?: string;
+      warehouseId?: string;
     },
     user: AuthUser,
   ) {
     const tenantId = this.getTenantIdOrThrow(user);
     await this.findEmployedOrThrow(employedId, tenantId);
 
-    const status = input.status as EmployedStatus | undefined;
+    // Si se incluyen campos de asignación, validar XOR
+    if (input.storeId || input.warehouseId) {
+      this.assertSingleAssignment({ storeId: input.storeId, warehouseId: input.warehouseId });
+      if (input.storeId) await this.assertStoreTenant(input.storeId, tenantId);
+      if (input.warehouseId) await this.assertWarehouseTenant(input.warehouseId, tenantId);
+    }
 
-    await this.prisma.employed.update({
-      where: { id: employedId },
-      data: {
+    return this.prisma.$transaction(async (prisma) => {
+      // Actualizar campos básicos
+      const basicFields = {
         ...(input.firstName !== undefined ? { firstName: input.firstName } : {}),
         ...(input.lastName !== undefined ? { lastName: input.lastName } : {}),
         ...(input.phone !== undefined ? { phone: input.phone } : {}),
         ...(input.email !== undefined ? { email: input.email } : {}),
         ...(input.position !== undefined ? { position: input.position } : {}),
-        ...(status ? { status } : {}),
-      },
+        ...(input.status ? { status: input.status as EmployedStatus } : {}),
+      };
+
+      await prisma.employed.update({
+        where: { id: employedId },
+        data: basicFields,
+      });
+
+      // Si se incluyen campos de asignación, realizar reasignación
+      if (input.storeId || input.warehouseId) {
+        await prisma.storeEmployed.deleteMany({ where: { employedId } });
+        await prisma.warehouseEmployed.deleteMany({ where: { employedId } });
+
+        if (input.storeId) {
+          await prisma.storeEmployed.create({
+            data: {
+              employedId,
+              storeId: input.storeId,
+            },
+          });
+        }
+
+        if (input.warehouseId) {
+          await prisma.warehouseEmployed.create({
+            data: {
+              employedId,
+              warehouseId: input.warehouseId,
+            },
+          });
+        }
+      }
+
+      const updatedFields = Object.entries(input)
+        .filter(([, v]) => v !== undefined)
+        .map(([field, value]) => ({ field, value }));
+
+      return {
+        ...(await this.buildBasicResponse(prisma, employedId, tenantId)),
+        updatedFields,
+      };
     });
-
-    const updatedFields = Object.entries(input)
-      .filter(([, v]) => v !== undefined)
-      .map(([field, value]) => ({ field, value }));
-
-    return {
-      ...(await this.buildBasicResponse(this.prisma, employedId, tenantId)),
-      updatedFields,
-    };
   }
 
   async getSimple(employedId: string, user: AuthUser) {
