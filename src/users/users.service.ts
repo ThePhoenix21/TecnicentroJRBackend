@@ -115,34 +115,52 @@ export class UsersService {
         timezone?: string;
         role?: Role;
         verified?: boolean;
-        storeId: string;
+        storeId?: string;
+        warehouseId?: string;
         permissions?: string[]; // Nuevos permisos
     }, authUser?: AuthUser) {
-        const { email, password, name, username, phone, birthdate, language, timezone, role, verified = true, storeId, permissions = [] } = userData;
+        const { email, password, name, username, phone, birthdate, language, timezone, role, verified = true, storeId, warehouseId, permissions = [] } = userData;
         
         this.logger.log(`Iniciando creación de usuario: ${username || email}`);
 
-        // Validar que se proporcionó storeId (es obligatorio)
-        if (!storeId) {
-            this.logger.error('El ID de la tienda es obligatorio para crear un usuario');
-            throw new BadRequestException('El ID de la tienda es obligatorio');
+        // Validar que se proporcione storeId O warehouseId, pero no ambos
+        if (!storeId && !warehouseId) {
+            this.logger.error('Se debe proporcionar storeId O warehouseId para crear un usuario');
+            throw new BadRequestException('Se debe proporcionar storeId O warehouseId');
         }
 
-        // Verificar que la tienda exista
-        const store = await this.prisma.store.findUnique({
-            where: { id: storeId }
-        });
-        
-        if (!store) {
-            this.logger.error(`Tienda no encontrada con ID: ${storeId}`);
-            throw new NotFoundException('La tienda especificada no existe');
+        if (storeId && warehouseId) {
+            this.logger.error('No se puede proporcionar tanto storeId como warehouseId');
+            throw new BadRequestException('No se puede proporcionar tanto storeId como warehouseId');
         }
 
-        const tenantId = store.tenantId;
+        // Validar tienda si se proporciona storeId
+        let tenantId: string | null;
+        if (storeId) {
+            const store = await this.prisma.store.findUnique({
+                where: { id: storeId }
+            });
+            
+            if (!store) {
+                this.logger.error(`Tienda no encontrada con ID: ${storeId}`);
+                throw new NotFoundException('La tienda especificada no existe');
+            }
 
-        if (!tenantId) {
-            this.logger.error(`La tienda ${storeId} no tiene tenantId asociado`);
-            throw new BadRequestException('La tienda especificada no tiene un tenant asociado');
+            tenantId = store.tenantId;
+        } else if (warehouseId) {
+            // Validar almacén si se proporciona warehouseId
+            const warehouse = await this.prisma.warehouse.findUnique({
+                where: { id: warehouseId, deletedAt: null }
+            });
+            
+            if (!warehouse) {
+                this.logger.error(`Almacén no encontrado con ID: ${warehouseId}`);
+                throw new NotFoundException('El almacén especificado no existe');
+            }
+
+            tenantId = warehouse.tenantId;
+        } else {
+            throw new BadRequestException('No se pudo determinar el tenant');
         }
 
         if (authUser) {
@@ -152,7 +170,7 @@ export class UsersService {
             }
         }
         
-        this.logger.debug(`Tienda encontrada: ${store.name} (ID: ${storeId})`);
+        this.logger.debug(`${storeId ? 'Tienda' : 'Almacén'} encontrado: ${storeId || warehouseId}`);
 
         const existing = await this.prisma.user.findFirst({
             where: {
@@ -204,7 +222,7 @@ export class UsersService {
         const verifyTokenExpires = new Date();
         verifyTokenExpires.setHours(verifyTokenExpires.getHours() + 24);
 
-        // Crear usuario y StoreUsers en una transacción
+        // Crear usuario y asignación en una transacción
         const result = await this.prisma.$transaction(async (tx) => {
             // Crear el usuario
             const newUser = await tx.user.create({
@@ -240,15 +258,26 @@ export class UsersService {
                 }
             });
 
-            // Crear la relación en StoreUsers (ahora es obligatorio)
-            await tx.storeUsers.create({
-                data: {
-                    storeId: storeId,
-                    userId: newUser.id
-                }
-            });
-            
-            this.logger.debug(`Relación StoreUsers creada: Usuario ${newUser.id} -> Tienda ${storeId}`);
+            // Crear la relación correspondiente
+            if (storeId) {
+                await tx.storeUsers.create({
+                    data: {
+                        storeId: storeId,
+                        userId: newUser.id
+                    }
+                });
+                
+                this.logger.debug(`Relación StoreUsers creada: Usuario ${newUser.id} -> Tienda ${storeId}`);
+            } else if (warehouseId) {
+                await tx.warehouseUsers.create({
+                    data: {
+                        warehouseId: warehouseId,
+                        userId: newUser.id
+                    }
+                });
+                
+                this.logger.debug(`Relación WarehouseUsers creada: Usuario ${newUser.id} -> Almacén ${warehouseId}`);
+            }
 
             return newUser;
         });
@@ -263,6 +292,7 @@ export class UsersService {
             employedId: string;
             role: Role;
             storeId?: string;
+            warehouseId?: string;
             password: string;
             permissions?: string[];
         },
@@ -304,8 +334,12 @@ export class UsersService {
 
         const employedEmail = employed.email;
 
-        if (input.role === Role.USER && !input.storeId) {
-            throw new BadRequestException('storeId es obligatorio para usuarios con rol USER');
+        if (input.role === Role.USER && !input.storeId && !input.warehouseId) {
+            throw new BadRequestException('storeId o warehouseId es obligatorio para usuarios con rol USER');
+        }
+
+        if (input.role === Role.USER && input.storeId && input.warehouseId) {
+            throw new BadRequestException('No puede proporcionar tanto storeId como warehouseId. Debe elegir uno solo');
         }
 
         if (input.storeId) {
@@ -315,6 +349,16 @@ export class UsersService {
             });
             if (!store) {
                 throw new NotFoundException('La tienda especificada no existe o no pertenece al tenant');
+            }
+        }
+
+        if (input.warehouseId) {
+            const warehouse = await this.prisma.warehouse.findFirst({
+                where: { id: input.warehouseId, tenantId, deletedAt: null },
+                select: { id: true },
+            });
+            if (!warehouse) {
+                throw new NotFoundException('El almacén especificado no existe o no pertenece al tenant');
             }
         }
 
@@ -407,6 +451,15 @@ export class UsersService {
                 await tx.storeUsers.create({
                     data: {
                         storeId: input.storeId,
+                        userId: newUser.id,
+                    },
+                });
+            }
+
+            if (input.warehouseId) {
+                await tx.warehouseUsers.create({
+                    data: {
+                        warehouseId: input.warehouseId,
                         userId: newUser.id,
                     },
                 });
@@ -606,11 +659,13 @@ export class UsersService {
             },
         });
 
-        const usersWithStores = await Promise.all(
+        const usersWithStoresAndWarehouses = await Promise.all(
             users.map(async (user) => {
                 let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
+                let warehouses: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
 
                 if (user.role === 'ADMIN') {
+                    // ADMIN: obtener todas las tiendas y almacenes
                     stores = await this.prisma.store.findMany({
                         where: { tenantId },
                         select: {
@@ -623,7 +678,21 @@ export class UsersService {
                             createdById: true,
                         },
                     });
+
+                    warehouses = await this.prisma.warehouse.findMany({
+                        where: { tenantId, deletedAt: null },
+                        select: {
+                            id: true,
+                            name: true,
+                            address: true,
+                            phone: true,
+                            createdAt: true,
+                            updatedAt: true,
+                            createdById: true,
+                        },
+                    });
                 } else {
+                    // USER: obtener solo tiendas y almacenes asignados
                     const userStores = await this.prisma.storeUsers.findMany({
                         where: {
                             userId: user.id,
@@ -647,15 +716,41 @@ export class UsersService {
                     });
 
                     stores = userStores.map((us) => us.store);
+
+                    const userWarehouses = await this.prisma.warehouseUsers.findMany({
+                        where: {
+                            userId: user.id,
+                            warehouse: {
+                                tenantId,
+                                deletedAt: null,
+                            },
+                        },
+                        include: {
+                            warehouse: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    address: true,
+                                    phone: true,
+                                    createdAt: true,
+                                    updatedAt: true,
+                                    createdById: true,
+                                },
+                            },
+                        },
+                    });
+
+                    warehouses = userWarehouses.map((uw) => uw.warehouse);
                 }
 
                 return {
                     ...user,
                     stores,
+                    warehouses,
                 };
             }),
         );
 
-        return usersWithStores;
+        return usersWithStoresAndWarehouses;
     }
 }

@@ -1,5 +1,6 @@
 ﻿import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, IsUUID } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { IsEitherStoreOrWarehouse } from '../../common/validators/store-or-warehouse.validator';
 
 export class CreateSimpleUserDto {
   @ApiProperty({
@@ -48,12 +49,21 @@ export class CreateSimpleUserDto {
 
   @ApiProperty({
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-    description: 'ID de la tienda a la que pertenecerá el usuario (obligatorio)',
-    required: true
+    description: 'ID de la tienda a la que pertenecerá el usuario (debe proporcionar storeId O warehouseId, pero no ambos)',
+    required: false
   })
-  @IsNotEmpty({ message: 'El ID de la tienda es obligatorio' })
-  @IsUUID('4', { message: 'El ID de la tienda debe ser un UUID válido' })
-  storeId: string;
+  @IsOptional()
+  @IsEitherStoreOrWarehouse()
+  storeId?: string;
+
+  @ApiProperty({
+    example: 'b2c3d4e5-f6g7-8901-bcde-f23456789012',
+    description: 'ID del almacén al que pertenecerá el usuario (debe proporcionar storeId O warehouseId, pero no ambos)',
+    required: false
+  })
+  @IsOptional()
+  @IsEitherStoreOrWarehouse()
+  warehouseId?: string;
 
   @ApiProperty({
     example: ['VIEW_INVENTORY', 'CREATE_ORDER'],

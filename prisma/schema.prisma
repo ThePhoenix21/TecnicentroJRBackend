@@ -64,6 +64,7 @@ model User {
   inventorySessions          InventoryCountSession[]
   warehouseMovements         WarehouseMovement[]
   warehouseCountSessions     WarehouseCountSession[]
+  warehouseUsers            WarehouseUsers[]
   storeReceptionsCreated     StoreReception[]
   warehouseReceptionsCreated WarehouseReception[]
   quotationsCreated          Quotation[]
@@ -782,6 +783,7 @@ model Warehouse {
   deletedAt DateTime?
 
   warehouseEmployees  WarehouseEmployed[]
+  warehouseUsers      WarehouseUsers[]
   warehouseStores     WarehouseStore[]
   warehouseProducts   WarehouseProduct[]
   warehouseReceptions WarehouseReception[]
@@ -932,6 +934,16 @@ model WarehouseEmployed {
   assignedAt DateTime @default(now())
 
   @@unique([warehouseId, employedId])
+}
+
+model WarehouseUsers {
+  id String @id @default(uuid())
+
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 }
 
 model WarehouseStore {

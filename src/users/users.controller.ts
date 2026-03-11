@@ -259,6 +259,17 @@ export class UsersController {
     const username = createUserDto.username || generateUsername();
     this.logger.debug(`Username generado: ${username}`);
 
+    // Validar que se proporcione storeId O warehouseId, pero no ambos
+    if (!createUserDto.storeId && !createUserDto.warehouseId) {
+      this.logger.error('Se debe proporcionar storeId O warehouseId');
+      throw new BadRequestException('Se debe proporcionar storeId O warehouseId');
+    }
+
+    if (createUserDto.storeId && createUserDto.warehouseId) {
+      this.logger.error('No se puede proporcionar tanto storeId como warehouseId');
+      throw new BadRequestException('No se puede proporcionar tanto storeId como warehouseId');
+    }
+
     // Validar que el email esté presente
     if (!createUserDto.email) {
       this.logger.error('El correo electrónico es obligatorio');
@@ -276,7 +287,8 @@ export class UsersController {
       language: 'es',
       timezone: 'UTC',
       verified: true, // Usuario verificado por defecto
-      storeId: createUserDto.storeId, // Agregar el storeId (obligatorio)
+      storeId: createUserDto.storeId, // Opcional: asignación a tienda
+      warehouseId: createUserDto.warehouseId, // Opcional: asignación a almacén
       permissions: createUserDto.permissions || [] // Pasar permisos
     };
 
@@ -286,8 +298,12 @@ export class UsersController {
       const user = await this.usersService.create(userData, req.user);
       this.logger.debug(`Usuario creado exitosamente con ID: ${user.id}`);
       
-      // Registrar asociación con la tienda (ahora es obligatorio)
-      this.logger.debug(`Usuario asociado obligatoriamente a la tienda con ID: ${createUserDto.storeId}`);
+      // Registrar asociación con la tienda o almacén
+      if (createUserDto.storeId) {
+        this.logger.debug(`Usuario asociado a la tienda con ID: ${createUserDto.storeId}`);
+      } else if (createUserDto.warehouseId) {
+        this.logger.debug(`Usuario asociado al almacén con ID: ${createUserDto.warehouseId}`);
+      }
       
       return user;
     } catch (error) {
@@ -495,10 +511,10 @@ export class UsersController {
         const hasManageUsersPermission = userPermissions.includes(PERMISSIONS.MANAGE_USERS);
         
         if (!hasManageUsersPermission) {
-          const { storeId, status, verified, ...allowedUpdateData } = updateUserDto;
+          const { storeId, warehouseId, status, verified, ...allowedUpdateData } = updateUserDto;
           
           // Si USER intenta modificar campos restringidos, lanzar error
-          if (storeId || status !== undefined || verified !== undefined) {
+          if (storeId || warehouseId || status !== undefined || verified !== undefined) {
             this.logger.warn(`USER ${req.user.userId} intentando modificar campos restringidos sin permiso MANAGE_USERS`);
             throw new ForbiddenException('No tienes permisos para modificar estos campos. Se requiere permiso de administrador.');
           }
@@ -507,41 +523,71 @@ export class UsersController {
         }
       }
 
-      // Si se incluye storeId, validar que exista y manejar el cambio
-      if (updateUserDto.storeId) {
-        // Verificar que la tienda exista
-        const store = await this.prisma.store.findUnique({
-          where: { id: updateUserDto.storeId }
-        });
-
-        if (!store) {
-          this.logger.warn(`Tienda no encontrada con ID: ${updateUserDto.storeId}`);
-          throw new BadRequestException(`Tienda no encontrada con ID: ${updateUserDto.storeId}`);
+      // Si se incluye storeId o warehouseId, validar que exista y manejar el cambio
+      if (updateUserDto.storeId || updateUserDto.warehouseId) {
+        // Validar que no se proporcionen ambos
+        if (updateUserDto.storeId && updateUserDto.warehouseId) {
+          this.logger.warn('No se puede proporcionar tanto storeId como warehouseId');
+          throw new BadRequestException('No se puede proporcionar tanto storeId como warehouseId. Debe elegir uno solo');
         }
 
-        // Eliminar asignaciones actuales del usuario a tiendas
+        // Validar que la tienda o almacén exista
+        let targetEntity: any = null;
+        let entityType: 'store' | 'warehouse' = 'store';
+
+        if (updateUserDto.storeId) {
+          targetEntity = await this.prisma.store.findUnique({
+            where: { id: updateUserDto.storeId }
+          });
+          entityType = 'store';
+        } else if (updateUserDto.warehouseId) {
+          targetEntity = await this.prisma.warehouse.findUnique({
+            where: { id: updateUserDto.warehouseId, deletedAt: null }
+          });
+          entityType = 'warehouse';
+        }
+
+        if (!targetEntity) {
+          const entityId = updateUserDto.storeId || updateUserDto.warehouseId;
+          this.logger.warn(`${entityType === 'store' ? 'Tienda' : 'Almacén'} no encontrada con ID: ${entityId}`);
+          throw new BadRequestException(`${entityType === 'store' ? 'Tienda' : 'Almacén'} no encontrada con ID: ${entityId}`);
+        }
+
+        // Eliminar asignaciones actuales del usuario (tanto tiendas como almacenes)
         await this.prisma.storeUsers.deleteMany({
           where: { userId: id }
         });
-
-        // Crear nueva asignación a la tienda especificada
-        await this.prisma.storeUsers.create({
-          data: {
-            userId: id,
-            storeId: updateUserDto.storeId
-          }
+        await this.prisma.warehouseUsers.deleteMany({
+          where: { userId: id }
         });
 
-        this.logger.log(`Usuario ${id} asignado a la tienda ${updateUserDto.storeId}`);
+        // Crear nueva asignación
+        if (updateUserDto.storeId) {
+          await this.prisma.storeUsers.create({
+            data: {
+              userId: id,
+              storeId: updateUserDto.storeId
+            }
+          });
+          this.logger.log(`Usuario ${id} asignado a la tienda ${updateUserDto.storeId}`);
+        } else if (updateUserDto.warehouseId) {
+          await this.prisma.warehouseUsers.create({
+            data: {
+              userId: id,
+              warehouseId: updateUserDto.warehouseId
+            }
+          });
+          this.logger.log(`Usuario ${id} asignado al almacén ${updateUserDto.warehouseId}`);
+        }
 
-        // Eliminar storeId del DTO para no intentar actualizarlo directamente en el usuario
-        const { storeId, ...userUpdateData } = updateUserDto;
+        // Eliminar storeId/warehouseId del DTO para no intentar actualizarlo directamente en el usuario
+        const { storeId, warehouseId, ...userUpdateData } = updateUserDto;
         
         // Actualizar otros datos del usuario
         const updatedUser = await this.usersService.updateUser(id, userUpdateData, req.user as any);
         
-        // Obtener el usuario actualizado con su nueva tienda
-        const userWithNewStore = await this.prisma.user.findUnique({
+        // Obtener el usuario actualizado con su nueva asignación
+        const userWithNewAssignment = await this.prisma.user.findUnique({
           where: { id },
           select: {
             id: true,
@@ -554,10 +600,46 @@ export class UsersController {
           }
         });
 
-        // Obtener la nueva tienda asignada
-        let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
-        if (userWithNewStore?.role === 'ADMIN') {
-          stores = await this.prisma.store.findMany({
+        // Obtener las nuevas asignaciones (tiendas y almacenes)
+        const userStores = await this.prisma.storeUsers.findMany({
+          where: { userId: id, store: { tenantId: (req.user as any)?.tenantId } },
+          include: {
+            store: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+                createdAt: true,
+                updatedAt: true,
+                createdById: true
+              }
+            }
+          }
+        });
+
+        const userWarehouses = await this.prisma.warehouseUsers.findMany({
+          where: { userId: id, warehouse: { tenantId: (req.user as any)?.tenantId, deletedAt: null } },
+          include: {
+            warehouse: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+                createdAt: true,
+                updatedAt: true,
+                createdById: true
+              }
+            }
+          }
+        });
+
+        // Si es ADMIN, obtener todas las tiendas y almacenes del tenant
+        let allStores: any[] = [];
+        let allWarehouses: any[] = [];
+        if (userWithNewAssignment?.role === 'ADMIN') {
+          allStores = await this.prisma.store.findMany({
             where: { tenantId: (req.user as any)?.tenantId },
             select: {
               id: true,
@@ -569,38 +651,72 @@ export class UsersController {
               createdById: true
             }
           });
-        } else {
-          const userStores = await this.prisma.storeUsers.findMany({
-            where: { userId: id, store: { tenantId: (req.user as any)?.tenantId } },
-            include: {
-              store: {
-                select: {
-                  id: true,
-                  name: true,
-                  address: true,
-                  phone: true,
-                  createdAt: true,
-                  updatedAt: true,
-                  createdById: true
-                }
-              }
+          allWarehouses = await this.prisma.warehouse.findMany({
+            where: { tenantId: (req.user as any)?.tenantId, deletedAt: null },
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+              createdAt: true,
+              updatedAt: true,
+              createdById: true
             }
           });
-          stores = userStores.map(us => us.store);
+        } else {
+          // Para usuarios normales, devolver solo sus asignaciones
+          allStores = userStores.map(us => us.store);
+          allWarehouses = userWarehouses.map(uw => uw.warehouse);
         }
 
         this.logger.log(`Usuario actualizado exitosamente con ID: ${id} por ${req.user.userId}`);
 
         return {
-          ...userWithNewStore,
-          stores
+          ...userWithNewAssignment,
+          stores: allStores,
+          warehouses: allWarehouses
         };
       } else {
-        // Actualizar usuario sin cambiar tienda
+        // Actualizar usuario sin cambiar asignación
         const updatedUser = await this.usersService.updateUser(id, updateUserDto, req.user as any);
 
-        // Obtener tiendas actuales del usuario para mantener consistencia
-        let stores: { id: string; name: string; address: string | null; phone: string | null; createdAt: Date; updatedAt: Date; createdById: string | null }[] = [];
+        // Obtener asignaciones actuales del usuario
+        const userStores = await this.prisma.storeUsers.findMany({
+          where: { userId: id, store: { tenantId: (req.user as any)?.tenantId } },
+          include: {
+            store: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+                createdAt: true,
+                updatedAt: true,
+                createdById: true
+              }
+            }
+          }
+        });
+
+        const userWarehouses = await this.prisma.warehouseUsers.findMany({
+          where: { userId: id, warehouse: { tenantId: (req.user as any)?.tenantId, deletedAt: null } },
+          include: {
+            warehouse: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+                createdAt: true,
+                updatedAt: true,
+                createdById: true
+              }
+            }
+          }
+        });
+
+        let stores: any[] = [];
+        let warehouses: any[] = [];
         if (updatedUser.role === 'ADMIN') {
           stores = await this.prisma.store.findMany({
             where: { tenantId: (req.user as any)?.tenantId },
@@ -614,31 +730,29 @@ export class UsersController {
               createdById: true
             }
           });
-        } else {
-          const userStores = await this.prisma.storeUsers.findMany({
-            where: { userId: id },
-            include: {
-              store: {
-                select: {
-                  id: true,
-                  name: true,
-                  address: true,
-                  phone: true,
-                  createdAt: true,
-                  updatedAt: true,
-                  createdById: true
-                }
-              }
+          warehouses = await this.prisma.warehouse.findMany({
+            where: { tenantId: (req.user as any)?.tenantId, deletedAt: null },
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+              createdAt: true,
+              updatedAt: true,
+              createdById: true
             }
           });
+        } else {
           stores = userStores.map(us => us.store);
+          warehouses = userWarehouses.map(uw => uw.warehouse);
         }
 
         this.logger.log(`Usuario actualizado exitosamente con ID: ${id} por ${req.user.userId}`);
 
         return {
           ...updatedUser,
-          stores
+          stores,
+          warehouses
         };
       }
     } catch (error) {

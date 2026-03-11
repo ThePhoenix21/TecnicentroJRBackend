@@ -10,6 +10,7 @@ import {
   IsArray
 } from 'class-validator';
 import { UserStatus } from '@prisma/client';
+import { IsEitherStoreOrWarehouse } from '../../common/validators/store-or-warehouse.validator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -53,8 +54,12 @@ export class UpdateUserDto {
   verified?: boolean;
 
   @IsOptional()
-  @IsUUID()
+  @IsEitherStoreOrWarehouse()
   storeId?: string;
+
+  @IsOptional()
+  @IsEitherStoreOrWarehouse()
+  warehouseId?: string;
 
   // Permisos granulares del usuario (solo deberían ser gestionados por ADMIN)
   @IsOptional()

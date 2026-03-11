@@ -8,6 +8,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { Role } from 'src/auth/enums/role.enum';
+import { IsEitherStoreOrWarehouse } from '../../common/validators/store-or-warehouse.validator';
 
 export class CreateUserFromEmployedDto {
   @ApiProperty({ example: 'c7d2f3a1-1111-2222-3333-444444444444' })
@@ -21,11 +22,20 @@ export class CreateUserFromEmployedDto {
   @ApiProperty({
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
     required: false,
-    description: 'Obligatorio si role=USER',
+    description: 'Obligatorio si role=USER. Debe proporcionar storeId O warehouseId, pero no ambos',
   })
   @IsOptional()
-  @IsUUID()
+  @IsEitherStoreOrWarehouse()
   storeId?: string;
+
+  @ApiProperty({
+    example: 'b2c3d4e5-f6g7-8901-bcde-f23456789012',
+    required: false,
+    description: 'Obligatorio si role=USER. Debe proporcionar storeId O warehouseId, pero no ambos',
+  })
+  @IsOptional()
+  @IsEitherStoreOrWarehouse()
+  warehouseId?: string;
 
   @ApiProperty({ example: 'Password@123' })
   @IsString()
