@@ -88,6 +88,9 @@ model User {
   stockTransfersCreated   StockTransfer[] @relation("StockTransferCreatedBy")
   stockTransfersConfirmed StockTransfer[] @relation("StockTransferConfirmedBy")
   stockTransfersCancelled StockTransfer[] @relation("StockTransferCancelledBy")
+
+  employeePositionsCreated   EmployeePosition[]   @relation("EmployeePositionCreatedBy")
+  establishmentRolesCreated  EstablishmentRole[]  @relation("EstablishmentRoleCreatedBy")
 }
 
 //===================PERFILES DE ACCESO===================
@@ -143,6 +146,9 @@ model Tenant {
   storeServices       StoreService[]
   serviceCategories   ServiceCategory[]
   serviceDefinitions  ServiceDefinition[]
+
+  employeePositions   EmployeePosition[]  @relation("TenantEmployeePositions")
+  establishmentRoles  EstablishmentRole[] @relation("TenantEstablishmentRoles")
 }
 
 //===================TIENDAS===================
@@ -197,6 +203,8 @@ model StoreEmployed {
   store   Store  @relation(fields: [storeId], references: [id])
 
   role       String?
+  establishmentRoleId String?
+  establishmentRole   EstablishmentRole? @relation("EstablishmentRoleStoreEmployees", fields: [establishmentRoleId], references: [id])
   assignedAt DateTime @default(now())
 
   @@unique([employedId, storeId])
@@ -931,6 +939,8 @@ model WarehouseEmployed {
   employed   Employed @relation(fields: [employedId], references: [id])
 
   role       String?
+  establishmentRoleId String?
+  establishmentRole   EstablishmentRole? @relation("EstablishmentRoleWarehouseEmployees", fields: [establishmentRoleId], references: [id])
   assignedAt DateTime @default(now())
 
   @@unique([warehouseId, employedId])
@@ -963,6 +973,45 @@ model WarehouseStore {
 
 //===================EMPLEADOS===================
 
+model EmployeePosition {
+  id       String @id @default(uuid())
+  name     String
+
+  tenantId String
+  tenant   Tenant @relation("TenantEmployeePositions", fields: [tenantId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("EmployeePositionCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  employees Employed[] @relation("EmployeePositionEmployees")
+
+  @@unique([tenantId, name])
+}
+
+model EstablishmentRole {
+  id                        String @id @default(uuid())
+  name                      String
+
+  tenantId                  String
+  tenant                    Tenant @relation("TenantEstablishmentRoles", fields: [tenantId], references: [id])
+
+  createdById               String
+  createdBy                 User   @relation("EstablishmentRoleCreatedBy", fields: [createdById], references: [id])
+
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  deletedAt                 DateTime?
+
+  storeEmployees            StoreEmployed[]    @relation("EstablishmentRoleStoreEmployees")
+  warehouseEmployed         WarehouseEmployed[] @relation("EstablishmentRoleWarehouseEmployees")
+
+  @@unique([tenantId, name])
+}
+
 model Employed {
   id                                String @id @default(uuid())
 
@@ -974,6 +1023,8 @@ model Employed {
   email                             String?
 
   position                          String?
+  positionId                        String?
+  employeePosition                  EmployeePosition? @relation("EmployeePositionEmployees", fields: [positionId], references: [id])
   status                            EmployedStatus @default(ACTIVE)
   
   //soft delete

@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../common/utility/supabase-storage.util';
 import { DocumentStatus, EmployedStatus } from '@prisma/client';
 import { ListEmployedDto } from './dto/list-employed.dto';
+import { EmployeePositionService } from '../employee-position/employee-position.service';
+import { EstablishmentRoleService } from '../establishment-role/establishment-role.service';
 
 function safeSlug(input: string): string {
   return String(input)
@@ -37,6 +39,8 @@ export class EmployedService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly supabaseStorage: SupabaseStorageService,
+    private readonly employeePositionService: EmployeePositionService,
+    private readonly establishmentRoleService: EstablishmentRoleService,
   ) {}
 
   private async closeOpenHistory(
@@ -294,10 +298,27 @@ export class EmployedService {
   ) {
     const tenantId = this.getTenantIdOrThrow(user);
     const creatorUserId = this.getAuthUserIdOrThrow(user);
+    
+    if (!input.storeId && !input.warehouseId) {
+      throw new BadRequestException('Debes especificar storeId o warehouseId (obligatorio)');
+    }
+    
     this.assertSingleAssignment(input);
 
     if (input.storeId) await this.assertStoreTenant(input.storeId, tenantId);
     if (input.warehouseId) await this.assertWarehouseTenant(input.warehouseId, tenantId);
+
+    let positionId: string | null = null;
+    if (input.position) {
+      const positionRecord = await this.employeePositionService.findOrCreate(input.position, user);
+      positionId = positionRecord.id;
+    }
+
+    let establishmentRoleId: string | null = null;
+    if (input.assignmentRole) {
+      const roleRecord = await this.establishmentRoleService.findOrCreate(input.assignmentRole, user);
+      establishmentRoleId = roleRecord.id;
+    }
 
     return this.prisma.$transaction(async (prisma) => {
       const employed = await prisma.employed.create({
@@ -308,6 +329,7 @@ export class EmployedService {
           phone: input.phone ?? null,
           email: input.email ?? null,
           position: input.position ?? null,
+          positionId: positionId,
           createdByUserId: creatorUserId,
         },
       });
@@ -318,6 +340,7 @@ export class EmployedService {
             employedId: employed.id,
             storeId: input.storeId,
             role: input.assignmentRole ?? null,
+            establishmentRoleId: establishmentRoleId,
           },
         });
       }
@@ -328,6 +351,7 @@ export class EmployedService {
             employedId: employed.id,
             warehouseId: input.warehouseId,
             role: input.assignmentRole ?? null,
+            establishmentRoleId: establishmentRoleId,
           },
         });
       }
@@ -673,13 +697,27 @@ export class EmployedService {
   async list(query: ListEmployedDto, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
 
+    if (!query?.storeId && !query?.warehouseId) {
+      throw new BadRequestException('Debes enviar storeId o warehouseId en query');
+    }
+
+    if (query?.storeId && query?.warehouseId) {
+      throw new BadRequestException('Solo puedes enviar storeId o warehouseId (no ambos)');
+    }
+
     const where: any = {
-      OR: [
-        { createdByUser: { tenantId } },
-        { storeAssignments: { some: { store: { tenantId } } } },
-        { warehouseAssignments: { some: { warehouse: { tenantId } } } },
-      ],
       deletedAt: null,
+      ...(query.storeId
+        ? {
+            storeAssignments: {
+              some: { storeId: query.storeId, store: { tenantId } },
+            },
+          }
+        : {
+            warehouseAssignments: {
+              some: { warehouseId: query.warehouseId, warehouse: { tenantId } },
+            },
+          }),
     };
 
     if (query?.status) {
@@ -698,16 +736,40 @@ export class EmployedService {
       where.position = { contains: query.position, mode: 'insensitive' };
     }
 
-    if (query?.storeId) {
-      where.storeAssignments = {
-        some: { storeId: query.storeId, store: { tenantId } },
-      };
+    if (query?.positionId) {
+      where.positionId = query.positionId;
     }
 
-    if (query?.warehouseId) {
-      where.warehouseAssignments = {
-        some: { warehouseId: query.warehouseId, warehouse: { tenantId } },
+    if (query?.assignmentRole || query?.establishmentRoleId) {
+      const assignmentRoleWhere: any = {
+        ...(query.assignmentRole
+          ? {
+              role: {
+                contains: query.assignmentRole,
+                mode: 'insensitive',
+              },
+            }
+          : {}),
+        ...(query.establishmentRoleId ? { establishmentRoleId: query.establishmentRoleId } : {}),
       };
+
+      if (query.storeId) {
+        where.storeAssignments = {
+          some: {
+            storeId: query.storeId,
+            store: { tenantId },
+            ...assignmentRoleWhere,
+          },
+        };
+      } else {
+        where.warehouseAssignments = {
+          some: {
+            warehouseId: query.warehouseId,
+            warehouse: { tenantId },
+            ...assignmentRoleWhere,
+          },
+        };
+      }
     }
 
     if (query?.fromDate || query?.toDate) {

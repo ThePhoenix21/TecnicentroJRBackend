@@ -26,6 +26,8 @@ import { ApiMetricsModule } from './common/api-metrics/api-metrics.module';
 import { ApiMetricsInterceptor } from './common/api-metrics/api-metrics.interceptor';
 import { DomainContextGuard } from './common/context/domain-context.guard';
 import { EmployedModule } from './employed/employed.module';
+import { EmployeePositionModule } from './employee-position/employee-position.module';
+import { EstablishmentRoleModule } from './establishment-role/establishment-role.module';
 import { ProviderModule } from './provider/provider.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { WarehouseProductsModule } from './warehouse-products/warehouse-products.module';
@@ -68,6 +70,8 @@ import { SupplyOrderModule } from './supply-order/supply-order.module';
     AnalyticsModule,
     ApiMetricsModule,
     EmployedModule,
+    EmployeePositionModule,
+    EstablishmentRoleModule,
     ProviderModule,
     WarehouseModule,
     WarehouseProductsModule,

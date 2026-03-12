@@ -23,6 +23,21 @@ export class ListEmployedDto {
   @IsString()
   position?: string;
 
+  @ApiPropertyOptional({ example: 'b1d8b9c5-aaaa-bbbb-cccc-111111111111', description: 'Filtra por posición (EmployeePosition.id)' })
+  @IsOptional()
+  @IsUUID()
+  positionId?: string;
+
+  @ApiPropertyOptional({ example: 'Supervisor', description: 'Filtra por rol asignado (texto en StoreEmployed/WarehouseEmployed.role)' })
+  @IsOptional()
+  @IsString()
+  assignmentRole?: string;
+
+  @ApiPropertyOptional({ example: 'c2c2c2c2-aaaa-bbbb-cccc-222222222222', description: 'Filtra por rol (EstablishmentRole.id)' })
+  @IsOptional()
+  @IsUUID()
+  establishmentRoleId?: string;
+
   @ApiPropertyOptional({ example: 'e7291ff1-ff95-4031-b58c-69f02a67e002' })
   @IsOptional()
   @IsUUID()

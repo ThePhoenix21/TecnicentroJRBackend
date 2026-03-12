@@ -155,6 +155,14 @@ export class EmployedController {
   })
   @ApiOperation({ summary: 'Listar empleados' })
   async list(@Req() req: Request & { user: any }, @Query() query: ListEmployedDto) {
+    if (!query?.storeId && !query?.warehouseId) {
+      throw new BadRequestException('Debes enviar storeId o warehouseId en query');
+    }
+
+    if (query?.storeId && query?.warehouseId) {
+      throw new BadRequestException('Solo puedes enviar storeId o warehouseId (no ambos)');
+    }
+
     return this.employedService.list(query, req.user);
   }
 
