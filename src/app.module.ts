@@ -37,6 +37,7 @@ import { WarehouseSuppliersModule } from './warehouse-suppliers/warehouse-suppli
 import { WarehouseReceptionsModule } from './warehouse-receptions/warehouse-receptions.module';
 import { SupportModule } from './support/support.module';
 import { SupplyOrderModule } from './supply-order/supply-order.module';
+import { StockTransferModule } from './stock-transfer/stock-transfer.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { SupplyOrderModule } from './supply-order/supply-order.module';
     WarehouseReceptionsModule,
     SupportModule,
     SupplyOrderModule,
+    StockTransferModule,
   ],
   controllers: [],
   providers: [
