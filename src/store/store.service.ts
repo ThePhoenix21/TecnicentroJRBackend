@@ -162,13 +162,13 @@ export class StoreService {
 
   async findAll(tenantId: string) {
     return this.prisma.store.findMany({
-      where: { tenantId },
+      where: { tenantId, deletedAt: null },
     }).then((stores) => Promise.all(stores.map((s) => this.attachCreatedByForTenant(s, tenantId))));
   }
 
   findAllSimple(tenantId: string) {
     return this.prisma.store.findMany({
-      where: { tenantId },
+      where: { tenantId, deletedAt: null },
       select: {
         id: true,
         name: true,
@@ -182,7 +182,7 @@ export class StoreService {
 
   async lookup(tenantId: string) {
     return this.prisma.store.findMany({
-      where: { tenantId },
+      where: { tenantId, deletedAt: null },
       select: {
         id: true,
         name: true,
@@ -195,7 +195,7 @@ export class StoreService {
 
   async getTenantStoresInfo(tenantId: string) {
     return this.prisma.store.findMany({
-      where: { tenantId },
+      where: { tenantId, deletedAt: null },
       select: {
         id: true,
         name: true,
@@ -218,7 +218,7 @@ export class StoreService {
   async findOne(id: string, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
     const store = await this.prisma.store.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId, deletedAt: null },
     });
 
     if (!store) {
@@ -231,7 +231,7 @@ export class StoreService {
   async update(id: string, updateStoreDto: UpdateStoreDto, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
 
-    const existing = await this.prisma.store.findFirst({ where: { id, tenantId }, select: { id: true } });
+    const existing = await this.prisma.store.findFirst({ where: { id, tenantId, deletedAt: null }, select: { id: true } });
     if (!existing) {
       return null;
     }
@@ -247,13 +247,14 @@ export class StoreService {
   async remove(id: string, user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
 
-    const existing = await this.prisma.store.findFirst({ where: { id, tenantId }, select: { id: true } });
+    const existing = await this.prisma.store.findFirst({ where: { id, tenantId, deletedAt: null }, select: { id: true } });
     if (!existing) {
       return null;
     }
 
-    return this.prisma.store.delete({
-      where: { id }
+    return this.prisma.store.update({
+      where: { id },
+      data: { deletedAt: new Date() },
     });
   }
 }

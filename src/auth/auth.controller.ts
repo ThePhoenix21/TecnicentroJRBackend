@@ -232,8 +232,8 @@ export class AuthController {
     // Obtener tiendas del usuario (si es ADMIN, obtener todas las tiendas)
     let stores: any[] = [];
     if (user.role === 'ADMIN') {
-      stores = await this.prisma.store.findMany({
-        where: { tenantId: user.tenantId },
+      stores = await (this.prisma.store as any).findMany({
+        where: { tenantId: user.tenantId, deletedAt: null },
         include: {
           createdBy: {
             select: {
@@ -247,8 +247,8 @@ export class AuthController {
       });
     } else {
       // Para usuarios normales, obtener sus tiendas asignadas
-      const userStores = await this.prisma.storeUsers.findMany({
-        where: { userId: user.id },
+      const userStores = await (this.prisma.storeUsers as any).findMany({
+        where: { userId: user.id, store: { deletedAt: null } },
         include: {
           store: {
             include: {
@@ -264,7 +264,7 @@ export class AuthController {
           }
         }
       });
-      stores = userStores.map(us => us.store);
+      stores = (userStores as any[]).map((us: any) => us.store);
     }
 
     // Devolver la respuesta

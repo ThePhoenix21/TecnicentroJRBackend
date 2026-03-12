@@ -479,7 +479,7 @@ export class EmployedService {
     user: AuthUser,
   ) {
     const tenantId = this.getTenantIdOrThrow(user);
-    await this.findEmployedOrThrow(employedId, tenantId);
+    const employed = await this.findEmployedOrThrow(employedId, tenantId);
 
     // Si se incluyen campos de asignación, validar XOR
     if (input.storeId || input.warehouseId) {
@@ -525,6 +525,39 @@ export class EmployedService {
               warehouseId: input.warehouseId,
             },
           });
+        }
+
+        // Sincronizar usuario relacionado si existe
+        if ((employed as any)?.userId) {
+          const relatedUser = await prisma.user.findFirst({
+            where: {
+              id: (employed as any).userId,
+              tenantId,
+            },
+            select: { id: true, role: true },
+          });
+
+          // Solo sincronizar si el usuario es USER (no ADMIN)
+          if (relatedUser && relatedUser.role === 'USER') {
+            await prisma.storeUsers.deleteMany({ where: { userId: relatedUser.id } });
+            await prisma.warehouseUsers.deleteMany({ where: { userId: relatedUser.id } });
+
+            if (input.storeId) {
+              await prisma.storeUsers.create({
+                data: {
+                  userId: relatedUser.id,
+                  storeId: input.storeId,
+                },
+              });
+            } else if (input.warehouseId) {
+              await prisma.warehouseUsers.create({
+                data: {
+                  userId: relatedUser.id,
+                  warehouseId: input.warehouseId,
+                },
+              });
+            }
+          }
         }
       }
 
@@ -1041,7 +1074,7 @@ export class EmployedService {
     const tenantId = this.getTenantIdOrThrow(user);
     this.assertSingleAssignment(input);
 
-    await this.findEmployedOrThrow(employedId, tenantId);
+    const employed = await this.findEmployedOrThrow(employedId, tenantId);
 
     if (input.storeId) await this.assertStoreTenant(input.storeId, tenantId);
     if (input.warehouseId) await this.assertWarehouseTenant(input.warehouseId, tenantId);
@@ -1068,6 +1101,41 @@ export class EmployedService {
             role: input.role ?? null,
           },
         });
+      }
+
+      // Sincronizar usuario relacionado si existe
+      if (employed.userId) {
+        const relatedUser = await prisma.user.findFirst({
+          where: {
+            id: employed.userId,
+            tenantId
+          },
+          select: { id: true, role: true }
+        });
+
+        // Solo sincronizar si el usuario es USER (no ADMIN)
+        if (relatedUser && relatedUser.role === 'USER') {
+          // Eliminar asignaciones actuales del usuario
+          await prisma.storeUsers.deleteMany({ where: { userId: relatedUser.id } });
+          await prisma.warehouseUsers.deleteMany({ where: { userId: relatedUser.id } });
+
+          // Crear nueva asignación para el usuario
+          if (input.storeId) {
+            await prisma.storeUsers.create({
+              data: {
+                userId: relatedUser.id,
+                storeId: input.storeId
+              }
+            });
+          } else if (input.warehouseId) {
+            await prisma.warehouseUsers.create({
+              data: {
+                userId: relatedUser.id,
+                warehouseId: input.warehouseId
+              }
+            });
+          }
+        }
       }
 
       return this.buildBasicResponse(prisma, employedId, tenantId);

@@ -19,24 +19,6 @@ export class CreateUserFromEmployedDto {
   @IsEnum(Role)
   role!: Role;
 
-  @ApiProperty({
-    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-    required: false,
-    description: 'Obligatorio si role=USER. Debe proporcionar storeId O warehouseId, pero no ambos',
-  })
-  @IsOptional()
-  @IsEitherStoreOrWarehouse()
-  storeId?: string;
-
-  @ApiProperty({
-    example: 'b2c3d4e5-f6g7-8901-bcde-f23456789012',
-    required: false,
-    description: 'Obligatorio si role=USER. Debe proporcionar storeId O warehouseId, pero no ambos',
-  })
-  @IsOptional()
-  @IsEitherStoreOrWarehouse()
-  warehouseId?: string;
-
   @ApiProperty({ example: 'Password@123' })
   @IsString()
   @MinLength(6)

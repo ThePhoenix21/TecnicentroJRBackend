@@ -57,8 +57,8 @@ export class AuthService {
     createdById: string | null;
   }>> {
     if (user.role === Role.ADMIN) {
-      return this.prisma.store.findMany({
-        where: { tenantId: user.tenantId },
+      return (this.prisma.store as any).findMany({
+        where: { tenantId: user.tenantId, deletedAt: null },
         select: {
           id: true,
           name: true,
@@ -71,8 +71,8 @@ export class AuthService {
       });
     }
 
-    const userStores = await this.prisma.storeUsers.findMany({
-      where: { userId: user.id },
+    const userStores = await (this.prisma.storeUsers as any).findMany({
+      where: { userId: user.id, store: { deletedAt: null } },
       include: {
         store: {
           select: {
@@ -101,8 +101,8 @@ export class AuthService {
     createdById: string | null;
   }>> {
     if (user.role === Role.ADMIN) {
-      return this.prisma.warehouse.findMany({
-        where: { tenantId: user.tenantId },
+      return (this.prisma.warehouse as any).findMany({
+        where: { tenantId: user.tenantId, deletedAt: null },
         select: {
           id: true,
           name: true,
@@ -119,7 +119,7 @@ export class AuthService {
       ? await this.prisma.warehouseStore.findMany({
           where: {
             storeId: { in: storeIds },
-            warehouse: { tenantId: user.tenantId },
+            warehouse: { tenantId: user.tenantId, deletedAt: null },
           },
           select: {
             warehouse: {
@@ -144,6 +144,7 @@ export class AuthService {
         },
         warehouse: {
           tenantId: user.tenantId,
+          deletedAt: null,
         },
       },
       select: {

@@ -101,7 +101,7 @@ export class UsersController {
     }
   }
 
-  @Post('from-employed')
+  @Post('from-employed/:establishmentType/:establishmentId')
   @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
   @Roles(Role.ADMIN, Role.USER)
   @RequirePermissions(PERMISSIONS.CONVERT_EMPLOYEE_TO_USER)
@@ -110,6 +110,8 @@ export class UsersController {
     rules: [{ limit: 20, windowSeconds: 60 }],
   })
   async createFromEmployed(
+    @Param('establishmentType') establishmentType: string,
+    @Param('establishmentId') establishmentId: string,
     @Body(
       new ValidationPipe({
         transform: true,
@@ -120,7 +122,17 @@ export class UsersController {
     dto: CreateUserFromEmployedDto,
     @Request() req: any,
   ) {
-    return this.usersService.createFromEmployed(dto, req.user);
+    if (establishmentType !== 'store' && establishmentType !== 'warehouse') {
+      throw new BadRequestException('establishmentType debe ser "store" o "warehouse"');
+    }
+
+    const payload = {
+      ...dto,
+      storeId: establishmentType === 'store' ? establishmentId : undefined,
+      warehouseId: establishmentType === 'warehouse' ? establishmentId : undefined,
+    };
+
+    return this.usersService.createFromEmployed(payload, req.user);
   }
 
   @Post('upload-avatar')
@@ -578,6 +590,44 @@ export class UsersController {
             }
           });
           this.logger.log(`Usuario ${id} asignado al almacén ${updateUserDto.warehouseId}`);
+        }
+
+        // Sincronizar empleado relacionado si existe
+        const relatedEmployed = await this.prisma.employed.findFirst({
+          where: {
+            userId: id,
+            deletedAt: null
+          },
+          select: { id: true }
+        });
+
+        if (relatedEmployed) {
+          this.logger.log(`Sincronizando empleado ${relatedEmployed.id} con nueva asignación del usuario ${id}`);
+          
+          // Eliminar asignaciones actuales del empleado
+          await this.prisma.storeEmployed.deleteMany({ where: { employedId: relatedEmployed.id } });
+          await this.prisma.warehouseEmployed.deleteMany({ where: { employedId: relatedEmployed.id } });
+
+          // Crear nueva asignación para el empleado
+          if (updateUserDto.storeId) {
+            await this.prisma.storeEmployed.create({
+              data: {
+                employedId: relatedEmployed.id,
+                storeId: updateUserDto.storeId,
+                role: null
+              }
+            });
+            this.logger.log(`Empleado ${relatedEmployed.id} reasignado a tienda ${updateUserDto.storeId}`);
+          } else if (updateUserDto.warehouseId) {
+            await this.prisma.warehouseEmployed.create({
+              data: {
+                employedId: relatedEmployed.id,
+                warehouseId: updateUserDto.warehouseId,
+                role: null
+              }
+            });
+            this.logger.log(`Empleado ${relatedEmployed.id} reasignado a almacén ${updateUserDto.warehouseId}`);
+          }
         }
 
         // Eliminar storeId/warehouseId del DTO para no intentar actualizarlo directamente en el usuario
