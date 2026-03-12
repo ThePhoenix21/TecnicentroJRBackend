@@ -153,17 +153,28 @@ export class EmployedController {
     keyType: 'user',
     rules: [{ limit: 120, windowSeconds: 60 }],
   })
-  @ApiOperation({ summary: 'Listar empleados' })
+  @ApiOperation({
+    summary: 'Listar empleados',
+    description: 'Lista empleados del tenant. Si no se especifica storeId o warehouseId, muestra todos los empleados. Si se especifica alguno, filtra por ese establecimiento.'
+  })
   async list(@Req() req: Request & { user: any }, @Query() query: ListEmployedDto) {
-    if (!query?.storeId && !query?.warehouseId) {
-      throw new BadRequestException('Debes enviar storeId o warehouseId en query');
-    }
-
+    // ✅ Validación opcional: si se especifican ambos, error
     if (query?.storeId && query?.warehouseId) {
-      throw new BadRequestException('Solo puedes enviar storeId o warehouseId (no ambos)');
+      throw new BadRequestException('No puedes filtrar por storeId y warehouseId al mismo tiempo');
     }
 
     return this.employedService.list(query, req.user);
+  }
+
+  @Get('establishments')
+  @Roles(Role.ADMIN, Role.USER)
+  @RequirePermissions(PERMISSIONS.VIEW_EMPLOYEES)
+  @ApiOperation({
+    summary: 'Obtener establecimientos para filtrar empleados',
+    description: 'Devuelve lista de tiendas y almacenes disponibles para filtrar empleados.'
+  })
+  async getEstablishments(@Req() req: Request & { user: any }) {
+    return this.employedService.getEstablishments(req.user);
   }
 
   @Get('lookup')

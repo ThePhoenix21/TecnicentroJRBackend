@@ -727,12 +727,42 @@ export class EmployedService {
     };
   }
 
-  async list(query: ListEmployedDto, user: AuthUser) {
+  async getEstablishments(user: AuthUser) {
     const tenantId = this.getTenantIdOrThrow(user);
 
-    if (!query?.storeId && !query?.warehouseId) {
-      throw new BadRequestException('Debes enviar storeId o warehouseId en query');
-    }
+    const [stores, warehouses] = await Promise.all([
+      (this.prisma.store as any).findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+      (this.prisma.warehouse as any).findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    return {
+      stores: stores.map(store => ({ id: store.id, name: store.name, type: 'store' })),
+      warehouses: warehouses.map(warehouse => ({ id: warehouse.id, name: warehouse.name, type: 'warehouse' })),
+    };
+  }
+
+  async list(query: ListEmployedDto, user: AuthUser) {
+    const tenantId = this.getTenantIdOrThrow(user);
 
     if (query?.storeId && query?.warehouseId) {
       throw new BadRequestException('Solo puedes enviar storeId o warehouseId (no ambos)');
@@ -740,16 +770,24 @@ export class EmployedService {
 
     const where: any = {
       deletedAt: null,
-      ...(query.storeId
-        ? {
-            storeAssignments: {
-              some: { storeId: query.storeId, store: { tenantId } },
-            },
-          }
+      ...(query.storeId || query.warehouseId
+        ? (query.storeId
+            ? {
+                storeAssignments: {
+                  some: { storeId: query.storeId, store: { tenantId } },
+                },
+              }
+            : {
+                warehouseAssignments: {
+                  some: { warehouseId: query.warehouseId, warehouse: { tenantId } },
+                },
+              })
         : {
-            warehouseAssignments: {
-              some: { warehouseId: query.warehouseId, warehouse: { tenantId } },
-            },
+            OR: [
+              { createdByUser: { tenantId } },
+              { storeAssignments: { some: { store: { tenantId } } } },
+              { warehouseAssignments: { some: { warehouse: { tenantId } } } },
+            ],
           }),
     };
 
@@ -794,7 +832,7 @@ export class EmployedService {
             ...assignmentRoleWhere,
           },
         };
-      } else {
+      } else if (query.warehouseId) {
         where.warehouseAssignments = {
           some: {
             warehouseId: query.warehouseId,
@@ -802,6 +840,8 @@ export class EmployedService {
             ...assignmentRoleWhere,
           },
         };
+      } else {
+        throw new BadRequestException('Para filtrar por rol de asignación, debes especificar storeId o warehouseId');
       }
     }
 
