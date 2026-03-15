@@ -198,6 +198,7 @@ export class StockTransferService {
         data: {
           code,
           status: StockTransferStatus.ISSUED,
+          transferType: dto.transferType as any,
           notes: dto.notes ?? null,
           originType: dto.originType,
           originStoreId: dto.originStoreId ?? null,
@@ -239,9 +240,15 @@ export class StockTransferService {
 
     await this.assertEstablishmentAccess(user, transfer.originType, transfer.originStoreId, transfer.originWarehouseId, tenantId);
 
+    const transferType = (transfer as any).transferType;
+    const isRequest = transferType === 'REQUEST';
+    const sourceType = isRequest ? transfer.destinationType : transfer.originType;
+    const sourceStoreId = isRequest ? transfer.destinationStoreId : transfer.originStoreId;
+    const sourceWarehouseId = isRequest ? transfer.destinationWarehouseId : transfer.originWarehouseId;
+
     await this.prisma.$transaction(async (prisma) => {
-      if (transfer.originType === EstablishmentType.STORE) {
-        const storeId = transfer.originStoreId!;
+      if (sourceType === EstablishmentType.STORE) {
+        const storeId = sourceStoreId!;
         for (const item of transfer.items) {
           const storeProduct = await prisma.storeProduct.findFirst({
             where: { storeId, productId: item.productId },
@@ -272,7 +279,7 @@ export class StockTransferService {
           });
         }
       } else {
-        const warehouseId = transfer.originWarehouseId!;
+        const warehouseId = sourceWarehouseId!;
         for (const item of transfer.items) {
           const warehouseProduct = await prisma.warehouseProduct.findFirst({
             where: { warehouseId, productId: item.productId },
@@ -334,11 +341,17 @@ export class StockTransferService {
       throw new BadRequestException('Solo se puede recepcionar en estado PENDING o PARTIAL');
     }
 
+    const transferType = (transfer as any).transferType;
+    const isRequest = transferType === 'REQUEST';
+    const receiverType = isRequest ? transfer.originType : transfer.destinationType;
+    const receiverStoreId = isRequest ? transfer.originStoreId : transfer.destinationStoreId;
+    const receiverWarehouseId = isRequest ? transfer.originWarehouseId : transfer.destinationWarehouseId;
+
     await this.assertEstablishmentAccess(
       user,
-      transfer.destinationType,
-      transfer.destinationStoreId,
-      transfer.destinationWarehouseId,
+      receiverType,
+      receiverStoreId,
+      receiverWarehouseId,
       tenantId,
     );
 
@@ -391,8 +404,8 @@ export class StockTransferService {
           data: { quantityReceived: newReceived },
         });
 
-        if (transfer.destinationType === EstablishmentType.STORE) {
-          const storeId = transfer.destinationStoreId!;
+        if (receiverType === EstablishmentType.STORE) {
+          const storeId = receiverStoreId!;
           const existing = await prisma.storeProduct.findFirst({
             where: { storeId, productId: item.productId },
             select: { id: true },
@@ -427,7 +440,7 @@ export class StockTransferService {
             },
           });
         } else {
-          const warehouseId = transfer.destinationWarehouseId!;
+          const warehouseId = receiverWarehouseId!;
           const warehouseProduct = await prisma.warehouseProduct.upsert({
             where: { warehouseId_productId: { warehouseId, productId: item.productId } },
             update: { stock: { increment: dtoItem.quantityReceived } },
@@ -531,10 +544,16 @@ export class StockTransferService {
       throw new ForbiddenException('Solo el establecimiento origen puede anular una transferencia en estado ISSUED');
     }
 
+    const transferType = (transfer as any).transferType;
+    const isRequest = transferType === 'REQUEST';
+    const sourceType = isRequest ? transfer.destinationType : transfer.originType;
+    const sourceStoreId = isRequest ? transfer.destinationStoreId : transfer.originStoreId;
+    const sourceWarehouseId = isRequest ? transfer.destinationWarehouseId : transfer.originWarehouseId;
+
     await this.prisma.$transaction(async (prisma) => {
       if (transfer.status === StockTransferStatus.PENDING) {
-        if (transfer.originType === EstablishmentType.STORE) {
-          const storeId = transfer.originStoreId!;
+        if (sourceType === EstablishmentType.STORE) {
+          const storeId = sourceStoreId!;
           for (const item of transfer.items) {
             const storeProduct = await prisma.storeProduct.findFirst({
               where: { storeId, productId: item.productId },
@@ -559,7 +578,7 @@ export class StockTransferService {
             }
           }
         } else {
-          const warehouseId = transfer.originWarehouseId!;
+          const warehouseId = sourceWarehouseId!;
           for (const item of transfer.items) {
             const warehouseProduct = await prisma.warehouseProduct.findFirst({
               where: { warehouseId, productId: item.productId },
@@ -605,7 +624,16 @@ export class StockTransferService {
 
     const transfer = await this.prisma.stockTransfer.findFirst({
       where: { id: transferId, tenantId },
-      select: { id: true, status: true, originType: true, originStoreId: true, originWarehouseId: true },
+      select: {
+        id: true,
+        status: true,
+        originType: true,
+        originStoreId: true,
+        originWarehouseId: true,
+        destinationType: true,
+        destinationStoreId: true,
+        destinationWarehouseId: true,
+      },
     });
 
     if (!transfer) throw new NotFoundException('Transferencia no encontrada');
@@ -635,6 +663,47 @@ export class StockTransferService {
       }
     }
 
+    const hasDestinationUpdate =
+      dto.destinationType !== undefined ||
+      dto.destinationStoreId !== undefined ||
+      dto.destinationWarehouseId !== undefined;
+
+    let destinationType = transfer.destinationType;
+    let destinationStoreId = transfer.destinationStoreId;
+    let destinationWarehouseId = transfer.destinationWarehouseId;
+
+    if (hasDestinationUpdate) {
+      destinationType = dto.destinationType ?? destinationType;
+      destinationStoreId = destinationType === EstablishmentType.STORE
+        ? (dto.destinationStoreId ?? destinationStoreId)
+        : null;
+      destinationWarehouseId = destinationType === EstablishmentType.WAREHOUSE
+        ? (dto.destinationWarehouseId ?? destinationWarehouseId)
+        : null;
+
+      if (destinationType === EstablishmentType.STORE && !destinationStoreId) {
+        throw new BadRequestException('destinationStoreId es requerido cuando destinationType es STORE');
+      }
+      if (destinationType === EstablishmentType.WAREHOUSE && !destinationWarehouseId) {
+        throw new BadRequestException('destinationWarehouseId es requerido cuando destinationType es WAREHOUSE');
+      }
+
+      if (
+        transfer.originType === destinationType &&
+        ((transfer.originStoreId && transfer.originStoreId === destinationStoreId) ||
+          (transfer.originWarehouseId && transfer.originWarehouseId === destinationWarehouseId))
+      ) {
+        throw new BadRequestException('El origen y el destino no pueden ser el mismo establecimiento');
+      }
+
+      await this.validateEstablishmentExists(
+        destinationType,
+        destinationStoreId ?? undefined,
+        destinationWarehouseId ?? undefined,
+        tenantId,
+      );
+    }
+
     await this.prisma.$transaction(async (prisma) => {
       if (dto.items) {
         await prisma.stockTransferProduct.deleteMany({
@@ -648,10 +717,19 @@ export class StockTransferService {
           })),
         });
       }
-      if (dto.notes !== undefined) {
+      if (dto.notes !== undefined || hasDestinationUpdate) {
         await prisma.stockTransfer.update({
           where: { id: transferId },
-          data: { notes: dto.notes },
+          data: {
+            ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+            ...(hasDestinationUpdate
+              ? {
+                  destinationType,
+                  destinationStoreId: destinationStoreId ?? null,
+                  destinationWarehouseId: destinationWarehouseId ?? null,
+                }
+              : {}),
+          },
         });
       }
     });
@@ -710,6 +788,7 @@ export class StockTransferService {
         select: {
           id: true,
           code: true,
+          transferType: true,
           status: true,
           notes: true,
           cancelReason: true,
@@ -737,6 +816,7 @@ export class StockTransferService {
       items.map((item: any) => ({
         id: item.id,
         code: item.code,
+        transferType: item.transferType,
         status: item.status,
         createdAt: item.createdAt,
         ...(item.status === StockTransferStatus.ANNULLATED
@@ -772,6 +852,7 @@ export class StockTransferService {
       select: {
         id: true,
         code: true,
+        transferType: true,
         status: true,
         notes: true,
         cancelReason: true,
@@ -829,6 +910,7 @@ export class StockTransferService {
     return {
       id: transfer.id,
       code: transfer.code,
+      transferType: (transfer as any).transferType,
       status: transfer.status,
       notes: transfer.notes,
       cancelReason: transfer.cancelReason,

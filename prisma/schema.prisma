@@ -716,19 +716,20 @@ model SupplyOrderProduct {
 //===================TRANSFERENCIAS DE STOCK===================
 
 model StockTransfer {
-  id     String              @id @default(uuid())
-  code   String // código legible: TRF-0001
-  status StockTransferStatus @default(PENDING)
-  notes  String?
+  id           String              @id @default(uuid())
+  code         String // código legible: TRF-0001
+  status       StockTransferStatus @default(PENDING)
+  transferType TransferType // REQUEST (pide) o SEND (envía)
+  notes        String?
 
-  // ORIGEN
+  // ORIGEN (siempre quien crea la transferencia)
   originType        EstablishmentType
   originStoreId     String?
   originStore       Store?     @relation("StockTransferOriginStore", fields: [originStoreId], references: [id])
   originWarehouseId String?
   originWarehouse   Warehouse? @relation("StockTransferOriginWarehouse", fields: [originWarehouseId], references: [id])
 
-  // DESTINO
+  // DESTINO (quien recibe si SEND, quien entrega si REQUEST)
   destinationType        EstablishmentType
   destinationStoreId     String?
   destinationStore       Store?     @relation("StockTransferDestinationStore", fields: [destinationStoreId], references: [id])
@@ -1278,6 +1279,11 @@ enum StockTransferStatus {
   PARTIAL // Parcial
   PARTIALLY_RECEIVED // Parcialmente Recibida
   ANNULLATED // Cancelada antes de recepción
+}
+
+enum TransferType {
+  REQUEST // Solicitud: origen pide a destino (destino entrega, origen recibe)
+  SEND // Envío: origen envía a destino (origen entrega, destino recibe)
 }
 
 enum EstablishmentType {

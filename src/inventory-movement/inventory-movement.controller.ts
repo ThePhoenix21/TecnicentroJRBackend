@@ -10,9 +10,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { Role } from '../auth/enums/role.enum';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiOkResponse } from '@nestjs/swagger';
 import { RequireTenantFeatures } from '../tenant/decorators/tenant-features.decorator';
 import { TenantFeature } from '@prisma/client';
+import { ListInventoryMovementsResponseDto } from './dto/list-inventory-movements-response.dto';
 
 @ApiTags('Movimientos de Inventario')
 @Controller('inventory-movements')
@@ -36,8 +37,12 @@ export class InventoryMovementController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Obtener historial de movimientos con filtros' })
-  findAll(@Query() filterDto: FilterInventoryMovementDto, @Req() req: any) {
+  @ApiOperation({
+    summary: 'Obtener historial de movimientos con filtros',
+    description: 'Lista paginada de movimientos filtrados por tienda, producto, tipo, usuario y rango de fechas.',
+  })
+  @ApiOkResponse({ type: ListInventoryMovementsResponseDto })
+  findAll(@Query() filterDto: FilterInventoryMovementDto, @Req() req: any): Promise<ListInventoryMovementsResponseDto> {
     return this.inventoryMovementService.findAll(filterDto, req.user);
   }
 

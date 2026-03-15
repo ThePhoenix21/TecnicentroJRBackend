@@ -13,6 +13,11 @@ import { Type } from 'class-transformer';
 import { EstablishmentType } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
+enum TransferType {
+  REQUEST = 'REQUEST',
+  SEND = 'SEND',
+}
+
 export class CreateStockTransferItemDto {
   @ApiProperty({ example: 'uuid-producto' })
   @IsUUID()
@@ -25,6 +30,13 @@ export class CreateStockTransferItemDto {
 }
 
 export class CreateStockTransferDto {
+  @ApiProperty({ 
+    enum: TransferType,
+    description: 'REQUEST: origen solicita a destino (destino entrega). SEND: origen envía a destino (origen entrega)'
+  })
+  @IsEnum(TransferType)
+  transferType: TransferType;
+
   @ApiProperty({ enum: EstablishmentType })
   @IsEnum(EstablishmentType)
   originType: EstablishmentType;

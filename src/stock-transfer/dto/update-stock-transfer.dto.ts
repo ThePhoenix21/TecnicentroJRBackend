@@ -7,9 +7,11 @@ import {
   Min,
   ValidateNested,
   ArrayMinSize,
+  IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
+import { EstablishmentType } from '@prisma/client';
 
 export class UpdateStockTransferItemDto {
   @ApiProperty({ example: 'uuid-producto' })
@@ -23,6 +25,21 @@ export class UpdateStockTransferItemDto {
 }
 
 export class UpdateStockTransferDto {
+  @ApiProperty({ required: false, enum: EstablishmentType })
+  @IsOptional()
+  @IsEnum(EstablishmentType)
+  destinationType?: EstablishmentType;
+
+  @ApiProperty({ required: false, example: 'uuid-tienda-destino' })
+  @IsOptional()
+  @IsUUID()
+  destinationStoreId?: string;
+
+  @ApiProperty({ required: false, example: 'uuid-almacen-destino' })
+  @IsOptional()
+  @IsUUID()
+  destinationWarehouseId?: string;
+
   @ApiProperty({ required: false, example: 'Notas actualizadas' })
   @IsOptional()
   @IsString()
